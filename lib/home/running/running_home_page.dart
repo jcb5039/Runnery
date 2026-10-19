@@ -222,7 +222,7 @@ class _RunningHomePageState extends State<RunningHomePage> {
   void _onPosition(Position position) {
     setState(() => _position = position);
     final point = LatLng(position.latitude, position.longitude);
-    if (_followUser) _map.moveTo(point);
+    if (_followUser) _map.follow(point);
     _updatePlaceName(point);
   }
 
@@ -1764,7 +1764,23 @@ class RunneryMapController extends ValueNotifier<MapViewport?> {
     );
   }
 
+  /// '내 위치 따라가기'용. 마지막으로 따라간 곳에서 [followMeters] 넘게 움직였을 때만 지도를 옮깁니다.
+  /// GPS는 서 있어도 몇 m씩 흔들려서, 매번 따라가면 지도가 1초마다 움찔하며 글자가 깜빡여 보였습니다.
+  static const followMeters = 10.0;
+  LatLng? _followed;
+
+  Future<void> follow(LatLng target) async {
+    final last = _followed;
+    if (last != null &&
+        _RunneryMapState._metersBetween(last, target) < followMeters) {
+      return;
+    }
+    _followed = target;
+    await moveTo(target);
+  }
+
   Future<void> moveTo(LatLng target, {double? zoom}) async {
+    _followed = target;
     await _map?.animateCamera(
       zoom == null
           ? CameraUpdate.newLatLng(target)
@@ -1799,7 +1815,12 @@ class RunneryMap extends StatefulWidget {
     this.fitPoints = const [],
     this.fitPadding = EdgeInsets.zero,
     this.onUserGesture,
+    this.routeUpdateInterval = Duration.zero,
   });
+
+  /// 경로를 지도에 다시 보내는 최소 간격. 지도 데이터를 바꿀 때마다 지도 엔진이 글자 배치를 다시 해서
+  /// 지명·도로명이 깜빡이므로, 러닝 중처럼 경로가 계속 늘어날 때는 간격을 둡니다.
+  final Duration routeUpdateInterval;
 
   final RunneryMapController controller;
   final LatLng initialCenter;
@@ -1830,21 +1851,15 @@ class RunneryMap extends StatefulWidget {
   State<RunneryMap> createState() => _RunneryMapState();
 }
 
-class _RunneryMapState extends State<RunneryMap>
-    with SingleTickerProviderStateMixin {
+class _RunneryMapState extends State<RunneryMap> {
   static const _routeSource = 'runnery-route';
   static const _markerSource = 'runnery-markers';
   static const _labelSource = 'runnery-labels';
-  static const _meSource = 'runnery-me';
 
   late final String _style = _runneryMapStyle(
     widget.routeWidth,
     widget.routeOpacity,
   );
-  late final AnimationController _pulse = AnimationController(
-    vsync: this,
-    duration: AppMotion.locationPulseInterval,
-  )..addListener(_onPulse);
 
   MapLibreMapController? _map;
   bool _styleReady = false;
@@ -1852,27 +1867,33 @@ class _RunneryMapState extends State<RunneryMap>
   String? _routeSignature;
   String? _markerSignature;
   String? _labelSignature;
-  bool? _labelsVisible;
-  int _lastPulseMs = 0;
-  double _gestureDistance = 0;
+  List<MapLabel> _sentLabels = const [];
+  static const _labelMoveMeters = 20.0;
 
-  @override
-  void initState() {
-    super.initState();
-    if (widget.userLocation != null) _pulse.repeat();
+  static double _metersBetween(LatLng a, LatLng b) {
+    const r = 6371000.0;
+    final dLat = (b.latitude - a.latitude) * math.pi / 180;
+    final dLng = (b.longitude - a.longitude) * math.pi / 180;
+    final x =
+        math.pow(math.sin(dLat / 2), 2) +
+        math.cos(a.latitude * math.pi / 180) *
+            math.cos(b.latitude * math.pi / 180) *
+            math.pow(math.sin(dLng / 2), 2);
+    return 2 * r * math.asin(math.sqrt(x));
   }
+
+  bool? _labelsVisible;
+  DateTime? _routeSentAt;
+  double _gestureDistance = 0;
 
   @override
   void didUpdateWidget(RunneryMap old) {
     super.didUpdateWidget(old);
-    if (widget.userLocation != null && !_pulse.isAnimating) _pulse.repeat();
-    if (widget.userLocation == null && _pulse.isAnimating) _pulse.stop();
     _sync();
   }
 
   @override
   void dispose() {
-    _pulse.dispose();
     if (identical(widget.controller._map, _map)) widget.controller._map = null;
     super.dispose();
   }
@@ -1901,8 +1922,13 @@ class _RunneryMapState extends State<RunneryMap>
       for (final s in widget.route) s.length,
       widget.route.lastOrNull?.lastOrNull,
     ].join('/');
-    if (routeSignature != _routeSignature) {
+    final sentAt = _routeSentAt;
+    final waiting =
+        sentAt != null &&
+        DateTime.now().difference(sentAt) < widget.routeUpdateInterval;
+    if (routeSignature != _routeSignature && !waiting) {
       _routeSignature = routeSignature;
+      _routeSentAt = DateTime.now();
       await map.setGeoJsonSource(
         _routeSource,
         _features([
@@ -1930,13 +1956,28 @@ class _RunneryMapState extends State<RunneryMap>
       );
     }
 
-    final labelSignature = widget.labels
+    // 칩 이름이 그대로이고 20m 안에서만 움직였으면 이전 자리를 그대로 씁니다. GPS는 서 있어도
+    // 1~2m씩 흔들려서, 매번 다시 그리면 '현재 위치' 칩이 1초마다 사라졌다 나타나며 깜빡였습니다.
+    final labels = [
+      for (final l in widget.labels)
+        () {
+          final before = _sentLabels
+              .where((p) => p.kind == l.kind && p.name == l.name)
+              .firstOrNull;
+          return before != null &&
+                  _metersBetween(before.point, l.point) < _labelMoveMeters
+              ? MapLabel(before.point, l.kind, l.name, above: l.above)
+              : l;
+        }(),
+    ];
+    final labelSignature = labels
         .map((l) => '${l.kind.name}${l.point}${l.name}${l.above}')
         .join();
     if (labelSignature != _labelSignature) {
       _labelSignature = labelSignature;
+      _sentLabels = labels;
       final features = <Map<String, Object?>>[];
-      for (final label in widget.labels) {
+      for (final label in labels) {
         final id = 'chip-${label.kind.name}-${label.name.hashCode}';
         if (_images.add(id)) {
           await map.addImage(id, await _chipImage(label, dpr));
@@ -1957,35 +1998,6 @@ class _RunneryMapState extends State<RunneryMap>
         await map.setLayerVisibility(id, widget.showLabels);
       }
     }
-
-    await _syncUserLocation();
-  }
-
-  Future<void> _syncUserLocation() async {
-    final map = _map;
-    if (map == null || !_styleReady) return;
-    final me = widget.userLocation;
-    await map.setGeoJsonSource(
-      _meSource,
-      _features([
-        if (me != null)
-          _feature(_point(me.point), {
-            // 줌 0에서의 정확도 반경(px). 스타일에서 줌마다 2배씩 키웁니다.
-            'acc0':
-                me.accuracy /
-                (78271.517 * math.cos(me.point.latitude * math.pi / 180)),
-            'pulse': Curves.easeOut.transform(_pulse.value),
-          }),
-      ]),
-    );
-  }
-
-  void _onPulse() {
-    // 2.2초 파동을 초당 약 15번만 갱신해 지도 엔진 부담을 줄입니다.
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastPulseMs < 66) return;
-    _lastPulseMs = now;
-    _syncUserLocation();
   }
 
   Future<void> _fit() async {
@@ -2061,6 +2073,10 @@ class _RunneryMapState extends State<RunneryMap>
         widget.controller._map = controller;
       },
       onStyleLoadedCallback: _onStyleLoaded,
+      // 내 위치는 지도 데이터가 아니라 지도 엔진의 기본 위치 표시(지도 위에 따로 얹는 점)로 그립니다.
+      // 위치가 바뀔 때마다 지도 데이터를 바꾸면 화면의 모든 지명·도로명이 다시 배치되며 깜빡였습니다.
+      // 색은 AppDelegate에서 주황으로 맞춥니다.
+      myLocationEnabled: widget.userLocation != null,
       trackCameraPosition: true,
       onCameraMove: widget.controller._update,
       onCameraIdle: () => widget.controller._update(_map?.cameraPosition),
@@ -2347,7 +2363,6 @@ String _runneryMapStyle(double routeWidth, [double routeOpacity = 1]) {
       _RunneryMapState._routeSource: geojson(),
       _RunneryMapState._markerSource: geojson(),
       _RunneryMapState._labelSource: geojson(),
-      _RunneryMapState._meSource: geojson(),
     },
     'layers': [
       {
@@ -2520,64 +2535,6 @@ String _runneryMapStyle(double routeWidth, [double routeOpacity = 1]) {
           'line-color': '#FF7A00',
           'line-width': routeWidth,
           'line-opacity': routeOpacity,
-        },
-      },
-      {
-        'id': 'me-accuracy',
-        'type': 'circle',
-        'source': _RunneryMapState._meSource,
-        'paint': {
-          'circle-radius': [
-            'interpolate', ['exponential', 2], ['zoom'], //
-            0,
-            ['get', 'acc0'],
-            22,
-            [
-              '*',
-              ['get', 'acc0'],
-              4194304,
-            ],
-          ],
-          'circle-color': 'rgba(255,122,0,0.16)',
-          'circle-stroke-color': 'rgba(255,122,0,0.35)',
-          'circle-stroke-width': 1,
-        },
-      },
-      {
-        'id': 'me-pulse',
-        'type': 'circle',
-        'source': _RunneryMapState._meSource,
-        'paint': {
-          'circle-radius': [
-            '+',
-            9,
-            [
-              '*',
-              20,
-              ['get', 'pulse'],
-            ],
-          ],
-          'circle-color': '#FF7A00',
-          'circle-opacity': [
-            '*',
-            0.35,
-            [
-              '-',
-              1,
-              ['get', 'pulse'],
-            ],
-          ],
-        },
-      },
-      {
-        'id': 'me-dot',
-        'type': 'circle',
-        'source': _RunneryMapState._meSource,
-        'paint': {
-          'circle-radius': 6,
-          'circle-color': '#FF7A00',
-          'circle-stroke-color': '#FFFFFF',
-          'circle-stroke-width': 3,
         },
       },
       {

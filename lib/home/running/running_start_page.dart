@@ -963,7 +963,7 @@ class _RunningStartPageState extends State<RunningStartPage> {
     final p = _session.lastPosition;
     if (p == null || identical(p, _followedPosition)) return;
     _followedPosition = p;
-    if (_followUser) _map.moveTo(LatLng(p.latitude, p.longitude));
+    if (_followUser) _map.follow(LatLng(p.latitude, p.longitude));
   }
 
   /// 다이내믹 아일랜드에 보낼 값. 거리는 화면처럼 0.01 km 단위로 맞춥니다.
@@ -1181,6 +1181,8 @@ class _RunningStartPageState extends State<RunningStartPage> {
           initialZoom: _zoom,
           showLabels: _showMapLabels,
           routeWidth: RouteWidth.running,
+          // 경로가 1초마다 늘어날 때마다 다시 그리면 지명·도로명이 깜빡여 5초마다 그립니다(기록은 그대로 1초마다).
+          routeUpdateInterval: const Duration(seconds: 5),
           route: [
             for (final segment in _session.segments)
               [for (final p in segment) p.latLng],

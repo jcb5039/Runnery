@@ -745,7 +745,7 @@ class _LiveLocationMapState extends State<_LiveLocationMap> {
   void _onPosition(Position p) {
     final first = _position == null;
     setState(() => _position = p);
-    if (!first && _follow) _map.moveTo(LatLng(p.latitude, p.longitude));
+    if (!first && _follow) _map.follow(LatLng(p.latitude, p.longitude));
   }
 
   bool _locating = false;
