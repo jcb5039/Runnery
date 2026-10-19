@@ -2,6 +2,16 @@
 
 이 프로젝트의 중요한 결정을 남깁니다. 최근 항목이 위에 옵니다.
 
+## 2026-10-19
+
+- **아이폰에서 Firebase 확인 완료**(시뮬레이터, `firebase` 브랜치): 회원가입 → 이메일 인증 → 로그인, 러닝 저장 후 서버 업로드, 로그아웃 시 폰 기록 비움, 앱을 지우고 다시 설치해 로그인하면 기록이 서버에서 돌아옴(목록 지도 사진은 폰에서 새로 만듦). 실제 아이폰의 백그라운드 위치·음성 안내·라이브 액티비티, 비행기 모드 경고, 비밀번호 찾기·변경, 프로필 수정은 아직 확인 전입니다.
+- 아이폰은 CocoaPods가 아니라 **Swift Package Manager**로 패키지를 받습니다. `pod install`이 필요 없고, Firebase 아이폰 부품 버전은 `ios/**/Package.resolved`에 고정해 커밋합니다. Firebase 추가로 앱 크기가 약 27MB → 55MB로 늘었습니다. 최소 iOS 버전(15.0)은 그대로입니다.
+- `GoogleService-Info.plist`는 아직 없습니다. `main.dart`가 `firebase_options.dart`로 초기화해서 없어도 동작합니다(로그에 안내만 나옴).
+- **Firebase에 등록된 iOS 번들 ID가 잘못돼 있습니다**: `com.example.runneryNew.RunneryLiveActivity`(다이내믹 아일랜드 확장 주소). 앱 본체는 `com.example.runneryNew`(맥에서 무료 계정으로 빌드할 때는 각자 개인 번들 ID). 지금은 경고만 나오고 로그인·동기화는 됩니다. 출시 전에 Firebase 콘솔에서 앱 본체 주소로 iOS 앱을 다시 등록해야 합니다.
+- **지도 지명 깜빡임 원인 확인·수정**: (1) 내 위치 점을 지도 데이터(GeoJSON)로 그려, 위치가 바뀔 때마다 지도 엔진이 모든 글자를 다시 배치했습니다 → 지도 엔진 기본 위치 표시(`myLocationEnabled`, 색은 `AppDelegate`에서 주황)로 바꿈. (2) GPS 흔들림에 지도가 1초마다 몇 픽셀씩 따라 움직여 글자가 떨려 보였습니다 → `RunneryMapController.follow`로 10m 넘게 움직였을 때만 따라감. (3) 러닝 중 경로는 5초마다 다시 그림(`routeUpdateInterval`, 기록은 1초마다). 퍼지는 동그라미 애니메이션은 없어졌습니다.
+- 10월 11일 항목 중 바뀐 것: 러닝 중 GPS 정확도는 다시 `bestForNavigation`(지그재그 방지, 다른 화면은 `best`), 러닝 화면은 다시 화면 켜 두기(`wakelock_plus`), 점 간격은 GPS 오차의 절반(3~10m), 속도는 10초 묶음 안 점 사이 속도의 가운데 값(10월 16일). 자동 일시정지 해제는 아이폰이 주는 속도 0.8m/s 이상이 5초 이어질 때(속도를 모를 때만 10m 기준), 신호가 나쁘면(실내) 일시정지하지 않음(10월 12~13일).
+- 브랜치: `first-test`는 중간고사 발표용(Firebase 없음, 폰에만 저장)이라 건드리지 않고, 앞으로의 작업은 `firebase` 브랜치에 올립니다. 저장소 주소는 `github.com/jcb5039/Runnery`로 옮겼습니다.
+
 ## 2026-10-17
 
 - **Firebase를 붙였습니다**(프로젝트 `runnery-f0faf`, Firestore는 서울, 요금제 Spark). 이전의 "서버·외부 백엔드 금지, 기기 안에만 저장" 규칙은 없어졌고, CLAUDE.md에 보안 규칙(키·토큰 금지, 규칙 임의 완화 금지)을 새로 넣었습니다. `firebase_options.dart`·`google-services.json`은 공개용 설정이라 커밋해도 됩니다.
