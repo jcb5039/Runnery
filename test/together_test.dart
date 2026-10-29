@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:runnery_new/friends/data/friend_store.dart';
 import 'package:runnery_new/friends/data/together_store.dart';
 import 'package:runnery_new/friends/friends_page.dart';
 import 'package:runnery_new/friends/together/together_done_page.dart';
+import 'package:runnery_new/friends/together/together_invite.dart';
 import 'package:runnery_new/friends/together/together_lobby_page.dart';
 import 'package:runnery_new/record/models/running_record.dart';
 
@@ -107,6 +109,53 @@ void main() {
     expect(a.past, hasLength(1));
   });
 
+  test('quick run has no goal and fresh invites arrive live', () async {
+    final a = storeFor(minji), b = storeFor(haeun);
+    final seen = <List<String>>[];
+    final sub = b.invites().listen(
+      (invites) => seen.add([for (final t in invites) t.id]),
+    );
+    await pumpEventQueue();
+    final id = await a.startNow([haeun]);
+    await pumpEventQueue();
+    final t = server.togetherById[id]!;
+    expect(t.goalKm, 0);
+    expect(t.goalLabel, '목표 없이 자유롭게');
+    expect(t.startsAt, now);
+    expect(seen.last, [id]);
+    // 함께 달리기 탭의 받은 요청도 바로 바뀝니다.
+    expect(b.requests.single.id, id);
+
+    // 날짜를 정한 약속도 알려 주지만, 10분 넘은 '바로' 초대와 지난 약속은 빼요.
+    final scheduled = await a.create([haeun], at, 5);
+    Together invite(String id, DateTime startsAt, int goalKm) => Together(
+      id: id,
+      host: minji.uid,
+      members: [minji.uid, haeun.uid],
+      statuses: {
+        minji.uid: TogetherStatus.accepted,
+        haeun.uid: TogetherStatus.pending,
+      },
+      startsAt: startsAt,
+      goalKm: goalKm,
+      createdAt: startsAt,
+    );
+    server
+      ..putTogether(invite('old', now.subtract(const Duration(minutes: 11)), 0))
+      ..putTogether(invite('past', now.subtract(const Duration(hours: 4)), 5));
+    await pumpEventQueue();
+    expect(seen.last, [id, scheduled]);
+
+    await b.answer(b.byId(id)!, TogetherStatus.accepted);
+    await pumpEventQueue();
+    expect(seen.last, [scheduled]);
+    // 내가 보낸 약속은 알려 주지 않습니다.
+    await b.create([minji], at, 3);
+    await pumpEventQueue();
+    expect(seen.last, [scheduled]);
+    await sub.cancel();
+  });
+
   group('lobby', () {
     void phone(WidgetTester tester) {
       tester.view.physicalSize = const Size(390, 844);
@@ -156,8 +205,13 @@ void main() {
       await tester.tap(find.text('함께 시작'));
       await tester.pump();
       await tester.pump();
-      expect(find.text('5'), findsOneWidget);
-      await tester.pump(const Duration(seconds: 5));
+      // 혼자 달릴 때와 같은 3·2·1 화면이고, 눌러도 먼저 출발하지 않습니다.
+      expect(find.text('3'), findsOneWidget);
+      await tester.tap(find.text('함께 출발해요'));
+      await tester.pump(const Duration(seconds: 1));
+      expect(started, isEmpty);
+      expect(find.text('2'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 2100));
       expect(started, ['t1']);
     });
 
@@ -172,7 +226,7 @@ void main() {
       await server.startTogether('t1');
       await tester.pump();
       expect(find.text('함께 출발해요'), findsOneWidget);
-      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(milliseconds: 3100));
       expect(started, ['t1']);
     });
 
@@ -189,6 +243,126 @@ void main() {
       await tester.pump();
       expect(started, ['t1']);
     });
+  });
+
+  /// 테스트에는 GPS가 없어서 대기실의 위치 확인이 '위치 서비스 꺼짐'으로 끝나게 합니다.
+  void noLocation(WidgetTester tester) {
+    const channel = MethodChannel('flutter.baseflow.com/geolocator');
+    final messenger = tester.binding.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(channel, (_) async => false);
+    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+  }
+
+  testWidgets('quick run picks friends and goes straight to the lobby', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    noLocation(tester);
+    final a = storeFor(minji);
+    final friends = FriendStore(
+      backend: server,
+      me: () => minji,
+      records: () async => const [],
+      clock: () => now,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FriendsPage(store: friends, together: a),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('함께 달리기'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('지금 바로 같이 뛰기'));
+    await tester.pumpAndSettle();
+    // 날짜·시간·목표 거리 없이 친구만 고릅니다.
+    expect(find.text('날짜'), findsNothing);
+    expect(find.text('목표 거리'), findsNothing);
+    await tester.tap(find.text('박하은'));
+    await tester.pump();
+    await tester.tap(find.text('같이 뛰자고 보내기'));
+    await tester.pumpAndSettle();
+
+    expect(server.togetherById['t1']!.goalKm, 0);
+    expect(find.byType(TogetherLobbyPage), findsOneWidget);
+    expect(find.text('지금 바로 같이 뛰기'), findsOneWidget);
+    expect(
+      find.text('목표 없이 자유롭게 · 시작을 누르면 대기실에 있는 모두가 함께 출발해요'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a quick invite pops up and joining opens the lobby', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    noLocation(tester);
+    final b = storeFor(haeun);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TogetherInviteListener(store: b, child: const Scaffold()),
+      ),
+    );
+    await tester.pump();
+
+    await storeFor(minji).startNow([haeun]);
+    await tester.pumpAndSettle();
+    expect(find.text('김민지 님이 지금 같이 뛰자고 해요'), findsOneWidget);
+    await tester.tap(find.text('참여하기'));
+    await tester.pumpAndSettle();
+
+    expect(
+      server.togetherById['t1']!.statusOf(haeun.uid),
+      TogetherStatus.accepted,
+    );
+    expect(find.byType(TogetherLobbyPage), findsOneWidget);
+    expect(find.text('지금 바로 같이 뛰기'), findsOneWidget);
+  });
+
+  testWidgets('a scheduled invite pops up once and can be accepted', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final b = storeFor(haeun);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TogetherInviteListener(store: b, child: const Scaffold()),
+      ),
+    );
+    await tester.pump();
+
+    await storeFor(minji).create([haeun], at, 5);
+    await tester.pumpAndSettle();
+    expect(find.text('김민지 님이 함께 달리자고 해요'), findsOneWidget);
+    expect(find.text('10월 30일 (금) 오후 8:00 · 목표 5 km.'), findsOneWidget);
+    await tester.tap(find.text('수락하기'));
+    await tester.pumpAndSettle();
+
+    expect(
+      server.togetherById['t1']!.statusOf(haeun.uid),
+      TogetherStatus.accepted,
+    );
+    expect(find.text('김민지 님과의 약속을 수락했어요'), findsOneWidget);
+    expect(find.byType(TogetherLobbyPage), findsNothing);
+
+    // '나중에'를 누른 약속은 앱을 켜 둔 동안 다시 띄우지 않습니다.
+    await storeFor(minji).create([haeun], at, 7);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('나중에'));
+    await tester.pumpAndSettle();
+    await server.setTogetherReady('t2', minji.uid, ready: true);
+    await tester.pumpAndSettle();
+    expect(find.text('나중에'), findsNothing);
   });
 
   testWidgets('together tab accepts a request and shows records', (

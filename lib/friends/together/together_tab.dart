@@ -48,6 +48,11 @@ class _TogetherTabState extends State<TogetherTab> {
   void _openNew() =>
       _open(TogetherNewPage(friends: widget.friends, store: widget.store));
 
+  /// 약속 없이 친구만 골라 바로 대기실로 갑니다.
+  void _openQuick() => _open(
+    TogetherNewPage(friends: widget.friends, store: widget.store, quick: true),
+  );
+
   Future<void> _answer(Together t, TogetherStatus status) async {
     if (_busy.contains(t.id)) return;
     setState(() => _busy.add(t.id));
@@ -80,6 +85,8 @@ class _TogetherTabState extends State<TogetherTab> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _newButton(),
+          const SizedBox(height: 12),
+          FriendSheetButton(label: '지금 바로 같이 뛰기', onPressed: _openQuick),
           if (requests.isNotEmpty || answered.isNotEmpty) ...[
             const SizedBox(height: 28),
             FriendSectionHeader(
@@ -106,7 +113,7 @@ class _TogetherTabState extends State<TogetherTab> {
                 store: _store,
                 divider: i > 0,
                 chip: _activeChip(t, me.uid),
-                detail: '목표 ${t.goalKm} km',
+                detail: t.goalLabel,
                 onTap: () =>
                     _open(TogetherLobbyPage(id: t.id, store: widget.store)),
               ),
@@ -122,8 +129,8 @@ class _TogetherTabState extends State<TogetherTab> {
                 past: true,
                 chip: _pastChip(t),
                 detail: t.results.isEmpty
-                    ? '목표 ${t.goalKm} km'
-                    : '목표 ${t.goalKm} km · 함께 ${t.totalKm.toStringAsFixed(2)} km',
+                    ? t.goalLabel
+                    : '${t.goalLabel} · 함께 ${t.totalKm.toStringAsFixed(2)} km',
                 onTap: () => _open(
                   TogetherDonePage(
                     id: t.id,
@@ -156,11 +163,13 @@ class _TogetherTabState extends State<TogetherTab> {
     final accepted = t.members
         .where((m) => t.statusOf(m) == TogetherStatus.accepted)
         .length;
+    // 목표가 없으면 끝까지 달린 사람을 '달렸어요'로 셉니다.
+    final done = t.isQuick ? '달렸어요' : '완주';
     if (t.results.isEmpty) return const FriendChip(label: '기록 없음', muted: true);
     if (finished == accepted && accepted > 0) {
-      return FriendChip(label: accepted == 2 ? '둘 다 완주' : '모두 완주');
+      return FriendChip(label: accepted == 2 ? '둘 다 $done' : '모두 $done');
     }
-    return FriendChip(label: '$finished명 완주');
+    return FriendChip(label: '$finished명 $done');
   }
 
   Widget _newButton() => Material(
@@ -270,7 +279,7 @@ class _TogetherTabState extends State<TogetherTab> {
             '${clockText(t.startsAt)}',
           ),
           const SizedBox(height: 10),
-          _infoLine(Icons.flag_outlined, '목표 ${t.goalKm} km'),
+          _infoLine(Icons.flag_outlined, t.goalLabel),
           if (others.isNotEmpty) ...[
             const SizedBox(height: 10),
             _infoLine(Icons.people_outline, '함께: ${others.join(', ')}'),

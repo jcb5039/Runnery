@@ -395,7 +395,7 @@ class _RunningHomePageState extends State<RunningHomePage> {
               switchInCurve: Curves.linear,
               switchOutCurve: Curves.linear,
               child: _countingDown
-                  ? _CountdownView(
+                  ? RunningCountdownView(
                       key: const ValueKey('countdown'),
                       voiceGuide: _voiceGuide,
                       seconds: _settings.countdownSeconds,
@@ -1244,27 +1244,36 @@ class _ModeSegment extends StatelessWidget {
 // ── 카운트다운 ────────────────────────────────────────
 
 /// 05-1 카운트다운. 3·2·1 후 자동 시작, 화면을 누르면 바로 시작합니다.
-class _CountdownView extends StatefulWidget {
-  const _CountdownView({
+/// 함께 달리기 대기실도 같은 화면을 씁니다(누르면 한 사람만 먼저 출발하므로 [skippable]을 끕니다).
+class RunningCountdownView extends StatefulWidget {
+  const RunningCountdownView({
     super.key,
-    required this.voiceGuide,
     required this.seconds,
-    required this.position,
     required this.onFinished,
+    this.voiceGuide,
+    this.position,
+    this.title = '곧 러닝을 시작해요',
+    this.subtitle = '화면을 누르면 바로 시작돼요',
+    this.skippable = true,
   });
 
-  final bool voiceGuide;
+  /// 위쪽 음성 안내 칩. null이면 음성·GPS 칩을 함께 숨깁니다.
+  final bool? voiceGuide;
 
   /// 설정의 카운트다운 초(3·5·10).
   final int seconds;
   final Position? position;
   final VoidCallback onFinished;
+  final String title, subtitle;
+
+  /// 화면을 눌러 바로 시작할 수 있는지.
+  final bool skippable;
 
   @override
-  State<_CountdownView> createState() => _CountdownViewState();
+  State<RunningCountdownView> createState() => _CountdownViewState();
 }
 
-class _CountdownViewState extends State<_CountdownView>
+class _CountdownViewState extends State<RunningCountdownView>
     with SingleTickerProviderStateMixin {
   late final _seconds = widget.seconds;
 
@@ -1311,35 +1320,37 @@ class _CountdownViewState extends State<_CountdownView>
   Widget build(BuildContext context) {
     final ringSize = math.min(MediaQuery.sizeOf(context).width * 0.66, 280.0);
 
+    final voiceGuide = widget.voiceGuide;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: _finish,
+      onTap: widget.skippable ? _finish : null,
       child: ColoredBox(
         color: AppColors.background.withValues(alpha: 0.55),
         child: SafeArea(
           child: Stack(
             children: [
-              Positioned(
-                top: AppSpacing.topControlSafeAreaGapMax,
-                left: AppSpacing.space4,
-                right: AppSpacing.space4,
-                child: Row(
-                  children: [
-                    StatusChip(
-                      label: widget.voiceGuide ? '음성 안내 켜짐' : '음성 안내 꺼짐',
-                      icon: widget.voiceGuide
-                          ? Icons.volume_up_outlined
-                          : Icons.volume_off_outlined,
-                    ),
-                    const Spacer(),
-                    GpsStatusChip(
-                      locationState: RunningLocationState.ready,
-                      position: widget.position,
-                      compact: true,
-                    ),
-                  ],
+              if (voiceGuide != null)
+                Positioned(
+                  top: AppSpacing.topControlSafeAreaGapMax,
+                  left: AppSpacing.space4,
+                  right: AppSpacing.space4,
+                  child: Row(
+                    children: [
+                      StatusChip(
+                        label: voiceGuide ? '음성 안내 켜짐' : '음성 안내 꺼짐',
+                        icon: voiceGuide
+                            ? Icons.volume_up_outlined
+                            : Icons.volume_off_outlined,
+                      ),
+                      const Spacer(),
+                      GpsStatusChip(
+                        locationState: RunningLocationState.ready,
+                        position: widget.position,
+                        compact: true,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
               Align(
                 alignment: const Alignment(0, -0.12),
                 child: AnimatedBuilder(
@@ -1390,23 +1401,23 @@ class _CountdownViewState extends State<_CountdownView>
                   },
                 ),
               ),
-              const Align(
-                alignment: Alignment(0, 0.5),
+              Align(
+                alignment: const Alignment(0, 0.5),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      '곧 러닝을 시작해요',
-                      style: TextStyle(
+                      widget.title,
+                      style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w700,
                         color: AppColors.textPrimary,
                       ),
                     ),
-                    SizedBox(height: AppSpacing.space2),
+                    const SizedBox(height: AppSpacing.space2),
                     Text(
-                      '화면을 누르면 바로 시작돼요',
-                      style: TextStyle(
+                      widget.subtitle,
+                      style: const TextStyle(
                         fontSize: 13,
                         color: AppColors.textSecondary,
                       ),
@@ -1726,7 +1737,7 @@ class MapMarker {
   final MapMarkerKind kind;
 }
 
-enum MapLabelKind { start, finish, current }
+enum MapLabelKind { start, finish, current, friend }
 
 /// 지명 칩: '▶ 출발 여의나루역', '■ 도착 여의도공원', '현재 위치 여의나루역 2번 출구'.
 class MapLabel {
@@ -1744,6 +1755,14 @@ class MapUserLocation {
   const MapUserLocation(this.point, this.accuracy);
   final LatLng point;
   final double accuracy;
+}
+
+/// 함께 달리는 친구: 흰 점과 이름 칩, 지나간 길(흰 선)로 그립니다. 주황은 내 경로에만 씁니다.
+class MapFriend {
+  const MapFriend(this.point, this.name, {this.route = const []});
+  final LatLng point;
+  final String name;
+  final List<LatLng> route;
 }
 
 /// 축척 계산에 필요한 카메라 값.
@@ -1816,6 +1835,7 @@ class RunneryMap extends StatefulWidget {
     this.markers = const [],
     this.labels = const [],
     this.userLocation,
+    this.friends = const [],
     this.fitPoints = const [],
     this.fitPadding = EdgeInsets.zero,
     this.onUserGesture,
@@ -1844,6 +1864,9 @@ class RunneryMap extends StatefulWidget {
   final List<MapLabel> labels;
   final MapUserLocation? userLocation;
 
+  /// 함께 달리는 친구들. 내 경로와 같은 간격([routeUpdateInterval])으로 다시 그립니다.
+  final List<MapFriend> friends;
+
   /// 처음 한 번 이 좌표들이 모두 보이게 맞춥니다.
   final List<LatLng> fitPoints;
   final EdgeInsets fitPadding;
@@ -1859,6 +1882,8 @@ class _RunneryMapState extends State<RunneryMap> {
   static const _routeSource = 'runnery-route';
   static const _markerSource = 'runnery-markers';
   static const _labelSource = 'runnery-labels';
+  static const _friendRouteSource = 'runnery-friend-route';
+  static const _friendSource = 'runnery-friends';
 
   late final String _style = _runneryMapStyle(
     widget.routeWidth,
@@ -1869,6 +1894,7 @@ class _RunneryMapState extends State<RunneryMap> {
   bool _styleReady = false;
   final _images = <String>{};
   String? _routeSignature;
+  String? _friendSignature;
   String? _markerSignature;
   String? _labelSignature;
   List<MapLabel> _sentLabels = const [];
@@ -1926,24 +1952,36 @@ class _RunneryMapState extends State<RunneryMap> {
       for (final s in widget.route) s.length,
       widget.route.lastOrNull?.lastOrNull,
     ].join('/');
+    final friendSignature = [
+      for (final f in widget.friends) '${f.name}${f.point}${f.route.length}',
+    ].join('/');
     final sentAt = _routeSentAt;
     final waiting =
         sentAt != null &&
         DateTime.now().difference(sentAt) < widget.routeUpdateInterval;
-    if (routeSignature != _routeSignature && !waiting) {
-      _routeSignature = routeSignature;
+    // 내 경로와 친구는 한꺼번에 보내, 지명이 다시 배치되는(깜빡이는) 횟수를 늘리지 않습니다.
+    if (!waiting &&
+        (routeSignature != _routeSignature ||
+            friendSignature != _friendSignature)) {
       _routeSentAt = DateTime.now();
-      await map.setGeoJsonSource(
-        _routeSource,
-        _features([
-          for (final segment in widget.route)
-            if (segment.length >= 2)
-              _feature({
-                'type': 'LineString',
-                'coordinates': [for (final p in segment) _coord(p)],
-              }),
-        ]),
-      );
+      if (routeSignature != _routeSignature) {
+        _routeSignature = routeSignature;
+        await map.setGeoJsonSource(
+          _routeSource,
+          _features([
+            for (final segment in widget.route)
+              if (segment.length >= 2)
+                _feature({
+                  'type': 'LineString',
+                  'coordinates': [for (final p in segment) _coord(p)],
+                }),
+          ]),
+        );
+      }
+      if (friendSignature != _friendSignature) {
+        _friendSignature = friendSignature;
+        await _sendFriends(map, dpr);
+      }
     }
 
     final markerSignature = widget.markers
@@ -2002,6 +2040,31 @@ class _RunneryMapState extends State<RunneryMap> {
         await map.setLayerVisibility(id, widget.showLabels);
       }
     }
+  }
+
+  /// 친구 지나간 길(흰 선)과 점·이름 칩.
+  Future<void> _sendFriends(MapLibreMapController map, double dpr) async {
+    final features = <Map<String, Object?>>[];
+    for (final f in widget.friends) {
+      final label = MapLabel(f.point, MapLabelKind.friend, f.name);
+      final id = 'chip-friend-${f.name.hashCode}';
+      if (_images.add(id)) await map.addImage(id, await _chipImage(label, dpr));
+      features
+        ..add(_feature(_point(f.point), {'icon': 'marker-friend'}))
+        ..add(_feature(_point(f.point), {'icon': id, 'chip': true}));
+    }
+    await map.setGeoJsonSource(_friendSource, _features(features));
+    await map.setGeoJsonSource(
+      _friendRouteSource,
+      _features([
+        for (final f in widget.friends)
+          if (f.route.length >= 2)
+            _feature({
+              'type': 'LineString',
+              'coordinates': [for (final p in f.route) _coord(p)],
+            }),
+      ]),
+    );
   }
 
   Future<void> _fit() async {
@@ -2367,6 +2430,8 @@ String _runneryMapStyle(double routeWidth, [double routeOpacity = 1]) {
       _RunneryMapState._routeSource: geojson(),
       _RunneryMapState._markerSource: geojson(),
       _RunneryMapState._labelSource: geojson(),
+      _RunneryMapState._friendRouteSource: geojson(),
+      _RunneryMapState._friendSource: geojson(),
     },
     'layers': [
       {
@@ -2518,7 +2583,29 @@ String _runneryMapStyle(double routeWidth, [double routeOpacity = 1]) {
           false,
         ],
       ),
-      // ── 러닝 데이터: 경로 > 내 위치 > 마커 > 지명 칩 ──
+      // ── 러닝 데이터: 친구 경로 > 경로 > 친구 점·이름 > 내 위치 > 마커 > 지명 칩 ──
+      {
+        'id': 'friend-route-casing',
+        'type': 'line',
+        'source': _RunneryMapState._friendRouteSource,
+        'layout': {'line-cap': 'round', 'line-join': 'round'},
+        'paint': {
+          'line-color': '#000000',
+          'line-opacity': 0.6,
+          'line-width': routeWidth + 2,
+        },
+      },
+      {
+        'id': 'friend-route',
+        'type': 'line',
+        'source': _RunneryMapState._friendRouteSource,
+        'layout': {'line-cap': 'round', 'line-join': 'round'},
+        'paint': {
+          'line-color': '#FFFFFF',
+          'line-opacity': 0.6,
+          'line-width': routeWidth - 1,
+        },
+      },
       {
         'id': 'route-casing',
         'type': 'line',
@@ -2539,6 +2626,33 @@ String _runneryMapStyle(double routeWidth, [double routeOpacity = 1]) {
           'line-color': '#FF7A00',
           'line-width': routeWidth,
           'line-opacity': routeOpacity,
+        },
+      },
+      {
+        'id': 'friend-dots',
+        'type': 'symbol',
+        'source': _RunneryMapState._friendSource,
+        'filter': [
+          '!',
+          ['has', 'chip'],
+        ],
+        'layout': {
+          'icon-image': ['get', 'icon'],
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+        },
+      },
+      {
+        'id': 'friend-chips',
+        'type': 'symbol',
+        'source': _RunneryMapState._friendSource,
+        'filter': ['has', 'chip'],
+        'layout': {
+          'icon-image': ['get', 'icon'],
+          'icon-anchor': 'bottom',
+          'icon-offset': [0, -14],
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
         },
       },
       {
@@ -2682,6 +2796,13 @@ Future<Map<String, Uint8List>> _baseMapImages(double dpr) {
         (c, o) =>
             c.drawRect(Rect.fromCenter(center: o, width: 8, height: 8), black),
       ),
+      // 함께 달리는 친구: 흰 점 + 검정 테두리(주황인 내 위치와 구분).
+      'marker-friend': await _drawPng(const Size.square(26), dpr, (c) {
+        const o = Offset(13, 13);
+        c
+          ..drawCircle(o, 9, Paint()..color = Colors.black)
+          ..drawCircle(o, 7, Paint()..color = Colors.white);
+      }),
       'marker-pause': await marker((c, o) {
         c
           ..drawRect(
@@ -2742,23 +2863,24 @@ Future<Map<String, Uint8List>> _baseMapImages(double dpr) {
 
 /// 지명 칩 이미지.
 Future<Uint8List> _chipImage(MapLabel label, double dpr) {
+  // 현재 위치·친구 칩은 이름을 굵게, 출발·도착 칩은 이름을 흐리게 씁니다.
+  final nameOnly =
+      label.kind == MapLabelKind.current || label.kind == MapLabelKind.friend;
   final spans = <TextSpan>[
     if (label.kind == MapLabelKind.current)
       const TextSpan(
         text: '현재 위치  ',
         style: TextStyle(color: AppColors.textSecondary),
       )
-    else
+    else if (!nameOnly)
       TextSpan(
         text: label.kind == MapLabelKind.start ? '출발' : '도착',
         style: const TextStyle(fontWeight: FontWeight.w700),
       ),
     if (label.name != null)
       TextSpan(
-        text: label.kind == MapLabelKind.current
-            ? label.name
-            : ' ${label.name}',
-        style: label.kind == MapLabelKind.current
+        text: nameOnly ? label.name : ' ${label.name}',
+        style: nameOnly
             ? const TextStyle(fontWeight: FontWeight.w700)
             : const TextStyle(color: AppColors.textSecondary),
       ),
@@ -2772,7 +2894,8 @@ Future<Uint8List> _chipImage(MapLabel label, double dpr) {
     maxLines: 1,
     ellipsis: '…',
   )..layout(maxWidth: 220);
-  final hasGlyph = label.kind != MapLabelKind.current;
+  final hasGlyph =
+      label.kind == MapLabelKind.start || label.kind == MapLabelKind.finish;
   final glyph = hasGlyph ? 15.0 : 0.0;
   final size = Size(tp.width + glyph + 24, 28);
   return _drawPng(size, dpr, (c) {

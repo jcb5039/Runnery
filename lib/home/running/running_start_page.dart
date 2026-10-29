@@ -21,6 +21,7 @@ import 'running_live_activity.dart';
 import 'running_voice.dart';
 import 'running_result_page.dart';
 import '../../friends/data/record_share.dart';
+import '../../friends/data/together_live.dart';
 import '../../friends/data/together_store.dart';
 import '../../record/data/record_from_session.dart';
 import '../../record/data/record_places.dart';
@@ -85,6 +86,10 @@ abstract final class RunningConfig {
 
   /// 이 속도(분속 134m ≈ 시속 8km) 미만은 걷기, 이상은 달리기 공식으로 칼로리를 계산합니다.
   static const walkRunThresholdMetersPerMinute = 134.0;
+
+  /// 함께 달리기: 친구가 이 거리 안에 있을 때만 지도에 점·지나간 길을 그립니다. 그보다 멀면
+  /// 러닝 중 지도(확대 고정)에서는 어차피 화면 밖이라, 친구 칩에 떨어진 거리만 적습니다.
+  static const friendMapRadiusMeters = 1000.0;
 }
 
 /// 칼로리·페이스·햇반 환산. 의료용이 아닌 운동 참고용 추정값입니다.
@@ -924,6 +929,9 @@ class _RunningStartPageState extends State<RunningStartPage> {
   late final AppLifecycleListener _lifecycle;
   Position? _followedPosition;
 
+  /// 함께 달리기면 친구들과 거리·위치·지나간 길을 주고받습니다.
+  TogetherLive? _live;
+
   @override
   void initState() {
     super.initState();
@@ -937,6 +945,10 @@ class _RunningStartPageState extends State<RunningStartPage> {
       ..addListener(_announceKm)
       ..addListener(_announceAutoPause)
       ..start();
+    if (widget.togetherId case final id?) {
+      _live = TogetherLive(id)..start();
+      _session.addListener(_shareLive);
+    }
     // '5킬로미터예요', '30분이에요': 거리는 받침이 없고 시간은 받침이 있습니다.
     final goal = _goalText;
     _say(
@@ -953,6 +965,8 @@ class _RunningStartPageState extends State<RunningStartPage> {
 
   @override
   void dispose() {
+    // 끝났거나 화면을 닫으면 친구들에게 보이던 내 위치·지나간 길을 지웁니다.
+    _live?.dispose();
     WakelockPlus.disable();
     _lifecycle.dispose();
     _liveActivity.end();
@@ -970,6 +984,33 @@ class _RunningStartPageState extends State<RunningStartPage> {
     if (p == null || identical(p, _followedPosition)) return;
     _followedPosition = p;
     if (_followUser) _map.follow(LatLng(p.latitude, p.longitude));
+  }
+
+  void _shareLive() {
+    final p = _session.lastPosition;
+    final routePoint = _session.segments.lastOrNull?.lastOrNull?.latLng;
+    _live?.update(
+      meters: _session.distanceMeters,
+      moving: _session.elapsed,
+      paused: _session.status != RunningStatus.running || _session.autoPaused,
+      position: p == null ? null : (p.latitude, p.longitude),
+      routePoint: routePoint == null
+          ? null
+          : (routePoint.latitude, routePoint.longitude),
+    );
+  }
+
+  /// 내 위치에서 친구까지 거리(m). 둘 중 하나라도 위치를 모르면 null.
+  double? _awayMeters(LiveFriend f) {
+    final me = _session.lastPosition;
+    final friend = f.run?.position;
+    if (me == null || friend == null) return null;
+    return Geolocator.distanceBetween(
+      me.latitude,
+      me.longitude,
+      friend.$1,
+      friend.$2,
+    );
   }
 
   /// 다이내믹 아일랜드에 보낼 값. 거리는 화면처럼 0.01 km 단위로 맞춥니다.
@@ -1172,7 +1213,7 @@ class _RunningStartPageState extends State<RunningStartPage> {
         child: Scaffold(
           backgroundColor: AppColors.mapLand,
           body: ListenableBuilder(
-            listenable: _session,
+            listenable: Listenable.merge([_session, ?_live]),
             builder: (context, _) => _buildMap(context),
           ),
         ),
@@ -1187,6 +1228,20 @@ class _RunningStartPageState extends State<RunningStartPage> {
         : LatLng(position.latitude, position.longitude);
     final firstPoint = _session.segments.firstOrNull?.firstOrNull;
     final pausePoint = _session.currentPausePoint;
+    // 달리는 중이거나 잠깐 멈춘, 1km 안의 친구만 지도에 그립니다.
+    final friends = [
+      for (final f in _live?.friends ?? const <LiveFriend>[])
+        if (f.run?.position case (final lat, final lng)?)
+          if ((f.state == LiveFriendState.running ||
+                  f.state == LiveFriendState.paused) &&
+              (_awayMeters(f) ?? double.infinity) <=
+                  RunningConfig.friendMapRadiusMeters)
+            MapFriend(
+              LatLng(lat, lng),
+              f.name,
+              route: [for (final (a, b) in f.run!.route) LatLng(a, b)],
+            ),
+    ];
 
     // 카드·버튼은 지도 children 밖에 겹쳐야 그 위의 드래그가 지도를 움직이지 않습니다.
     return Stack(
@@ -1214,6 +1269,7 @@ class _RunningStartPageState extends State<RunningStartPage> {
           userLocation: point == null || pausePoint != null
               ? null
               : MapUserLocation(point, position!.accuracy.clamp(5, 60)),
+          friends: friends,
           onUserGesture: () {
             if (_followUser) setState(() => _followUser = false);
           },
@@ -1240,46 +1296,64 @@ class _RunningStartPageState extends State<RunningStartPage> {
                 AppSpacing.space4,
                 0,
               ),
-              child: Row(
-                children: paused
-                    ? [
-                        const StatusChip(label: '일시정지됨', icon: Icons.pause),
-                        const Spacer(),
-                        StatusChip(
-                          label: '쉬는 시간',
-                          trailing: Text(
-                            RunningFormat.timer(_session.pauseElapsed),
-                            style: runningNumberStyle(
-                              13,
-                              color: AppColors.textPrimary,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: paused
+                        ? [
+                            const StatusChip(label: '일시정지됨', icon: Icons.pause),
+                            const Spacer(),
+                            StatusChip(
+                              label: '쉬는 시간',
+                              trailing: Text(
+                                RunningFormat.timer(_session.pauseElapsed),
+                                style: runningNumberStyle(
+                                  13,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                      ]
-                    : [
-                        StatusChip(
-                          label: '기록 중',
-                          leading: Container(
-                            width: 8,
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              color: AppColors.primary,
-                              shape: BoxShape.circle,
+                          ]
+                        : [
+                            StatusChip(
+                              label: '기록 중',
+                              leading: Container(
+                                width: 8,
+                                height: 8,
+                                decoration: const BoxDecoration(
+                                  color: AppColors.primary,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                        const Spacer(),
-                        GpsStatusChip(
-                          locationState: switch (_session.gpsError) {
-                            LocationServiceDisabledException() =>
-                              RunningLocationState.serviceDisabled,
-                            PermissionDeniedException() =>
-                              RunningLocationState.denied,
-                            _ => RunningLocationState.ready,
-                          },
-                          position: _session.lastPosition,
-                        ),
-                      ],
+                            const Spacer(),
+                            GpsStatusChip(
+                              locationState: switch (_session.gpsError) {
+                                LocationServiceDisabledException() =>
+                                  RunningLocationState.serviceDisabled,
+                                PermissionDeniedException() =>
+                                  RunningLocationState.denied,
+                                _ => RunningLocationState.ready,
+                              },
+                              position: _session.lastPosition,
+                            ),
+                          ],
+                  ),
+                  // 함께 달리는 친구: 이름, 거리·페이스(또는 상태), 멀리 있으면 떨어진 거리.
+                  for (final f in _live?.friends ?? const <LiveFriend>[]) ...[
+                    const SizedBox(height: AppSpacing.space2),
+                    // 이름이 길어 화면 폭을 넘으면 칩을 통째로 줄입니다.
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: _FriendLiveChip(
+                        friend: f,
+                        awayMeters: _awayMeters(f),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
           ),
@@ -1392,6 +1466,83 @@ class _RunningStartPageState extends State<RunningStartPage> {
                 child: content,
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 함께 달리는 친구 한 명: 흰 점(지도와 같은 표시), 이름, 거리·페이스 또는 상태.
+class _FriendLiveChip extends StatelessWidget {
+  const _FriendLiveChip({required this.friend, required this.awayMeters});
+
+  final LiveFriend friend;
+
+  /// 내 위치에서 친구까지 거리(m). 모르면 null.
+  final double? awayMeters;
+
+  @override
+  Widget build(BuildContext context) {
+    final f = friend;
+    final run = f.run;
+    final number = runningNumberStyle(13, color: AppColors.textPrimary);
+    const word = TextStyle(fontSize: 12, color: AppColors.textSecondary);
+    final away = awayMeters;
+    return StatusChip(
+      label: f.name,
+      leading: Container(
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(
+          color:
+              f.state == LiveFriendState.running ||
+                  f.state == LiveFriendState.paused
+              ? AppColors.textPrimary
+              : AppColors.textTertiary,
+          shape: BoxShape.circle,
+          border: Border.all(color: AppColors.background, width: 1.5),
+        ),
+      ),
+      trailing: Text.rich(
+        TextSpan(
+          children: [
+            ...switch (f.state) {
+              LiveFriendState.waiting => [
+                const TextSpan(text: '출발 전이에요', style: word),
+              ],
+              LiveFriendState.lost => [
+                const TextSpan(text: '신호 없음', style: word),
+              ],
+              LiveFriendState.finished => [
+                const TextSpan(text: '끝났어요  ', style: word),
+                TextSpan(
+                  text: '${f.result!.distanceKm.toStringAsFixed(2)} km',
+                  style: number,
+                ),
+              ],
+              LiveFriendState.running || LiveFriendState.paused => [
+                TextSpan(
+                  text: '${run!.distanceKm.toStringAsFixed(2)} km',
+                  style: number,
+                ),
+                f.state == LiveFriendState.paused
+                    ? const TextSpan(text: '  멈춤', style: word)
+                    : TextSpan(
+                        text:
+                            '  ${RunningFormat.livePace(run.paceSeconds?.toDouble())}',
+                        style: number,
+                      ),
+              ],
+            },
+            if (away != null &&
+                away > RunningConfig.friendMapRadiusMeters &&
+                (f.state == LiveFriendState.running ||
+                    f.state == LiveFriendState.paused))
+              TextSpan(
+                text: '  ${(away / 1000).toStringAsFixed(1)} km 떨어져 있어요',
+                style: word,
+              ),
           ],
         ),
       ),

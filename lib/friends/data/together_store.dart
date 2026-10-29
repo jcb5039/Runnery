@@ -7,6 +7,7 @@ import 'friend_models.dart';
 
 export 'friend_models.dart'
     show
+        LiveRun,
         Together,
         TogetherResult,
         TogetherStatus,
@@ -167,6 +168,8 @@ class TogetherStore extends ChangeNotifier {
     );
     await backend.submitTogetherResult(t.id, me.uid, result);
     replace(_copy(t, results: {...t.results, me.uid: result}));
+    // 다 달렸으니 친구들에게 보이던 내 위치·지나간 길을 지웁니다(러닝 화면이 지우지 못했을 때를 대비).
+    await backend.deleteTogetherLive(t.id, me.uid).catchError((Object _) {});
   }
 
   /// 함께 달리기로 시작한 러닝을 저장한 뒤 부릅니다. 실패하면 친구 탭을 열 때 다시 올립니다.
@@ -184,8 +187,9 @@ class TogetherStore extends ChangeNotifier {
     }
   }
 
-  /// 약속을 보냅니다. [at]은 약속한 날짜·시간입니다.
-  Future<void> create(
+  /// 약속을 보내고 번호를 돌려줍니다. [at]은 약속한 날짜·시간, [goalKm]이 0이면 목표 없는
+  /// '지금 바로 같이 뛰기'입니다.
+  Future<String> create(
     List<PublicProfile> friends,
     DateTime at,
     int goalKm,
@@ -218,6 +222,57 @@ class TogetherStore extends ChangeNotifier {
       ),
     ];
     notifyListeners();
+    return id;
+  }
+
+  /// '지금 바로 같이 뛰기': 지금 시각으로 목표 없는 약속을 보내고 번호를 돌려줍니다.
+  Future<String> startNow(List<PublicProfile> friends) =>
+      create(friends, now, 0);
+
+  /// 받은 '지금 바로 같이 뛰기' 초대가 이 시간 안에 온 것만 바로 창을 띄웁니다.
+  static const quickInviteFor = Duration(minutes: 10);
+
+  /// 창을 띄울 만한 받은 약속: 아직 답하지 않았고 지나지 않은 것('지금 바로 같이 뛰기'는 10분 안에 온 것).
+  bool isFreshInvite(Together t) {
+    final me = this.me?.uid;
+    return me != null &&
+        t.host != me &&
+        t.statusOf(me) == TogetherStatus.pending &&
+        !t.isPast(me, now) &&
+        (!t.isQuick ||
+            now.difference(t.createdAt ?? t.startsAt) < quickInviteFor);
+  }
+
+  /// 앱을 켜 둔 동안 내 약속을 실시간으로 받아, 창을 띄울 받은 약속([isFreshInvite])을 알려 줍니다.
+  /// 받은 약속으로 목록도 바꿔 두므로 함께 달리기 탭과 친구 탭 배지가 바로 바뀝니다.
+  Stream<List<Together>> invites() {
+    final PublicProfile me;
+    try {
+      me = _require();
+    } on FriendException {
+      return const Stream.empty();
+    }
+    return backend.watchTogethers(me.uid).asyncMap((items) async {
+      if (me.uid != _owner) return const <Together>[];
+      final unknown = {
+        for (final t in items)
+          for (final m in t.members)
+            if (m != me.uid && !_people.containsKey(m)) m,
+      };
+      if (unknown.isNotEmpty) {
+        try {
+          _people.addAll(await backend.profiles(unknown.toList()));
+        } on FriendException {
+          // 이름을 못 가져와도 초대는 보여 줍니다('친구').
+        }
+      }
+      _items = items;
+      notifyListeners();
+      return [
+        for (final t in items)
+          if (isFreshInvite(t)) t,
+      ];
+    });
   }
 
   /// 받은 요청에 수락·거절로 답하거나, 거절을 되돌립니다(pending).

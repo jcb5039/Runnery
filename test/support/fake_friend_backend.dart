@@ -19,7 +19,13 @@ class FakeFriendBackend implements FriendBackend {
   final Map<String, RunStats> statsByUid = {};
   final Map<String, Together> togetherById = {};
   final Map<String, StreamController<Together?>> _watchers = {};
+  final _togethersChanged = StreamController<void>.broadcast();
   int _togetherSeq = 0;
+
+  /// 약속 번호 → uid → 함께 달리는 동안의 실시간 상태.
+  final Map<String, Map<String, LiveRun>> liveById = {};
+  final Map<String, StreamController<List<LiveRun>>> _liveWatchers = {};
+  int liveWrites = 0;
 
   /// 서버 시각. 대기실 표시와 시작 시각에 씁니다.
   DateTime Function() clock = DateTime.now;
@@ -217,6 +223,7 @@ class FakeFriendBackend implements FriendBackend {
   void putTogether(Together t) {
     togetherById[t.id] = t;
     _watchers[t.id]?.add(t);
+    _togethersChanged.add(null);
   }
 
   Together _copy(
@@ -252,6 +259,17 @@ class FakeFriendBackend implements FriendBackend {
         if (t.members.contains(uid)) t,
     ];
   }
+
+  @override
+  Stream<List<Together>> watchTogethers(String uid) => Stream.multi((listener) {
+    List<Together> mine() => [
+      for (final t in togetherById.values)
+        if (t.members.contains(uid)) t,
+    ];
+    listener.add(mine());
+    final sub = _togethersChanged.stream.listen((_) => listener.add(mine()));
+    listener.onCancel = sub.cancel;
+  });
 
   @override
   Future<String> createTogether({
@@ -339,5 +357,48 @@ class FakeFriendBackend implements FriendBackend {
     _check();
     togetherById.remove(id);
     _watchers[id]?.add(null);
+    _togethersChanged.add(null);
+  }
+
+  void _liveChanged(String id) =>
+      _liveWatchers[id]?.add([...?liveById[id]?.values]);
+
+  @override
+  Future<void> setTogetherLive(
+    String id,
+    LiveRun run, {
+    int sentPoints = 0,
+  }) async {
+    _check();
+    liveWrites++;
+    // 서버처럼 이미 올린 점 뒤에 새 점만 붙이고, 올릴 때마다 올린 시각이 바뀝니다.
+    final before = liveById[id]?[run.uid];
+    (liveById[id] ??= {})[run.uid] = LiveRun(
+      uid: run.uid,
+      distanceKm: (run.distanceKm * 100).round() / 100,
+      movingSeconds: run.movingSeconds,
+      paused: run.paused,
+      position: run.position,
+      route: [...?before?.route, ...run.route.skip(sentPoints)],
+      updatedAt: clock().add(Duration(microseconds: liveWrites)),
+    );
+    _liveChanged(id);
+  }
+
+  @override
+  Stream<List<LiveRun>> watchTogetherLive(String id) {
+    final controller = _liveWatchers[id] ??= StreamController.broadcast();
+    return Stream.multi((listener) {
+      listener.add([...?liveById[id]?.values]);
+      final sub = controller.stream.listen(listener.add);
+      listener.onCancel = sub.cancel;
+    });
+  }
+
+  @override
+  Future<void> deleteTogetherLive(String id, String uid) async {
+    _check();
+    liveById[id]?.remove(uid);
+    _liveChanged(id);
   }
 }

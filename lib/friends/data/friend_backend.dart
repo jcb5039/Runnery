@@ -18,6 +18,8 @@ class FriendException implements Exception {
 /// - `profiles/{uid}`: 친구 찾기용 공개 정보(이름·아이디·검색어). 인증을 마친 사람은 누구나 읽습니다.
 /// - `friendRequests/{보낸 uid}_{받는 uid}`: 친구 요청. 보낸 사람과 받는 사람만 봅니다.
 /// - `users/{uid}/friends/{친구 uid}`: 친구 목록. 수락할 때 양쪽에 함께 적고, 삭제할 때 함께 지웁니다.
+/// - `together/{번호}/live/{uid}`: 함께 달리는 동안의 거리·시간·위치·지나간 길. 그 약속의 참여자만 보고,
+///   달리기가 끝나면 본인이 지웁니다.
 abstract class FriendBackend {
   /// 내 공개 정보를 올립니다(이름·아이디가 바뀌면 덮어씁니다).
   Future<void> publishProfile(PublicProfile me);
@@ -87,6 +89,9 @@ abstract class FriendBackend {
   /// 내가 참여한 함께 달리기 약속들.
   Future<List<Together>> togethers(String uid);
 
+  /// 내가 참여한 약속들을 계속 지켜봅니다. 앱을 켜 둔 동안 새 초대를 바로 알 수 있습니다.
+  Stream<List<Together>> watchTogethers(String uid);
+
   /// 약속을 만들고 번호를 돌려줍니다. 보낸 사람은 수락, 나머지는 대기 상태로 만듭니다.
   Future<String> createTogether({
     required String host,
@@ -110,6 +115,16 @@ abstract class FriendBackend {
 
   /// 보낸 사람이 약속을 취소합니다.
   Future<void> deleteTogether(String id);
+
+  /// 함께 달리는 동안 내 실시간 상태를 올립니다. [run]의 지나간 길 중 앞의 [sentPoints]개는 이미 올렸고,
+  /// 그 뒤의 점만 새로 보냅니다.
+  Future<void> setTogetherLive(String id, LiveRun run, {int sentPoints = 0});
+
+  /// 함께 달리는 사람들의 실시간 상태를 계속 지켜봅니다.
+  Stream<List<LiveRun>> watchTogetherLive(String id);
+
+  /// 달리기를 끝내면 내 실시간 상태(위치·지나간 길)를 지웁니다.
+  Future<void> deleteTogetherLive(String id, String uid);
 }
 
 /// Firestore를 쓰는 실제 구현.
@@ -138,6 +153,9 @@ class FirebaseFriendBackend implements FriendBackend {
 
   CollectionReference<Map<String, dynamic>> get _togethers =>
       _db.collection('together');
+
+  CollectionReference<Map<String, dynamic>> _live(String id) =>
+      _togethers.doc(id).collection('live');
 
   DocumentReference<Map<String, dynamic>> _stats(String uid) =>
       _db.collection('users').doc(uid).collection('stats').doc('summary');
@@ -504,6 +522,16 @@ class FirebaseFriendBackend implements FriendBackend {
   }, '함께 달리기 약속을 불러오지 못했어요');
 
   @override
+  Stream<List<Together>> watchTogethers(String uid) => _togethers
+      .where('members', arrayContains: uid)
+      .snapshots()
+      .map(
+        (snapshot) => [
+          for (final doc in snapshot.docs) ?_toTogether(doc.id, doc.data()),
+        ],
+      );
+
+  @override
   Future<String> createTogether({
     required String host,
     required List<String> members,
@@ -583,4 +611,69 @@ class FirebaseFriendBackend implements FriendBackend {
   @override
   Future<void> deleteTogether(String id) =>
       _run(() => _togethers.doc(id).delete(), '약속을 취소하지 못했어요');
+
+  /// 위도·경도는 소수 다섯째 자리(약 1m)까지만 올립니다.
+  static double _round5(double v) => (v * 100000).round() / 100000;
+
+  @override
+  Future<void> setTogetherLive(String id, LiveRun run, {int sentPoints = 0}) =>
+      _run(() {
+        final position = run.position;
+        // 지나간 길은 '순서,위도,경도' 글자로 덧붙여(arrayUnion) 매번 전체를 다시 보내지 않습니다.
+        final points = [
+          for (final (i, (lat, lng)) in run.route.indexed.skip(sentPoints))
+            '$i,${_round5(lat)},${_round5(lng)}',
+        ];
+        return _live(id).doc(run.uid).set({
+          'distanceKm': (run.distanceKm * 100).round() / 100,
+          'movingSeconds': run.movingSeconds,
+          'paused': run.paused,
+          if (position != null) ...{
+            'lat': _round5(position.$1),
+            'lng': _round5(position.$2),
+          },
+          if (points.isNotEmpty) 'route': FieldValue.arrayUnion(points),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }, '함께 달리는 정보를 올리지 못했어요');
+
+  static LiveRun _toLive(String uid, Map<String, dynamic> d) {
+    final lat = d['lat'], lng = d['lng'];
+    final points = <(int, double, double)>[
+      for (final p in d['route'] as List? ?? const [])
+        if ('$p'.split(',') case [final i, final a, final b])
+          if ((int.tryParse(i), double.tryParse(a), double.tryParse(b)) case (
+            final i?,
+            final a?,
+            final b?,
+          ))
+            (i, a, b),
+    ]..sort((x, y) => x.$1.compareTo(y.$1));
+    return LiveRun(
+      uid: uid,
+      distanceKm: (d['distanceKm'] as num?)?.toDouble() ?? 0,
+      movingSeconds: (d['movingSeconds'] as num?)?.toInt() ?? 0,
+      paused: d['paused'] == true,
+      position: lat is num && lng is num
+          ? (lat.toDouble(), lng.toDouble())
+          : null,
+      route: [for (final (_, a, b) in points) (a, b)],
+      updatedAt: d['updatedAt'] is Timestamp
+          ? (d['updatedAt'] as Timestamp).toDate()
+          : null,
+    );
+  }
+
+  @override
+  Stream<List<LiveRun>> watchTogetherLive(String id) => _live(id)
+      .snapshots()
+      .map(
+        (snapshot) => [
+          for (final doc in snapshot.docs) _toLive(doc.id, doc.data()),
+        ],
+      );
+
+  @override
+  Future<void> deleteTogetherLive(String id, String uid) =>
+      _run(() => _live(id).doc(uid).delete(), '함께 달린 위치 정보를 지우지 못했어요');
 }

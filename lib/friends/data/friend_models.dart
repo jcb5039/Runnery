@@ -375,8 +375,10 @@ class Together {
   final List<String> members;
   final Map<String, TogetherStatus> statuses;
 
-  /// 약속한 날짜·시간.
+  /// 약속한 날짜·시간. '지금 바로 같이 뛰기'는 만든 시각입니다.
   final DateTime startsAt;
+
+  /// 목표 거리(km). 0이면 '지금 바로 같이 뛰기'로 만든, 목표 없이 자유롭게 달리는 약속입니다.
   final int goalKm;
   final DateTime? createdAt;
 
@@ -395,6 +397,12 @@ class Together {
 
   static const kmOptions = [3, 5, 7, 10];
   static const maxMembers = 6;
+
+  /// '지금 바로 같이 뛰기'로 만든 약속인지(목표 없음).
+  bool get isQuick => goalKm == 0;
+
+  /// 목표 5 km / 목표 없이 자유롭게
+  String get goalLabel => isQuick ? '목표 없이 자유롭게' : '목표 $goalKm km';
 
   TogetherStatus statusOf(String uid) =>
       statuses[uid] ?? TogetherStatus.declined;
@@ -422,6 +430,39 @@ class Together {
   /// 함께 달린 거리와 칼로리 합계.
   double get totalKm => results.values.fold(0, (a, r) => a + r.distanceKm);
   int get totalKcal => results.values.fold(0, (a, r) => a + r.kcal);
+}
+
+/// 함께 달리는 동안 한 사람의 실시간 상태. 그 약속의 참여자만 보고, 달리기가 끝나면 지웁니다.
+@immutable
+class LiveRun {
+  const LiveRun({
+    required this.uid,
+    this.distanceKm = 0,
+    this.movingSeconds = 0,
+    this.paused = false,
+    this.position,
+    this.route = const [],
+    this.updatedAt,
+  });
+  final String uid;
+  final double distanceKm;
+  final int movingSeconds;
+
+  /// 서버에 마지막으로 올린 시각. 올릴 때마다 바뀌므로 새 소식인지 알 수 있습니다.
+  final DateTime? updatedAt;
+
+  /// 직접 멈췄거나 자동 일시정지 중인지.
+  final bool paused;
+
+  /// 마지막 위치(위도, 경도). GPS를 아직 못 잡았으면 null.
+  final (double, double)? position;
+
+  /// 지나간 길(위도, 경도). 15m쯤 움직일 때마다 점이 하나씩 늘어납니다.
+  final List<(double, double)> route;
+
+  /// 1 km 페이스(초). 거리가 너무 짧으면 null.
+  int? get paceSeconds =>
+      distanceKm < .01 ? null : (movingSeconds / distanceKm).round();
 }
 
 /// 약속 시각: 오늘 오전 7:00 / 내일 오후 8:00 / 10월 28일 오후 9:00.

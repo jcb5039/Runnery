@@ -105,7 +105,7 @@ class _TogetherDonePageState extends State<TogetherDonePage> {
     final finished = results.where((e) => e.value.distanceKm >= t.goalKm);
     final mine = t.results[me.uid];
     final hetbahn = t.totalKcal / 315;
-    final badge = finished.isEmpty
+    final badge = finished.isEmpty || t.isQuick
         ? null
         : finished.length == accepted.length
         ? (accepted.length == 2 ? '둘 다 목표 달성' : '모두 목표 달성')
@@ -122,7 +122,7 @@ class _TogetherDonePageState extends State<TogetherDonePage> {
         children: [
           Text(
             '${t.startsAt.month}월 ${t.startsAt.day}일 '
-            '(${weekdayLetter(t.startsAt)}) ${clockText(t.startsAt)} · 목표 ${t.goalKm} km',
+            '(${weekdayLetter(t.startsAt)}) ${clockText(t.startsAt)} · ${t.goalLabel}',
             style: const TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w500,
@@ -133,6 +133,8 @@ class _TogetherDonePageState extends State<TogetherDonePage> {
           Text(
             results.isEmpty
                 ? '함께 달린 기록이 없어요'
+                : t.isQuick
+                ? '${_store.names(t)} 님과 함께\n자유롭게 달렸어요'
                 : '${_store.names(t)} 님과 함께\n${t.goalKm} km를 달렸어요',
             style: const TextStyle(
               fontSize: 26,
@@ -324,7 +326,7 @@ class _PersonResult extends StatelessWidget {
                   ],
                 ),
               ),
-              if (result.distanceKm >= goalKm)
+              if (goalKm > 0 && result.distanceKm >= goalKm)
                 const FriendChip(label: '완주', filled: true, icon: Icons.check),
             ],
           ),

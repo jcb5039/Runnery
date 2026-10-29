@@ -232,6 +232,7 @@ service cloud.firestore {
 
     // 함께 달리기 약속. 참여자(members)만 읽습니다. 보낸 사람(host)만 만들고 취소하며,
     // 참여자는 자기 답(statuses)·대기실 표시(ready)·결과(results)만 바꾸고, 시작(startedAt)은 한 번만 적습니다.
+    // 목표 거리(goalKm) 0은 '지금 바로 같이 뛰기'(목표 없이 자유롭게)입니다.
     function memberOk(m, i) {
       return m.size() <= i
         || m[i] == request.auth.uid
@@ -269,7 +270,7 @@ service cloud.firestore {
         && request.resource.data.statuses[request.auth.uid] == 'accepted'
         && request.resource.data.startsAt is timestamp
         && request.resource.data.goalKm is int
-        && request.resource.data.goalKm >= 1 && request.resource.data.goalKm <= 100
+        && request.resource.data.goalKm >= 0 && request.resource.data.goalKm <= 100
         && request.resource.data.createdAt == request.time;
 
       allow update: if signedIn()
@@ -308,6 +309,34 @@ service cloud.firestore {
         && r.movingSeconds is int && r.movingSeconds >= 0
         && r.kcal is int && r.kcal >= 0
         && r.finishedAt is timestamp;
+    }
+
+    // 함께 달리는 동안의 실시간 상태(거리·시간·위치·지나간 길). 그 약속의 참여자만 읽고,
+    // 약속을 수락한 본인만 자기 것을 씁니다. 달리기가 끝나면 본인이 지웁니다.
+    // 지나간 길(route)은 '순서,위도,경도' 글자 목록입니다.
+    function validLiveRun(d) {
+      return d.keys().hasOnly(['distanceKm', 'movingSeconds', 'paused', 'lat', 'lng', 'route', 'updatedAt'])
+        && d.keys().hasAll(['distanceKm', 'movingSeconds', 'paused', 'updatedAt'])
+        && d.distanceKm is number && d.distanceKm >= 0 && d.distanceKm <= 1000
+        && d.movingSeconds is int && d.movingSeconds >= 0 && d.movingSeconds <= 1000000
+        && d.paused is bool
+        && (!('lat' in d) || (d.lat is number && d.lat >= -90 && d.lat <= 90))
+        && (!('lng' in d) || (d.lng is number && d.lng >= -180 && d.lng <= 180))
+        && (!('route' in d) || (d.route is list && d.route.size() <= 5000))
+        && d.updatedAt == request.time;
+    }
+
+    match /together/{id}/live/{uid} {
+      allow get, list: if signedIn()
+        && verified()
+        && request.auth.uid in get(/databases/$(database)/documents/together/$(id)).data.members;
+
+      allow create, update: if isOwner(uid)
+        && verified()
+        && get(/databases/$(database)/documents/together/$(id)).data.statuses[uid] == 'accepted'
+        && validLiveRun(request.resource.data);
+
+      allow delete: if isOwner(uid);
     }
 
     // 친구 요청. 문서 이름은 '보낸 uid_받는 uid'이고, 보낸 사람과 받는 사람만 읽고 지울 수 있습니다.

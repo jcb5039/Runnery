@@ -38,7 +38,7 @@ class TogetherLobbyPage extends StatefulWidget {
   startRun;
 
   /// 시작을 누른 뒤 모두가 함께 세는 초.
-  static const countdownSeconds = 5;
+  static const countdownSeconds = 3;
 
   /// 대기실에 있다고 다시 알리는 간격.
   static const heartbeat = Duration(seconds: 20);
@@ -51,11 +51,11 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
   TogetherStore get _store => widget.store ?? TogetherStore.instance;
 
   StreamSubscription<Together?>? _sub;
-  Timer? _beat, _tick;
+  Timer? _beat;
   Together? _together;
   bool _first = true, _launched = false, _starting = false;
+  bool _counting = false;
   bool? _locationOk;
-  int? _count;
   String? _error;
 
   @override
@@ -77,7 +77,6 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
   void dispose() {
     _sub?.cancel();
     _beat?.cancel();
-    _tick?.cancel();
     if (!_launched && _locationOk == true) _leave();
     super.dispose();
   }
@@ -138,17 +137,8 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
   }
 
   void _beginCountdown() {
-    if (_count != null || _launched) return;
-    setState(() => _count = TogetherLobbyPage.countdownSeconds);
-    _tick = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) return timer.cancel();
-      if (_count! <= 1) {
-        timer.cancel();
-        _launch();
-      } else {
-        setState(() => _count = _count! - 1);
-      }
-    });
+    if (_counting || _launched) return;
+    setState(() => _counting = true);
   }
 
   Future<void> _start() async {
@@ -169,11 +159,12 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
     _launched = true;
     _beat?.cancel();
     _leave();
-    setState(() => _count = null);
+    setState(() => _counting = false);
     await (widget.startRun ?? _defaultStartRun)(context, t);
   }
 
-  /// 목표 거리를 정한 러닝 화면을 엽니다. 달리기가 끝나면 결과 화면을 거쳐 처음 화면으로 돌아갑니다.
+  /// 목표 거리를 정한 러닝 화면을 엽니다('지금 바로 같이 뛰기'는 목표 없는 자유 러닝).
+  /// 달리기가 끝나면 결과 화면을 거쳐 처음 화면으로 돌아갑니다.
   static Future<void> _defaultStartRun(BuildContext context, Together t) async {
     final settings = ProfileSettings.instance;
     await settings.load();
@@ -184,12 +175,18 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
         MaterialPageRoute<void>(
           builder: (_) => RunningStartPage(
             togetherId: t.id,
-            options: RunningStartOptions(
-              mode: RunningMode.distanceGoal,
-              voiceGuide: settings.voice,
-              autoPause: settings.autoPause,
-              goalKm: t.goalKm.toDouble(),
-            ),
+            options: t.isQuick
+                ? RunningStartOptions(
+                    mode: RunningMode.free,
+                    voiceGuide: settings.voice,
+                    autoPause: settings.autoPause,
+                  )
+                : RunningStartOptions(
+                    mode: RunningMode.distanceGoal,
+                    voiceGuide: settings.voice,
+                    autoPause: settings.autoPause,
+                    goalKm: t.goalKm.toDouble(),
+                  ),
           ),
         ),
       );
@@ -257,6 +254,19 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
   Widget build(BuildContext context) {
     final t = _together;
     final me = _store.me;
+    // 카운트다운은 혼자 달릴 때와 같은 화면을 전체에 띄웁니다. 누구도 먼저 출발하지 않게 눌러 건너뛸 수 없습니다.
+    if (_counting) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        body: RunningCountdownView(
+          seconds: TogetherLobbyPage.countdownSeconds,
+          title: '함께 출발해요',
+          subtitle: '대기실에 있는 모두가 같이 시작해요',
+          skippable: false,
+          onFinished: _launch,
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: friendAppBar(context, '함께 달리기 대기실'),
@@ -269,12 +279,7 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
                       style: const TextStyle(color: AppColors.textSecondary),
                     ),
             )
-          : Stack(
-              children: [
-                _content(t, me),
-                if (_count case final count?) _countdown(count),
-              ],
-            ),
+          : _content(t, me),
     );
   }
 
@@ -301,8 +306,10 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
               ),
               children: [
                 Text(
-                  '${t.startsAt.month}월 ${t.startsAt.day}일 '
-                  '(${weekdayLetter(t.startsAt)}) ${clockText(t.startsAt)}',
+                  t.isQuick
+                      ? '지금 바로 같이 뛰기'
+                      : '${t.startsAt.month}월 ${t.startsAt.day}일 '
+                            '(${weekdayLetter(t.startsAt)}) ${clockText(t.startsAt)}',
                   style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w700,
@@ -310,7 +317,7 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '목표 ${t.goalKm} km · 시작을 누르면 대기실에 있는 모두가 함께 출발해요',
+                  '${t.goalLabel} · 시작을 누르면 대기실에 있는 모두가 함께 출발해요',
                   style: const TextStyle(
                     fontSize: 13,
                     height: 1.5,
@@ -437,34 +444,6 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
       ),
     };
   }
-
-  Widget _countdown(int count) => Positioned.fill(
-    child: ColoredBox(
-      color: AppColors.background,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Text(
-            '함께 출발해요',
-            style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '$count',
-            style: runningNumberStyle(
-              140,
-              weight: FontWeight.w800,
-              color: AppColors.primary,
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
 }
 
 /// 러닝 시작 버튼(주황).
