@@ -11,9 +11,11 @@ void main() {
     await first.load();
     expect(first.voice, isTrue);
     expect(first.countdownSeconds, 3);
+    expect(first.calorieQuest, isTrue);
     first.update(() {
       first.voice = false;
       first.autoPause = false;
+      first.calorieQuest = false;
       first.countdown = '없음';
     });
     // 저장은 뒤에서 하므로 파일이 생길 때까지 기다립니다.
@@ -26,6 +28,7 @@ void main() {
     await reopened.load();
     expect(reopened.voice, isFalse);
     expect(reopened.autoPause, isFalse);
+    expect(reopened.calorieQuest, isFalse);
     expect(reopened.countdownSeconds, 0);
   });
 }

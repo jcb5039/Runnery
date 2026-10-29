@@ -34,6 +34,7 @@ class RunningStartOptions {
     required this.mode,
     required this.voiceGuide,
     required this.autoPause,
+    this.calorieQuest = true,
     this.goalKm = RunningGoal.defaultKm,
     this.goalMinutes = RunningGoal.defaultMinutes,
   });
@@ -41,6 +42,9 @@ class RunningStartOptions {
   final RunningMode mode;
   final bool voiceGuide;
   final bool autoPause;
+
+  /// 러닝 카드에 칼로리 퀘스트 줄을 보여 주고 단계 달성 창을 띄웁니다.
+  final bool calorieQuest;
 
   /// 거리 목표(km). [RunningMode.distanceGoal]일 때만 씁니다.
   final double goalKm;
@@ -295,6 +299,7 @@ class _RunningHomePageState extends State<RunningHomePage> {
       mode: _mode,
       voiceGuide: _voiceGuide,
       autoPause: _autoPause,
+      calorieQuest: _settings.calorieQuest,
       goalKm: _goalKm,
       goalMinutes: _goalMinutes,
     );

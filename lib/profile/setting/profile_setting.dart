@@ -21,6 +21,7 @@ class ProfileSettings extends ChangeNotifier {
 
   bool voice = true;
   bool autoPause = true;
+  bool calorieQuest = true;
   String countdown = '3초';
 
   /// 카운트다운 초. '없음'이면 0.
@@ -43,6 +44,7 @@ class ProfileSettings extends ChangeNotifier {
           jsonDecode(await file.readAsString()) as Map<String, dynamic>;
       voice = json['voice'] as bool? ?? voice;
       autoPause = json['autoPause'] as bool? ?? autoPause;
+      calorieQuest = json['calorieQuest'] as bool? ?? calorieQuest;
       final saved = json['countdown'] as String?;
       if (countdownOptions.contains(saved)) countdown = saved!;
       notifyListeners();
@@ -65,6 +67,7 @@ class ProfileSettings extends ChangeNotifier {
         jsonEncode({
           'voice': voice,
           'autoPause': autoPause,
+          'calorieQuest': calorieQuest,
           'countdown': countdown,
         }),
         flush: true,
@@ -180,6 +183,12 @@ class ProfileSettingPage extends StatelessWidget {
                   '멈춰 서면 기록을 잠시 멈춰요',
                   settings.autoPause,
                   (v) => settings.update(() => settings.autoPause = v),
+                ),
+                _toggle(
+                  '칼로리 퀘스트',
+                  '태운 칼로리를 간식 단계로 보여줘요',
+                  settings.calorieQuest,
+                  (v) => settings.update(() => settings.calorieQuest = v),
                 ),
                 _row(
                   '카운트다운',

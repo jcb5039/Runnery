@@ -16,6 +16,7 @@ import '../../design_system/app_motion.dart';
 import '../../design_system/app_radius.dart';
 import '../../design_system/app_spacing.dart';
 import '../../design_system/app_text_styles.dart';
+import 'calorie_quest.dart';
 import 'running_home_page.dart';
 import 'running_live_activity.dart';
 import 'running_voice.dart';
@@ -918,6 +919,10 @@ class _RunningStartPageState extends State<RunningStartPage> {
   bool _collapsed = false;
   bool _ending = false;
   bool _goalReached = false;
+
+  /// 달성을 알린 칼로리 퀘스트 단계 수.
+  int _questShown = 0;
+  bool _questSheetOpen = false;
   final _liveActivity = RunningLiveActivity();
 
   final _voice = RunningVoice();
@@ -941,6 +946,7 @@ class _RunningStartPageState extends State<RunningStartPage> {
     _session
       ..addListener(_followCamera)
       ..addListener(_checkGoal)
+      ..addListener(_checkQuest)
       ..addListener(_updateLiveActivity)
       ..addListener(_announceKm)
       ..addListener(_announceAutoPause)
@@ -1092,6 +1098,43 @@ class _RunningStartPageState extends State<RunningStartPage> {
       const SnackBar(
         behavior: SnackBarBehavior.floating,
         content: Text('목표 달성! 계속 달려도 돼요.'),
+      ),
+    );
+  }
+
+  /// 칼로리 퀘스트 단계를 새로 넘으면 진동·음성으로 알리고 달성 창을 띄웁니다. 기록은 계속됩니다.
+  void _checkQuest() {
+    if (!widget.options.calorieQuest) return;
+    final done = CalorieQuest.completed(_session.calories);
+    if (done <= _questShown) return;
+    _questShown = done;
+    final stage = CalorieQuest.stages[done - 1];
+    HapticFeedback.heavyImpact();
+    _say('칼로리 퀘스트 $done단계 달성. ${stage.fullName}만큼 태웠어요.');
+    // 이미 창이 떠 있거나 종료 확인 중이면 창은 띄우지 않습니다(카드의 퀘스트 줄은 바뀝니다).
+    if (_ending || _questSheetOpen) return;
+    _questSheetOpen = true;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      isScrollControlled: true,
+      builder: (_) => CalorieQuestAchievedSheet(
+        stageIndex: done - 1,
+        listenable: _session,
+        calories: () => _session.calories,
+        elapsed: () => _session.elapsed,
+      ),
+    ).whenComplete(() => _questSheetOpen = false);
+  }
+
+  void _openQuestPage() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => CalorieQuestPage(
+          listenable: _session,
+          calories: () => _session.calories,
+        ),
       ),
     );
   }
@@ -1429,6 +1472,7 @@ class _RunningStartPageState extends State<RunningStartPage> {
         options: widget.options,
         onPause: _pause,
         onEnd: _openEndSheet,
+        onOpenQuest: _openQuestPage,
       );
     }
 
@@ -1558,12 +1602,14 @@ class _RunningCard extends StatelessWidget {
     required this.options,
     required this.onPause,
     required this.onEnd,
+    required this.onOpenQuest,
   });
 
   final RunningSession session;
   final RunningStartOptions options;
   final VoidCallback onPause;
   final VoidCallback onEnd;
+  final VoidCallback onOpenQuest;
 
   @override
   Widget build(BuildContext context) {
@@ -1642,6 +1688,12 @@ class _RunningCard extends StatelessWidget {
               ),
             ],
           ),
+          if (options.calorieQuest) ...[
+            const SizedBox(height: AppSpacing.space3),
+            const Divider(height: 1),
+            const SizedBox(height: AppSpacing.space3),
+            CalorieQuestRow(kcal: session.calories, onTap: onOpenQuest),
+          ],
           const SizedBox(height: AppSpacing.space4),
           Row(
             children: [
