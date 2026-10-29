@@ -10,6 +10,8 @@ import '../../design_system/app_component_metrics.dart';
 import '../../design_system/app_motion.dart';
 import '../../design_system/app_radius.dart';
 import '../../design_system/app_spacing.dart';
+import '../../friends/share/share_record_sheet.dart';
+import '../../record/data/record_from_session.dart';
 import 'running_home_page.dart';
 import 'running_start_page.dart';
 
@@ -78,7 +80,7 @@ class RunningResultPage extends StatelessWidget {
                                   onPressed: () => _done(context),
                                 ),
                                 const Spacer(),
-                                _ShareButton(),
+                                _ShareButton(record: record),
                               ],
                             ),
                             const SizedBox(height: AppSpacing.space5),
@@ -427,7 +429,7 @@ class RunningRouteDetailPage extends StatelessWidget {
                       ),
                     ),
                   ),
-                  _ShareButton(),
+                  _ShareButton(record: record),
                 ],
               ),
             ),
@@ -1096,16 +1098,28 @@ const _labelStyle = TextStyle(fontSize: 12, color: AppColors.textSecondary);
 List<(String, String)> _speedParts(double? kmh) =>
     kmh == null ? [('-', '')] : [(RunningFormat.speed(kmh), 'km/h')];
 
-/// 공유는 1차 MVP 범위가 아니라 안내만 합니다.
+/// 18-3 친구에게 기록 공유 창을 엽니다. 저장된 기록과 같은 번호로 올라가고, 장소 이름도 함께 담습니다.
 class _ShareButton extends StatelessWidget {
+  const _ShareButton({required this.record});
+
+  final RunningRecord record;
+
+  Future<void> _share(BuildContext context) async {
+    final places = await record.places;
+    if (!context.mounted) return;
+    await showShareRecordSheet(
+      context,
+      recordFromSession(record)
+          .withPlaces(area: places.area, start: places.start, end: places.end),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return MapCircleButton(
       icon: Icons.ios_share,
-      tooltip: '공유',
-      onPressed: () => ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('공유는 다음 버전에서 지원해요'))),
+      tooltip: '친구에게 공유',
+      onPressed: () => _share(context),
     );
   }
 }

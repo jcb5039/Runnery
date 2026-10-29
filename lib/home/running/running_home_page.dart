@@ -116,6 +116,25 @@ enum RunningLocationState {
 /// 러닝 화면이 '화면이 꺼져도 받기' 설정으로 통로를 새로 열게 합니다.
 final runningLocationActive = ValueNotifier<bool>(false);
 
+/// 위치 서비스와 권한을 확인하고, 아직 묻지 않았으면 권한을 요청합니다.
+/// 러닝 시작 화면과 함께 달리기 대기실이 함께 씁니다.
+Future<RunningLocationState> checkRunningLocation() async {
+  if (!await Geolocator.isLocationServiceEnabled()) {
+    return RunningLocationState.serviceDisabled;
+  }
+  var permission = await Geolocator.checkPermission();
+  if (permission == LocationPermission.denied) {
+    permission = await Geolocator.requestPermission();
+  }
+  return switch (permission) {
+    LocationPermission.whileInUse ||
+    LocationPermission.always => RunningLocationState.ready,
+    LocationPermission.deniedForever => RunningLocationState.deniedForever,
+    LocationPermission.denied ||
+    LocationPermission.unableToDetermine => RunningLocationState.denied,
+  };
+}
+
 /// 러닝용 GPS 설정. 1초 간격.
 /// [background]가 true면 화면이 꺼지거나 다른 앱으로 가도 위치를 계속 받습니다(러닝 중에만).
 LocationSettings runningLocationSettings({bool background = false}) =>
@@ -191,22 +210,7 @@ class _RunningHomePageState extends State<RunningHomePage> {
 
   // ── 위치 ────────────────────────────────────────────
 
-  Future<RunningLocationState> _checkLocation() async {
-    if (!await Geolocator.isLocationServiceEnabled()) {
-      return RunningLocationState.serviceDisabled;
-    }
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-    return switch (permission) {
-      LocationPermission.whileInUse ||
-      LocationPermission.always => RunningLocationState.ready,
-      LocationPermission.deniedForever => RunningLocationState.deniedForever,
-      LocationPermission.denied ||
-      LocationPermission.unableToDetermine => RunningLocationState.denied,
-    };
-  }
+  Future<RunningLocationState> _checkLocation() => checkRunningLocation();
 
   Future<void> _startLocation() async {
     final state = await _checkLocation();

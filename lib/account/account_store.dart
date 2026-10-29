@@ -91,6 +91,9 @@ class AccountStore extends ChangeNotifier {
   /// 로그인한 사용자. 로그아웃 상태면 null.
   Account? get current => isLoggedIn ? _account : null;
 
+  /// 로그인한 사용자의 서버 계정 번호. 친구 기능이 서버에서 나를 가리킬 때 씁니다.
+  String? get uid => isLoggedIn ? _user!.uid : null;
+
   /// 로그인한 사용자의 프로필 사진 파일. 없으면 null.
   File? get photoFile {
     final photo = current?.photo, folder = _folderPath;

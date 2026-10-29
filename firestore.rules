@@ -22,6 +22,67 @@ service cloud.firestore {
       return request.auth.token.email_verified == true;
     }
 
+    // [uid]의 친구인지(친구 목록에 내가 적혀 있는지).
+    function isFriendOf(uid) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(uid)/friends/$(request.auth.uid));
+    }
+
+    function optionalNumber(d, key) {
+      return !(key in d) || (d[key] is number && d[key] >= 0 && d[key] <= 1000000);
+    }
+
+    function optionalText(d, key) {
+      return !(key in d) || (d[key] is string && d[key].size() <= 100);
+    }
+
+    // 친구에게 공유한 러닝 요약의 모양. 정확한 좌표는 없고 0~1000으로 줄인 경로 모양만 있습니다.
+    function validPost(d) {
+      return d.keys().hasOnly(['startedAt', 'distanceKm', 'movingSeconds', 'paceSeconds',
+          'kcal', 'hetbahn', 'area', 'startPlace', 'endPlace', 'shape', 'sharedAt'])
+        && d.keys().hasAll(['startedAt', 'distanceKm', 'shape', 'sharedAt'])
+        && d.startedAt is timestamp
+        && d.distanceKm is number && d.distanceKm >= 0 && d.distanceKm <= 1000
+        && optionalNumber(d, 'movingSeconds')
+        && optionalNumber(d, 'paceSeconds')
+        && optionalNumber(d, 'kcal')
+        && optionalNumber(d, 'hetbahn')
+        && optionalText(d, 'area')
+        && optionalText(d, 'startPlace')
+        && optionalText(d, 'endPlace')
+        && d.shape is list && d.shape.size() <= 400
+        && d.sharedAt == request.time;
+    }
+
+    function validShareSettings(d) {
+      return d.keys().hasOnly(['autoShare', 'showTime', 'showPace', 'showKcal', 'showFood'])
+        && d.keys().hasAll(['autoShare', 'showTime', 'showPace', 'showKcal', 'showFood'])
+        && d.autoShare is bool
+        && d.showTime is bool
+        && d.showPace is bool
+        && d.showKcal is bool
+        && d.showFood is bool;
+    }
+
+    function validGoal(d) {
+      return d.keys().hasOnly(['km', 'public'])
+        && d.keys().hasAll(['km', 'public'])
+        && d.km is int && d.km >= 1 && d.km <= 100
+        && d.public is bool;
+    }
+
+    function validStats(d) {
+      return d.keys().hasOnly(['weekStart', 'weekKm', 'weekRuns', 'monthKey', 'monthKm', 'goalKm', 'updatedAt'])
+        && d.keys().hasAll(['weekStart', 'weekKm', 'weekRuns', 'monthKey', 'monthKm', 'updatedAt'])
+        && d.weekStart is string && d.weekStart.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && d.monthKey is string && d.monthKey.matches('^[0-9]{4}-[0-9]{2}$')
+        && d.weekKm is number && d.weekKm >= 0 && d.weekKm <= 10000
+        && d.weekRuns is int && d.weekRuns >= 0 && d.weekRuns <= 1000
+        && d.monthKm is number && d.monthKm >= 0 && d.monthKm <= 50000
+        && (!('goalKm' in d) || (d.goalKm is int && d.goalKm >= 1 && d.goalKm <= 100))
+        && d.updatedAt == request.time;
+    }
+
     // 러닝 기록 문서의 모양. 기록 본문(경로 등)은 압축한 덩어리(payload) 하나로 올라오고,
     // 지운 기록은 문서를 지우지 않고 deleted 표시만 남깁니다.
     function validRecordDoc(d) {
@@ -79,6 +140,196 @@ service cloud.firestore {
           && validRecordDoc(request.resource.data);
         allow delete: if false;
       }
+
+      // 친구에게 공유한 러닝: 본인과 친구만 읽고, 본인만 올리고 내립니다.
+      match /posts/{recordId} {
+        allow get, list: if (isOwner(uid) || isFriendOf(uid)) && verified();
+        allow create, update: if isOwner(uid)
+          && verified()
+          && recordId.matches('^[a-zA-Z0-9_-]{1,100}$')
+          && validPost(request.resource.data);
+        allow delete: if isOwner(uid);
+
+        // 응원: 문서 이름은 응원한 사람의 uid. 친구만 자기 응원을 남기고 지우며,
+        // 기록 주인은 공유를 취소할 때 받은 응원을 지울 수 있습니다.
+        match /cheers/{cheererUid} {
+          allow get, list: if (isOwner(uid) || isFriendOf(uid)) && verified();
+          allow create, update: if signedIn()
+            && verified()
+            && request.auth.uid == cheererUid
+            && isFriendOf(uid)
+            && exists(/databases/$(database)/documents/users/$(uid)/posts/$(recordId))
+            && request.resource.data.keys().hasOnly(['clap', 'fire', 'muscle', 'updatedAt'])
+            && request.resource.data.keys().hasAll(['clap', 'fire', 'muscle', 'updatedAt'])
+            && request.resource.data.clap is bool
+            && request.resource.data.fire is bool
+            && request.resource.data.muscle is bool
+            && request.resource.data.updatedAt == request.time;
+          allow delete: if isOwner(uid) || (signedIn() && request.auth.uid == cheererUid);
+        }
+      }
+
+      // 본인만 읽고 쓰는 설정: 기록 공유 설정(share)과 주간 목표(goal).
+      match /settings/{name} {
+        allow get: if isOwner(uid) && verified();
+        allow list: if false;
+        allow create, update: if isOwner(uid)
+          && verified()
+          && ((name == 'share' && validShareSettings(request.resource.data))
+            || (name == 'goal' && validGoal(request.resource.data)));
+        allow delete: if isOwner(uid);
+      }
+
+      // 랭킹·목표 비교용 합계(이번 주·이번 달). 기록 하나하나는 없고 합계만 있습니다.
+      // 본인과 친구만 읽고, 본인만 씁니다.
+      match /stats/{name} {
+        allow get: if (isOwner(uid) || isFriendOf(uid)) && verified();
+        allow list: if false;
+        allow create, update: if isOwner(uid)
+          && verified()
+          && name == 'summary'
+          && validStats(request.resource.data);
+        allow delete: if isOwner(uid);
+      }
+
+      // 친구 목록: 본인만 읽습니다. 친구 요청을 수락할 때 양쪽 목록에 함께 적고(요청이 있어야 함),
+      // 친구를 삭제할 때는 둘 중 누구든 양쪽에서 지울 수 있습니다. 내용은 친구가 된 시각뿐입니다.
+      match /friends/{friendUid} {
+        allow get, list: if isOwner(uid) && verified();
+        allow create: if signedIn()
+          && verified()
+          && uid != friendUid
+          && request.resource.data.keys().hasOnly(['since'])
+          && request.resource.data.since == request.time
+          && ((isOwner(uid)
+              && exists(/databases/$(database)/documents/friendRequests/$(friendUid + '_' + uid)))
+            || (request.auth.uid == friendUid
+              && exists(/databases/$(database)/documents/friendRequests/$(uid + '_' + friendUid))));
+        allow update: if false;
+        allow delete: if isOwner(uid) || (signedIn() && request.auth.uid == friendUid);
+      }
+    }
+
+    // 친구 찾기용 공개 정보. 이름·아이디·검색어만 있고 이메일·나이·체중은 없습니다.
+    // 인증을 마친 사람은 읽고 찾을 수 있고(한 번에 20명까지), 본인 것만 자기 아이디로 쓸 수 있습니다.
+    function validPublicProfile(uid, d) {
+      return d.keys().hasOnly(['name', 'id', 'keywords'])
+        && d.keys().hasAll(['name', 'id', 'keywords'])
+        && d.name is string && d.name.size() >= 1 && d.name.size() <= 30
+        && d.id is string && validId(d.id)
+        && d.keywords is list && d.keywords.size() <= 300
+        && get(/databases/$(database)/documents/usernames/$(d.id)).data.uid == uid;
+    }
+
+    match /profiles/{uid} {
+      allow get: if signedIn() && verified();
+      allow list: if signedIn() && verified() && request.query.limit <= 20;
+      allow create, update: if isOwner(uid)
+        && verified()
+        && validPublicProfile(uid, request.resource.data);
+      allow delete: if isOwner(uid);
+    }
+
+    // 함께 달리기 약속. 참여자(members)만 읽습니다. 보낸 사람(host)만 만들고 취소하며,
+    // 참여자는 자기 답(statuses)·대기실 표시(ready)·결과(results)만 바꾸고, 시작(startedAt)은 한 번만 적습니다.
+    function memberOk(m, i) {
+      return m.size() <= i
+        || m[i] == request.auth.uid
+        || exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(m[i]));
+    }
+
+    function onlyMine(after, before) {
+      return after.diff(before).affectedKeys().hasOnly([request.auth.uid]);
+    }
+
+    match /together/{id} {
+      allow get, list: if signedIn()
+        && verified()
+        && request.auth.uid in resource.data.members;
+
+      allow create: if signedIn()
+        && verified()
+        && request.resource.data.keys().hasOnly(['host', 'members', 'statuses', 'startsAt', 'goalKm', 'createdAt'])
+        && request.resource.data.keys().hasAll(['host', 'members', 'statuses', 'startsAt', 'goalKm', 'createdAt'])
+        && request.resource.data.host == request.auth.uid
+        && request.resource.data.members is list
+        && request.resource.data.members.size() >= 2
+        && request.resource.data.members.size() <= 6
+        && request.auth.uid in request.resource.data.members
+        && memberOk(request.resource.data.members, 0)
+        && memberOk(request.resource.data.members, 1)
+        && memberOk(request.resource.data.members, 2)
+        && memberOk(request.resource.data.members, 3)
+        && memberOk(request.resource.data.members, 4)
+        && memberOk(request.resource.data.members, 5)
+        && request.resource.data.statuses is map
+        && request.resource.data.statuses.size() == request.resource.data.members.size()
+        && request.resource.data.statuses.keys().hasOnly(request.resource.data.members)
+        && request.resource.data.statuses.values().hasOnly(['accepted', 'pending'])
+        && request.resource.data.statuses[request.auth.uid] == 'accepted'
+        && request.resource.data.startsAt is timestamp
+        && request.resource.data.goalKm is int
+        && request.resource.data.goalKm >= 1 && request.resource.data.goalKm <= 100
+        && request.resource.data.createdAt == request.time;
+
+      allow update: if signedIn()
+        && verified()
+        && request.auth.uid in resource.data.members
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['statuses', 'ready', 'startedAt', 'results'])
+        // 답: 내 것만, 정해진 값으로.
+        && onlyMine(request.resource.data.statuses, resource.data.statuses)
+        && request.resource.data.statuses[request.auth.uid] in ['pending', 'accepted', 'declined']
+        // 대기실 표시: 내 것만, 지금 시각으로(나갈 때는 지웁니다).
+        && onlyMine(request.resource.data.get('ready', {}), resource.data.get('ready', {}))
+        && (!(request.auth.uid in request.resource.data.get('ready', {}))
+          || request.resource.data.ready[request.auth.uid] == request.time
+          || request.resource.data.ready[request.auth.uid] == resource.data.get('ready', {}).get(request.auth.uid, null))
+        // 시작: 수락한 사람만, 한 번만, 지금 시각으로.
+        && (!('startedAt' in request.resource.data)
+          || ('startedAt' in resource.data && request.resource.data.startedAt == resource.data.startedAt)
+          || (!('startedAt' in resource.data)
+            && request.resource.data.startedAt == request.time
+            && resource.data.statuses[request.auth.uid] == 'accepted'))
+        // 결과: 내 것만.
+        && onlyMine(request.resource.data.get('results', {}), resource.data.get('results', {}))
+        && (!(request.auth.uid in request.resource.data.get('results', {}))
+          || validTogetherResult(request.resource.data.results[request.auth.uid]));
+
+      allow delete: if signedIn() && resource.data.host == request.auth.uid;
+    }
+
+    function validTogetherResult(r) {
+      return r is map
+        && r.keys().hasOnly(['recordId', 'distanceKm', 'movingSeconds', 'kcal', 'finishedAt'])
+        && r.keys().hasAll(['recordId', 'distanceKm', 'movingSeconds', 'kcal', 'finishedAt'])
+        && r.recordId is string && r.recordId.size() <= 100
+        && r.distanceKm is number && r.distanceKm >= 0 && r.distanceKm <= 1000
+        && r.movingSeconds is int && r.movingSeconds >= 0
+        && r.kcal is int && r.kcal >= 0
+        && r.finishedAt is timestamp;
+    }
+
+    // 친구 요청. 문서 이름은 '보낸 uid_받는 uid'이고, 보낸 사람과 받는 사람만 읽고 지울 수 있습니다.
+    // 이미 친구이거나, 찾을 수 없는(공개 정보가 없는) 사람에게는 보낼 수 없습니다.
+    match /friendRequests/{requestId} {
+      allow get, list: if signedIn()
+        && verified()
+        && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+      allow create: if signedIn()
+        && verified()
+        && request.resource.data.keys().hasOnly(['from', 'to', 'createdAt'])
+        && request.resource.data.keys().hasAll(['from', 'to', 'createdAt'])
+        && request.resource.data.from == request.auth.uid
+        && request.resource.data.to is string
+        && request.resource.data.to != request.auth.uid
+        && requestId == request.auth.uid + '_' + request.resource.data.to
+        && request.resource.data.createdAt == request.time
+        && exists(/databases/$(database)/documents/profiles/$(request.resource.data.to))
+        && !exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(request.resource.data.to));
+      allow update: if false;
+      allow delete: if signedIn()
+        && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
     }
 
     // 아이디 중복 확인용. 아이디 하나당 문서 하나이고 주인(uid)만 적혀 있습니다.

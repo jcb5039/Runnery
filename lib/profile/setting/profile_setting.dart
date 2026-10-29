@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../design_system/app_colors.dart';
+import '../../friends/share/record_visibility_page.dart';
 
 /// 러닝 설정. 기기에 저장되어 앱을 다시 켜도 유지되고, 러닝 시작 화면의 기본값으로 쓰입니다.
 class ProfileSettings extends ChangeNotifier {
@@ -198,6 +199,14 @@ class ProfileSettingPage extends StatelessWidget {
                 _row(
                   '개인 정보 수정',
                   onTap: onEditProfile ?? () => _pending(context, '개인 정보 수정'),
+                ),
+                _row(
+                  '기록 공개 설정',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const RecordVisibilityPage(),
+                    ),
+                  ),
                 ),
                 // 알림은 보낼 알림이 아직 없어 항목을 뺐습니다.
                 _row(

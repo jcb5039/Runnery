@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../friends/data/friend_store.dart';
+import '../../friends/data/record_share.dart';
 import '../models/running_record.dart';
 import 'record_sync.dart';
 
@@ -152,9 +155,15 @@ class RunningRecordStore extends ChangeNotifier implements LocalRecords {
 
   /// 기록 하나를 지웁니다. 없는 기록이면 아무 일도 하지 않습니다.
   /// 동기화 중이면 서버에도 지운 표시를 남겨 다른 폰에서도 지워지게 합니다.
+  /// 친구에게 공유한 기록이면 친구 피드에서도 내리고, 친구 랭킹 합계도 다시 올립니다
+  /// (기다리지 않고 뒤에서 합니다).
   Future<void> delete(String id) async {
     await _deleteLocal(id);
     _sync?.recordDeleted(this, id);
+    if (_sync != null) {
+      unawaited(RecordShare.instance.recordDeleted(id));
+      unawaited(FriendStore.instance.recordsChanged());
+    }
   }
 
   Future<void> _deleteLocal(String id) {
@@ -181,9 +190,11 @@ class RunningRecordStore extends ChangeNotifier implements LocalRecords {
   }
 
   /// 기록을 폰에 저장합니다. 동기화 중이면 서버에도 올립니다(인터넷이 없으면 나중에).
+  /// 친구 랭킹 합계도 다시 올립니다(기다리지 않고 뒤에서 합니다).
   Future<void> save(RunningRecord record) async {
     await _saveLocal(record);
     _sync?.recordSaved(this, record);
+    if (_sync != null) unawaited(FriendStore.instance.recordsChanged());
   }
 
   Future<void> _saveLocal(RunningRecord record) {

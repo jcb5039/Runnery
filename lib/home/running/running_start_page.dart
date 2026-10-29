@@ -20,6 +20,8 @@ import 'running_home_page.dart';
 import 'running_live_activity.dart';
 import 'running_voice.dart';
 import 'running_result_page.dart';
+import '../../friends/data/record_share.dart';
+import '../../friends/data/together_store.dart';
 import '../../record/data/record_from_session.dart';
 import '../../record/data/record_places.dart';
 import '../../record/data/route_thumbnails.dart';
@@ -881,9 +883,13 @@ class RunningStartPage extends StatefulWidget {
     super.key,
     required this.options,
     this.initialCenter,
+    this.togetherId,
   });
 
   final RunningStartOptions options;
+
+  /// 함께 달리기 대기실에서 시작했으면 그 약속 번호. 저장한 뒤 결과를 약속에 올립니다.
+  final String? togetherId;
 
   /// 시작 화면에서 마지막으로 잡힌 위치. 지도가 엉뚱한 곳에서 시작하지 않게 합니다.
   final LatLng? initialCenter;
@@ -1095,6 +1101,17 @@ class _RunningStartPageState extends State<RunningStartPage> {
             RecordPlaces.instance.fill(RunningRecordStore.instance, [saved]);
             // 결과 화면을 보는 동안 목록용 지도 사진을 미리 만들어, 목록에 들어가면 바로 보이게 합니다.
             RouteThumbnails.instance.get(saved);
+            if (widget.togetherId case final id?) {
+              unawaited(TogetherStore.instance.runFinished(id, saved));
+            }
+            // 자동 공유를 켜 두었으면 장소 이름을 찾은 뒤 친구 피드에 올립니다.
+            unawaited(
+              record.places.then(
+                (p) => RecordShare.instance.shareIfAuto(
+                  saved.withPlaces(area: p.area, start: p.start, end: p.end),
+                ),
+              ),
+            );
             break;
           } catch (_) {
             if (!mounted) return;

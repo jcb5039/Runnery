@@ -4,6 +4,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
+import '../friends/data/friend_backend.dart';
+import '../friends/data/friend_models.dart';
+
 /// 로그인·가입 같은 계정 작업이 맞지 않을 때. [message]는 화면에 그대로 보여 줍니다.
 class AuthException implements Exception {
   const AuthException(this.message);
@@ -235,9 +238,9 @@ class FirebaseAccountBackend implements AccountBackend {
   Future<bool> isIdAvailable(String id) async {
     try {
       // 인터넷이 없을 때 옛 정보로 '비어 있다'고 잘못 답하지 않도록 서버에서만 읽습니다.
-      final snapshot = await _idDoc(
-        id,
-      ).get(const GetOptions(source: Source.server)).timeout(_timeout);
+      final snapshot = await _idDoc(id)
+          .get(const GetOptions(source: Source.server))
+          .timeout(_timeout);
       return !snapshot.exists;
     } catch (e) {
       throw _error(e, fallback: '아이디를 확인하지 못했어요. 다시 시도해주세요');
@@ -251,17 +254,19 @@ class FirebaseAccountBackend implements AccountBackend {
     Map<String, Object?> profile,
   ) async {
     try {
-      await _db.runTransaction((transaction) async {
-        if ((await transaction.get(_idDoc(id))).exists) {
-          throw const AuthException('이미 사용 중인 아이디예요');
-        }
-        transaction.set(_idDoc(id), {'uid': uid});
-        transaction.set(_userDoc(uid), {
-          ...profile,
-          'id': id,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-      }).timeout(_timeout);
+      await _db
+          .runTransaction((transaction) async {
+            if ((await transaction.get(_idDoc(id))).exists) {
+              throw const AuthException('이미 사용 중인 아이디예요');
+            }
+            transaction.set(_idDoc(id), {'uid': uid});
+            transaction.set(_userDoc(uid), {
+              ...profile,
+              'id': id,
+              'createdAt': FieldValue.serverTimestamp(),
+            });
+          })
+          .timeout(_timeout);
     } catch (e) {
       throw _error(e, fallback: '계정 정보를 저장하지 못했어요. 다시 시도해주세요');
     }
@@ -270,9 +275,9 @@ class FirebaseAccountBackend implements AccountBackend {
   @override
   Future<Map<String, Object?>?> readProfile(String uid) async {
     try {
-      final snapshot = await _userDoc(
-        uid,
-      ).get().timeout(const Duration(seconds: 8));
+      final snapshot = await _userDoc(uid)
+          .get()
+          .timeout(const Duration(seconds: 8));
       return snapshot.data();
     } catch (e) {
       throw _error(e, fallback: '계정 정보를 불러오지 못했어요');
@@ -287,18 +292,31 @@ class FirebaseAccountBackend implements AccountBackend {
     String? newId,
   }) async {
     try {
-      await _db.runTransaction((transaction) async {
-        if (newId != null && newId != oldId) {
-          if ((await transaction.get(_idDoc(newId))).exists) {
-            throw const AuthException('이미 사용 중인 아이디예요');
-          }
-          transaction.set(_idDoc(newId), {'uid': uid});
-          if (oldId != null) transaction.delete(_idDoc(oldId));
-        }
-        transaction.update(_userDoc(uid), profile);
-      }).timeout(_timeout);
+      await _db
+          .runTransaction((transaction) async {
+            if (newId != null && newId != oldId) {
+              if ((await transaction.get(_idDoc(newId))).exists) {
+                throw const AuthException('이미 사용 중인 아이디예요');
+              }
+              transaction.set(_idDoc(newId), {'uid': uid});
+              if (oldId != null) transaction.delete(_idDoc(oldId));
+            }
+            transaction.update(_userDoc(uid), profile);
+          })
+          .timeout(_timeout);
     } catch (e) {
       throw _error(e, fallback: '저장하지 못했어요. 다시 시도해주세요');
+    }
+    // 친구 찾기에 바뀐 이름·아이디가 보이게 합니다. 실패해도 친구 탭을 열 때 다시 올립니다.
+    final name = profile['name'], id = profile['id'];
+    if (name is String && id is String) {
+      try {
+        await FirebaseFriendBackend().publishProfile(
+          PublicProfile(uid: uid, name: name, id: id),
+        );
+      } catch (_) {
+        // 프로필 저장은 이미 끝났습니다.
+      }
     }
   }
 

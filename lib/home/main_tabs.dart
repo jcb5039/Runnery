@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
 
 import '../design_system/app_colors.dart';
+import '../friends/friends_page.dart';
 import '../profile/profile_main_page.dart';
 import '../record/list/record_list_page.dart';
 import 'home_page.dart';
 
-/// 홈·기록·내 정보 세 탭을 한 번만 만들어 두고 효과 없이 바로 바꿉니다.
+/// 홈·기록·친구·내 정보 네 탭을 한 번만 만들어 두고 효과 없이 바로 바꿉니다.
 /// 탭을 누를 때마다 화면(기록 읽기·지도)을 새로 만들지 않아 끊기지 않고,
 /// 안 보이는 탭은 그리지 않아 이전 탭의 지도가 남아 보이지 않습니다.
 class MainTabs extends StatefulWidget {
   const MainTabs({super.key, this.initialIndex = 0});
 
-  /// 0 홈, 1 기록, 2 내 정보.
+  /// 0 홈, 1 기록, 2 친구, 3 내 정보.
   final int initialIndex;
 
   @override
@@ -22,6 +23,7 @@ class _MainTabsState extends State<MainTabs> {
   static const _tabs = [
     ('홈', Icons.home_outlined),
     ('기록', Icons.format_align_left),
+    ('친구', Icons.people_outline),
     ('내 정보', Icons.person_outline),
   ];
 
@@ -34,13 +36,14 @@ class _MainTabsState extends State<MainTabs> {
     HomePageV2(
       showNavigation: false,
       onRecords: () => _go(1),
-      onProfile: () => _go(2),
+      onProfile: () => _go(3),
     ),
     RecordListPageV2(
       showNavigation: false,
       onHome: () => _go(0),
-      onProfile: () => _go(2),
+      onProfile: () => _go(3),
     ),
+    const FriendsPage(),
     ProfileMainPage(
       showNavigation: false,
       onHome: () => _go(0),
