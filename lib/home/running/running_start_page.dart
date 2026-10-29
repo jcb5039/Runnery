@@ -2117,6 +2117,13 @@ class StatRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 숫자 줄 높이를 한 줄로 고정합니다. 멈춰 서서 페이스가 길어지면 글자는 줄여 한 줄로 보이지만,
+    // 고정하지 않으면 높이를 두 줄로 계산해 러닝 카드가 커졌다 작아졌다 합니다.
+    final numberHeight = (TextPainter(
+      text: TextSpan(text: '0', style: runningNumberStyle(22)),
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout()).height;
     return IntrinsicHeight(
       child: Row(
         children: [
@@ -2131,25 +2138,28 @@ class StatRow extends StatelessWidget {
                 children: [
                   Text(cell.label, style: _labelStyle),
                   const SizedBox(height: 6),
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text.rich(
-                      TextSpan(
-                        children: [
-                          TextSpan(
-                            text: cell.value,
-                            style: runningNumberStyle(22),
-                          ),
-                          if (cell.unit != null)
+                  SizedBox(
+                    height: numberHeight,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.bottomLeft,
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
                             TextSpan(
-                              text: ' ${cell.unit}',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: AppColors.textSecondary,
-                              ),
+                              text: cell.value,
+                              style: runningNumberStyle(22),
                             ),
-                        ],
+                            if (cell.unit != null)
+                              TextSpan(
+                                text: ' ${cell.unit}',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
