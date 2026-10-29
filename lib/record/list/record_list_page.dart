@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../home/home_page.dart';
 import '../../profile/profile_main_page.dart';
 import '../record_calendar_page.dart';
+import '../record_stats_page.dart';
 import 'detail/record_detail_page.dart';
 import '../data/record_places.dart';
 import '../data/running_record_store.dart';
@@ -34,8 +35,13 @@ class RecordListPageV2 extends StatefulWidget {
   State<RecordListPageV2> createState() => _RecordListPageV2State();
 }
 
+/// 기록 탭 맨 위에서 고르는 화면.
+enum _RecordView { list, calendar, stats }
+
 class _RecordListPageV2State extends State<RecordListPageV2> {
-  late bool calendar = widget.initialCalendar;
+  late var _view = widget.initialCalendar
+      ? _RecordView.calendar
+      : _RecordView.list;
   late DateTime month = widget.initialMonth ?? DateTime.now();
   DateTime? selectedDay;
   late final _store = widget.store ?? RunningRecordStore.instance;
@@ -194,7 +200,7 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 480),
             child: SingleChildScrollView(
-              key: PageStorageKey(calendar ? 'record-calendar' : 'record-list'),
+              key: PageStorageKey('record-${_view.name}'),
               padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -207,7 +213,7 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
                           style: recordText(26, weight: FontWeight.w800),
                         ),
                       ),
-                      if (!calendar && records.isNotEmpty)
+                      if (_view == _RecordView.list && records.isNotEmpty)
                         TextButton(
                           onPressed: () => _setSelecting(!_selecting),
                           style: TextButton.styleFrom(
@@ -226,38 +232,45 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
                       borderRadius: BorderRadius.circular(24),
                     ),
                     child: Row(
-                      children: [_toggle('목록', false), _toggle('달력', true)],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    child: Row(
                       children: [
-                        IconButton(
-                          tooltip: '이전 달',
-                          onPressed: () => _changeMonth(-1),
-                          icon: const Icon(Icons.chevron_left, size: 20),
-                        ),
-                        Expanded(
-                          child: Text(
-                            '${month.year}년 ${month.month}월',
-                            textAlign: TextAlign.center,
-                            style: recordText(18, weight: FontWeight.w800),
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: '다음 달',
-                          onPressed: () => _changeMonth(1),
-                          icon: const Icon(
-                            Icons.chevron_right,
-                            size: 20,
-                            color: recordMuted,
-                          ),
-                        ),
+                        _toggle('목록', _RecordView.list),
+                        _toggle('달력', _RecordView.calendar),
+                        _toggle('통계', _RecordView.stats),
                       ],
                     ),
                   ),
-                  const Divider(height: 1, color: Color(0xFF343D43)),
+                  // 통계는 주간·월간을 따로 넘기므로 달 이동 줄을 숨깁니다.
+                  if (_view != _RecordView.stats) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            tooltip: '이전 달',
+                            onPressed: () => _changeMonth(-1),
+                            icon: const Icon(Icons.chevron_left, size: 20),
+                          ),
+                          Expanded(
+                            child: Text(
+                              '${month.year}년 ${month.month}월',
+                              textAlign: TextAlign.center,
+                              style: recordText(18, weight: FontWeight.w800),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: '다음 달',
+                            onPressed: () => _changeMonth(1),
+                            icon: const Icon(
+                              Icons.chevron_right,
+                              size: 20,
+                              color: recordMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1, color: Color(0xFF343D43)),
+                  ],
                   if (_loading)
                     const Padding(
                       padding: EdgeInsets.all(40),
@@ -276,7 +289,9 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
                         ],
                       ),
                     )
-                  else if (calendar)
+                  else if (_view == _RecordView.stats)
+                    RecordStatsView(records: records)
+                  else if (_view == _RecordView.calendar)
                     RecordCalendarPage(
                       embedded: true,
                       records: records,
@@ -296,17 +311,17 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
     ),
   );
 
-  Widget _toggle(String label, bool value) => Expanded(
+  Widget _toggle(String label, _RecordView value) => Expanded(
     child: Semantics(
-      selected: calendar == value,
+      selected: _view == value,
       button: true,
       child: Material(
-        color: calendar == value ? Colors.white : Colors.transparent,
+        color: _view == value ? Colors.white : Colors.transparent,
         borderRadius: BorderRadius.circular(24),
         child: InkWell(
           borderRadius: BorderRadius.circular(24),
           onTap: () => setState(() {
-            calendar = value;
+            _view = value;
             _selecting = false;
             _selected.clear();
           }),
@@ -315,7 +330,7 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
               label,
               style: recordText(
                 14,
-                color: calendar == value ? recordBackground : recordSecondary,
+                color: _view == value ? recordBackground : recordSecondary,
                 weight: FontWeight.w700,
               ),
             ),
