@@ -4,6 +4,7 @@
 
 ## 대화 방식
 
+- 모든 대답과 설명은 한국어로 합니다.
 - 불필요한 인사말 없이 바로 답합니다.
 - 불필요한 수식어를 사용하지 않습니다.
 - 간단한 질문은 짧게, 복잡한 작업은 충분히 자세히 답합니다.
@@ -61,6 +62,7 @@ flutter test --plain-name "some test name"  # 테스트 하나
 - **시작 흐름:** `main.dart`(Firebase 초기화, 실패해도 앱은 켜짐) → `AppStartPage`(스플래시, [lib/app_start.dart](lib/app_start.dart)) → `AuthGate`(`lib/login/login.dart`) → 로그인 / 이메일 인증 안내(`lib/login/sign_up/verify_email.dart`) / `HomePage`. `main()`은 `RecordRouteMap.basemapEnabled = true`를 설정합니다(기록 상세의 MapLibre 베이스맵). 기본값은 `false`라서 위젯 테스트에서 네이티브 지도가 생성되지 않습니다.
 - **러닝 파이프라인:** `home/running/running_start_page.dart`(`geolocator`로 GPS 수집, wakelock, 정확도·흔들림 필터링과 햇반 칼로리 단위를 담은 `RunningConfig`) → `running_result_page.dart` → `record/data/record_from_session.dart`가 세션 결과를 저장용 `RunningRecord` 모델(`record/models/`)로 변환합니다. 지도 렌더링은 `maplibre_gl`을 씁니다.
 - **기록 UI:** 기록 탭은 [lib/record/list/record_list_page.dart](lib/record/list/record_list_page.dart)의 `RecordListPageV2`를 사용합니다(스와이프 삭제 포함). 상세 화면은 `record/list/detail/record_detail_page.dart`이며 우측 상단 메뉴에서 메모 수정·기록 삭제를 합니다. [docs/record-v2.md](docs/record-v2.md)는 병합 전 작업 보고라 `record_list_page_1.dart` 등 지금과 다른 파일 이름이 나옵니다.
+- **친구 탭:** `lib/friends/`. 상태는 `FriendStore`([lib/friends/data/friend_store.dart](lib/friends/data/friend_store.dart)) 싱글턴이 들고, 서버 연결은 `FriendBackend`([lib/friends/data/friend_backend.dart](lib/friends/data/friend_backend.dart))입니다(테스트는 `test/support/fake_friend_backend.dart`). 서버에는 공개 정보 `profiles/{uid}`, 친구 요청 `friendRequests/{보낸_받는}`, 친구 목록 `users/{uid}/friends/{친구 uid}`, 공유한 기록 `users/{uid}/posts/{기록 번호}`(응원은 그 아래 `cheers/{uid}`), 공유 설정 `users/{uid}/settings/share`, 주간 목표 `users/{uid}/settings/goal`, 랭킹용 합계 `users/{uid}/stats/summary`, 함께 달리기 약속 `together/{번호}`가 있고 폰에는 저장하지 않습니다. 기록 공유는 `RecordShare`([lib/friends/data/record_share.dart](lib/friends/data/record_share.dart))가 맡습니다. 랭킹·목표 계산은 [lib/friends/data/ranking.dart](lib/friends/data/ranking.dart)에 있습니다. 함께 달리기는 `TogetherStore`([lib/friends/data/together_store.dart](lib/friends/data/together_store.dart))와 대기실([lib/friends/together/together_lobby_page.dart](lib/friends/together/together_lobby_page.dart))이 맡고, 대기실에서 시작한 러닝은 `RunningStartPage(togetherId:)`로 약속과 이어집니다. 동작 방식과 결정은 [MEMORY.md](MEMORY.md)에 있습니다.
 - **디자인 시스템:** `lib/design_system/`에는 브랜드 가이드([lib/design_system/design_guide.md](lib/design_system/design_guide.md))에서 추출한 토큰(색, 텍스트 스타일, 간격, 모서리, 그림자, 모션, 컴포넌트 치수)이 있습니다(다크/블랙 테마, 기준 프레임 390×844, 주황은 경로·현재 위치·시작에만 사용). 값을 직접 쓰지 말고 이 토큰을 쓰세요. 앱 테마는 `AppTheme.dark`입니다.
 
 ## 코드 규칙
