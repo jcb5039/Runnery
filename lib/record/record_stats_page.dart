@@ -47,7 +47,7 @@ class _RecordStatsViewState extends State<RecordStatsView> {
             children: [
               SizedBox(
                 width: 120,
-                child: _PillTabs(
+                child: PillTabs(
                   labels: const ['주간', '월간'],
                   selected: _period.index,
                   onTap: (i) => _pick(StatsPeriod.values[i]),
@@ -138,9 +138,10 @@ TextStyle _number(double size) => AppTextStyles.statValue.copyWith(
   fontFeatures: const [FontFeature.tabularFigures()],
 );
 
-/// 흰 바탕이 선택된 둥근 탭(주간·월간).
-class _PillTabs extends StatelessWidget {
-  const _PillTabs({
+/// 흰 바탕이 선택된 둥근 작은 탭(통계의 주간·월간, 친구 피드의 내 피드·친구).
+class PillTabs extends StatelessWidget {
+  const PillTabs({
+    super.key,
     required this.labels,
     required this.selected,
     required this.onTap,

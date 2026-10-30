@@ -60,7 +60,8 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: FriendsPage(store: store)));
     await tester.pumpAndSettle();
 
-    expect(find.text('친구들의 최근 러닝'), findsOneWidget);
+    // 피드는 '친구' 탭이 먼저 열려 있습니다.
+    expect(find.text('내 피드'), findsOneWidget);
     expect(find.text('박하은'), findsOneWidget);
     expect(find.textContaining('여의나루역'), findsOneWidget);
     expect(find.text('5.24'), findsOneWidget);
@@ -72,6 +73,42 @@ void main() {
       'u1': {CheerType.clap},
     });
     expect(find.bySemanticsLabel(RegExp('박수 응원 1개 · 내가 보냄')), findsOneWidget);
+  });
+
+  testWidgets('my feed shows my shared runs and who cheered', (tester) async {
+    phone(tester);
+    await RecordShare(
+      backend: server,
+      me: () => minji,
+    ).share(run('r1', DateTime.now()));
+    await server.setCheer(minji.uid, 'r1', haeun.uid, {
+      CheerType.clap,
+      CheerType.fire,
+    });
+    final store = FriendStore(
+      backend: server,
+      me: () => minji,
+      records: () async => const [],
+    );
+    await tester.pumpWidget(MaterialApp(home: FriendsPage(store: store)));
+    await tester.pumpAndSettle();
+    // 친구 탭에는 내 기록이 없습니다.
+    expect(find.text('5.24'), findsNothing);
+
+    await tester.tap(find.text('내 피드'));
+    await tester.pumpAndSettle();
+    expect(find.text('김민지'), findsOneWidget);
+    expect(find.text('5.24'), findsOneWidget);
+    expect(find.bySemanticsLabel('받은 박수 응원 1개'), findsOneWidget);
+    expect(find.bySemanticsLabel('받은 불꽃 응원 1개'), findsOneWidget);
+    expect(find.text('박하은 님이 응원했어요'), findsOneWidget);
+
+    // 내 기록에는 응원을 누를 수 없습니다.
+    await tester.tap(find.text('💪'));
+    await tester.pumpAndSettle();
+    expect(server.cheersByPost['u1/r1'], {
+      'u2': {CheerType.clap, CheerType.fire},
+    });
   });
 
   testWidgets('share sheet hides unchecked items and posts the run', (

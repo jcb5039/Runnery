@@ -10,13 +10,15 @@ import 'data/friend_store.dart';
 import 'feed/feed_card.dart';
 import 'goal/friend_goal_tab.dart';
 import 'list/friend_list_page.dart';
+import '../record/record_stats_page.dart' show PillTabs;
 import 'data/together_store.dart';
 import 'ranking/friend_ranking_tab.dart';
 import 'together/together_tab.dart';
 import 'widgets/friend_widgets.dart';
 
 /// 17 친구 탭. 위쪽에서 내 친구·친구 추가로 가고, 피드·랭킹·목표를 위쪽 메뉴로 바꿔 봅니다.
-/// 피드에서는 받은 친구 요청을 알려 주고, 친구들이 공유한 러닝과 응원 버튼을 보여 줍니다.
+/// 피드에서는 받은 친구 요청을 알려 주고, '친구' 탭에 친구들이 공유한 러닝과 응원 버튼을,
+/// '내 피드' 탭에 내가 공유한 러닝과 받은 응원(누가 응원했는지)을 보여 줍니다.
 /// 함께 달리기에서는 약속을 잡고, 대기실에서 친구와 함께 시작합니다.
 class FriendsPage extends StatefulWidget {
   const FriendsPage({super.key, this.store, this.together});
@@ -46,6 +48,9 @@ class _FriendsPageState extends State<FriendsPage> {
   FriendStore get _store => widget.store ?? FriendStore.instance;
 
   _Tab _tab = _Tab.feed;
+
+  /// 피드 안에서 내가 공유한 기록(내 피드)을 볼지, 친구들의 기록을 볼지.
+  bool _myFeed = false;
 
   @override
   void initState() {
@@ -254,7 +259,34 @@ class _FriendsPageState extends State<FriendsPage> {
     ),
   );
 
-  Widget _body() {
+  /// 피드: '내 피드'(내가 공유한 기록과 받은 응원)와 '친구'(친구들이 공유한 기록) 탭.
+  Widget _body() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Align(
+        alignment: Alignment.centerLeft,
+        child: SizedBox(
+          width: 160,
+          child: PillTabs(
+            labels: const ['내 피드', '친구'],
+            selected: _myFeed ? 0 : 1,
+            onTap: (i) => setState(() => _myFeed = i == 0),
+          ),
+        ),
+      ),
+      const SizedBox(height: 4),
+      if (_myFeed)
+        FeedSection(
+          items: _store.myFeed,
+          error: _store.feedError,
+          onCheer: null,
+        )
+      else
+        _friendFeed(),
+    ],
+  );
+
+  Widget _friendFeed() {
     final friends = _store.friends;
     if (friends.isEmpty && _store.loading) {
       return const Padding(

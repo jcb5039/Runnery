@@ -56,6 +56,7 @@ class FriendStore extends ChangeNotifier {
   List<PublicProfile> _incoming = const [];
   Set<String> _outgoing = const {};
   List<FeedItem> _feed = const [];
+  List<FeedItem> _myFeed = const [];
   bool _loading = false;
   String? _error, _feedError, _statsError;
   WeeklyGoal? _goal;
@@ -76,6 +77,9 @@ class FriendStore extends ChangeNotifier {
 
   /// 친구들이 공유한 최근 러닝. 최근에 달린 순서입니다.
   List<FeedItem> get feed => _feed;
+
+  /// 내가 공유한 기록과 친구들에게 받은 응원.
+  List<FeedItem> get myFeed => _myFeed;
 
   /// 피드를 불러오지 못했다면 그 이유(친구 목록은 따로 불러옵니다).
   String? get feedError => _feedError;
@@ -129,6 +133,7 @@ class FriendStore extends ChangeNotifier {
     _incoming = const [];
     _outgoing = const {};
     _feed = const [];
+    _myFeed = const [];
     _error = null;
     _feedError = null;
     _statsError = null;
@@ -189,9 +194,13 @@ class FriendStore extends ChangeNotifier {
 
   Future<void> _refreshFeed(PublicProfile me) async {
     try {
-      final feed = await _loadFeed(me.uid, _friends);
+      final (feed, mine) = await (
+        _loadFeed(me.uid, _friends),
+        _loadFeed(me.uid, [me], perPerson: feedSize),
+      ).wait;
       if (me.uid != _owner) return;
       _feed = feed;
+      _myFeed = mine;
       _feedError = null;
     } on FriendException catch (e) {
       _feedError = e.message;
@@ -263,13 +272,15 @@ class FriendStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 친구마다 최근 공유 기록을 읽어 합친 뒤, 카드마다 응원을 읽습니다.
+  /// [friends]마다 최근 공유 기록을 읽어 합친 뒤, 카드마다 응원을 읽습니다.
+  /// 내 피드는 [friends]에 나만 넣어 부릅니다.
   Future<List<FeedItem>> _loadFeed(
     String me,
-    List<PublicProfile> friends,
-  ) async {
+    List<PublicProfile> friends, {
+    int perPerson = feedPerFriend,
+  }) async {
     final perFriend = await Future.wait(
-      friends.map((f) => backend.posts(f.uid, limit: feedPerFriend)),
+      friends.map((f) => backend.posts(f.uid, limit: perPerson)),
     );
     final byUid = {for (final f in friends) f.uid: f};
     final posts = [for (final list in perFriend) ...list]
@@ -288,6 +299,11 @@ class FriendStore extends ChangeNotifier {
               type: cheers[i].values.where((s) => s.contains(type)).length,
           },
           mine: cheers[i][me] ?? const {},
+          cheeredBy: [
+            for (final MapEntry(key: uid, value: types) in cheers[i].entries)
+              if (types.isNotEmpty && uid != me)
+                _friends.where((f) => f.uid == uid).firstOrNull?.name ?? '친구',
+          ],
         ),
     ];
   }

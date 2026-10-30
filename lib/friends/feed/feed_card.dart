@@ -8,6 +8,7 @@ import '../data/friend_models.dart';
 import '../widgets/friend_widgets.dart';
 
 /// 17 친구 피드 카드: 친구, 달린 시각·장소, 경로 모양, 거리와 고른 항목, 응원 버튼.
+/// 내가 공유한 기록은 [onCheer] 없이 받은 응원 수와 응원한 친구만 보여 줍니다(내 기록에는 응원할 수 없음).
 class FeedCard extends StatelessWidget {
   const FeedCard({
     super.key,
@@ -18,7 +19,7 @@ class FeedCard extends StatelessWidget {
   });
 
   final FeedItem item;
-  final ValueChanged<CheerType> onCheer;
+  final ValueChanged<CheerType>? onCheer;
   final bool divider;
 
   /// 테스트에서만 넣습니다. '오늘·어제'를 정하는 기준 시각.
@@ -95,13 +96,28 @@ class FeedCard extends StatelessWidget {
                     type: type,
                     count: item.count(type),
                     on: item.mine.contains(type),
-                    label:
-                        '${item.friend.name} 님에게 ${type.word} 응원 ${item.count(type)}개'
-                        '${item.mine.contains(type) ? ' · 내가 보냄' : ''}',
-                    onPressed: () => onCheer(type),
+                    label: onCheer == null
+                        ? '받은 ${type.word} 응원 ${item.count(type)}개'
+                        : '${item.friend.name} 님에게 ${type.word} 응원 ${item.count(type)}개'
+                              '${item.mine.contains(type) ? ' · 내가 보냄' : ''}',
+                    onPressed: switch (onCheer) {
+                      final cheer? => () => cheer(type),
+                      null => null,
+                    },
                   ),
               ],
             ),
+            if (onCheer == null && item.cheeredBy.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(
+                '${item.cheeredBy.join(', ')} 님이 응원했어요',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.textTertiary,
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -245,11 +261,13 @@ class _CheerButton extends StatelessWidget {
   final int count;
   final bool on;
   final String label;
-  final VoidCallback onPressed;
+
+  /// null이면 누를 수 없고 수만 보여 줍니다(내 피드).
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) => Semantics(
-    button: true,
+    button: onPressed != null,
     toggled: on,
     label: label,
     excludeSemantics: true,
@@ -287,7 +305,8 @@ class _CheerButton extends StatelessWidget {
   );
 }
 
-/// 피드 카드 묶음. 비어 있을 때와 불러오지 못했을 때 안내를 보여 줍니다.
+/// 피드 카드 묶음(최신순). 비어 있을 때와 불러오지 못했을 때 안내를 보여 줍니다.
+/// [onCheer]가 없으면 내가 공유한 기록(내 피드)입니다.
 class FeedSection extends StatelessWidget {
   const FeedSection({
     super.key,
@@ -297,20 +316,21 @@ class FeedSection extends StatelessWidget {
   });
 
   final List<FeedItem> items;
-  final void Function(FeedItem, CheerType) onCheer;
+  final void Function(FeedItem, CheerType)? onCheer;
   final String? error;
 
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      const FriendSectionHeader(title: '친구들의 최근 러닝', meta: '최신순'),
-      const SizedBox(height: 4),
       if (items.isEmpty)
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 32),
           child: Text(
-            error ?? '아직 친구들이 공유한 러닝이 없어요',
+            error ??
+                (onCheer == null
+                    ? '아직 공유한 러닝이 없어요\n러닝 결과 화면에서 친구에게 공유할 수 있어요'
+                    : '아직 친구들이 공유한 러닝이 없어요'),
             textAlign: TextAlign.center,
             style: const TextStyle(color: AppColors.textSecondary),
           ),
@@ -321,7 +341,10 @@ class FeedSection extends StatelessWidget {
             key: ValueKey(item.key),
             item: item,
             divider: i > 0,
-            onCheer: (type) => onCheer(item, type),
+            onCheer: switch (onCheer) {
+              final cheer? => (type) => cheer(item, type),
+              null => null,
+            },
           ),
     ],
   );

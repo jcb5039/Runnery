@@ -158,11 +158,15 @@ class FeedItem {
     required this.post,
     this.counts = const {},
     this.mine = const {},
+    this.cheeredBy = const [],
   });
   final PublicProfile friend;
   final FeedPost post;
   final Map<CheerType, int> counts;
   final Set<CheerType> mine;
+
+  /// 응원을 보낸 사람 이름. 내가 공유한 기록(내 피드)에서 누가 응원했는지 보여 줍니다.
+  final List<String> cheeredBy;
 
   String get key => '${post.ownerUid}/${post.recordId}';
 
@@ -176,6 +180,7 @@ class FeedItem {
       post: post,
       counts: {...counts, type: count(type) + (on ? 1 : -1)},
       mine: on ? {...mine, type} : ({...mine}..remove(type)),
+      cheeredBy: cheeredBy,
     );
   }
 }
