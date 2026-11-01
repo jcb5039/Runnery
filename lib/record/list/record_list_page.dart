@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import '../../design_system/app_colors.dart';
+
 import 'package:flutter/services.dart';
 
 import '../../home/home_page.dart';
@@ -100,7 +103,9 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
     // 다른 폰에서 올린 새 기록이 있는지 서버를 확인합니다(30초 안에 한 번 했으면 건너뜁니다).
     if (widget.records == null) {
       unawaited(
-        _store.syncNow(minAge: const Duration(seconds: 30)).catchError((Object _) {}),
+        _store
+            .syncNow(minAge: const Duration(seconds: 30))
+            .catchError((Object _) {}),
       );
     }
   }
@@ -182,10 +187,14 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
 
   @override
   Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
-    value: SystemUiOverlayStyle.light.copyWith(
-      statusBarColor: Colors.transparent,
-      systemNavigationBarColor: recordBackground,
-    ),
+    value:
+        (AppColors.isDark
+                ? SystemUiOverlayStyle.light
+                : SystemUiOverlayStyle.dark)
+            .copyWith(
+              statusBarColor: Colors.transparent,
+              systemNavigationBarColor: recordBackground,
+            ),
     child: Scaffold(
       backgroundColor: recordBackground,
       bottomNavigationBar: _selecting
@@ -217,7 +226,7 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
                         TextButton(
                           onPressed: () => _setSelecting(!_selecting),
                           style: TextButton.styleFrom(
-                            foregroundColor: Colors.white,
+                            foregroundColor: AppColors.textPrimary,
                           ),
                           child: Text(_selecting ? '취소' : '선택'),
                         ),
@@ -228,7 +237,12 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
                     height: 40,
                     padding: const EdgeInsets.all(3),
                     decoration: BoxDecoration(
-                      border: Border.all(color: const Color(0xFF343D43)),
+                      border: Border.all(
+                        color: AppColors.pick(
+                          const Color(0xFF343D43),
+                          AppColors.borderDefault,
+                        ),
+                      ),
                       borderRadius: BorderRadius.circular(24),
                     ),
                     child: Row(
@@ -260,7 +274,7 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
                           IconButton(
                             tooltip: '다음 달',
                             onPressed: () => _changeMonth(1),
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.chevron_right,
                               size: 20,
                               color: recordMuted,
@@ -269,7 +283,13 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
                         ],
                       ),
                     ),
-                    const Divider(height: 1, color: Color(0xFF343D43)),
+                    Divider(
+                      height: 1,
+                      color: AppColors.pick(
+                        const Color(0xFF343D43),
+                        AppColors.divider,
+                      ),
+                    ),
                   ],
                   if (_loading)
                     const Padding(
@@ -316,7 +336,7 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
       selected: _view == value,
       button: true,
       child: Material(
-        color: _view == value ? Colors.white : Colors.transparent,
+        color: _view == value ? AppColors.textPrimary : Colors.transparent,
         borderRadius: BorderRadius.circular(24),
         child: InkWell(
           borderRadius: BorderRadius.circular(24),
@@ -421,7 +441,7 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
           ],
         ),
       ),
-      const Divider(height: 1, color: recordLine),
+      Divider(height: 1, color: recordLine),
       if (runs.isEmpty)
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 64),
@@ -468,7 +488,7 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
             ],
           ),
         ),
-        const Divider(height: 1, color: recordLine),
+        Divider(height: 1, color: recordLine),
         for (final r in group.value) _recordTile(r),
       ],
     ];
@@ -500,10 +520,10 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
             alignment: Alignment.centerRight,
             padding: const EdgeInsets.only(right: 20),
             color: recordDelete,
-            child: const Column(
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.delete_outline, color: Colors.white),
+                Icon(Icons.delete_outline, color: AppColors.textPrimary),
                 SizedBox(height: 4),
                 Text(
                   '삭제',
@@ -534,7 +554,7 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
     onTap: () => _selecting ? _toggleSelected(r) : _openRecord(r),
     child: Container(
       padding: const EdgeInsets.symmetric(vertical: 16),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: recordLine)),
       ),
       child: Row(
@@ -555,7 +575,7 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
                       _selected.contains(r.id)
                           ? Icons.check_circle
                           : Icons.radio_button_unchecked,
-                      color: Colors.white,
+                      color: AppColors.textPrimary,
                       size: 24,
                       semanticLabel: _selected.contains(r.id)
                           ? '선택됨'
@@ -609,7 +629,7 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
           ),
           const SizedBox(width: 8),
           if (!_selecting)
-            const Icon(Icons.chevron_right, size: 17, color: recordMuted),
+            Icon(Icons.chevron_right, size: 17, color: recordMuted),
         ],
       ),
     ),
@@ -620,7 +640,7 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
     final ids = monthly.map((r) => r.id).toSet();
     final all = ids.isNotEmpty && _selected.containsAll(ids);
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: recordBackground,
         border: Border(top: BorderSide(color: recordLine)),
       ),
@@ -637,7 +657,9 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
                   _selected.addAll(ids);
                 }
               }),
-              style: TextButton.styleFrom(foregroundColor: Colors.white),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.textPrimary,
+              ),
               child: Text(all ? '전체 해제' : '이번 달 전체 선택'),
             ),
             const SizedBox(width: 12),
@@ -648,8 +670,11 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
                   onPressed: _selected.isEmpty ? null : _deleteSelected,
                   style: FilledButton.styleFrom(
                     backgroundColor: recordDelete,
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: const Color(0xFF2A2C2E),
+                    foregroundColor: AppColors.textPrimary,
+                    disabledBackgroundColor: AppColors.pick(
+                      const Color(0xFF2A2C2E),
+                      AppColors.divider,
+                    ),
                     shape: const StadiumBorder(),
                   ),
                   icon: const Icon(Icons.delete_outline, size: 18),
@@ -666,7 +691,7 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
   }
 
   Widget _navigation() => Container(
-    decoration: const BoxDecoration(
+    decoration: BoxDecoration(
       border: Border(top: BorderSide(color: recordLine)),
     ),
     child: SafeArea(
@@ -695,20 +720,20 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
                 Container(
                   height: 3,
                   width: 28,
-                  color: selected ? Colors.white : Colors.transparent,
+                  color: selected ? AppColors.textPrimary : Colors.transparent,
                 ),
                 const SizedBox(height: 8),
                 Icon(
                   icon,
                   size: 22,
-                  color: selected ? Colors.white : recordMuted,
+                  color: selected ? AppColors.textPrimary : recordMuted,
                 ),
                 const SizedBox(height: 4),
                 Text(
                   label,
                   style: recordText(
                     11,
-                    color: selected ? Colors.white : recordMuted,
+                    color: selected ? AppColors.textPrimary : recordMuted,
                     weight: selected ? FontWeight.w700 : FontWeight.w500,
                   ),
                 ),

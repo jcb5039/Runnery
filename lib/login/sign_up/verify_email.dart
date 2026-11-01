@@ -33,8 +33,7 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
     // 방금(가입·로그인 때) 메일을 보냈다면 남은 대기 시간만큼 '다시 보내기'를 잠급니다.
     final sentAt = _store.verificationSentAt;
     if (sentAt != null) {
-      final left =
-          _resendSeconds - DateTime.now().difference(sentAt).inSeconds;
+      final left = _resendSeconds - DateTime.now().difference(sentAt).inSeconds;
       if (left > 0) {
         _cooldown = left;
         _startTimer();
@@ -121,7 +120,7 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
         const SizedBox(height: 44),
         Text('EMAIL VERIFICATION', style: authLabelStyle),
         const SizedBox(height: 12),
-        const Text(
+        Text(
           'VERIFY\nEMAIL',
           style: TextStyle(
             fontFamily: 'Archivo',
@@ -129,11 +128,11 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
             fontSize: 28,
             height: 1.04,
             fontWeight: FontWeight.w800,
-            color: Colors.white,
+            color: AppColors.textPrimary,
           ),
         ),
         const SizedBox(height: 16),
-        const Text(
+        Text(
           '이메일 인증을 마치면 러너리를 쓸 수 있어요',
           style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
         ),
@@ -148,7 +147,7 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 '인증 메일을 보낸 곳',
                 style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
               ),
@@ -164,7 +163,7 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
               if (_store.verificationError != null) ...[
                 Text(
                   '인증 메일을 보내지 못했어요: ${_store.verificationError}\n아래 \'메일 다시 보내기\'를 눌러주세요.',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     height: 1.5,
                     color: AppColors.error,
@@ -172,7 +171,7 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
                 ),
                 const SizedBox(height: 12),
               ],
-              const Text(
+              Text(
                 '메일의 링크를 누른 뒤, 돌아와서 아래 \'인증했어요\' 버튼을 눌러주세요. 메일이 도착하기까지 몇 분 걸릴 수 있어요. 스팸 메일함과 프로모션 탭도 확인해주세요.',
                 style: TextStyle(
                   fontSize: 12,

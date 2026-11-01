@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../design_system/app_colors.dart';
 import '../../design_system/app_text_styles.dart';
 
-const authLabelStyle = TextStyle(
+TextStyle get authLabelStyle => TextStyle(
   fontFamily: 'Archivo',
   fontSize: 11,
   fontWeight: FontWeight.w700,
@@ -37,8 +37,8 @@ class AuthFrame extends StatelessWidget {
       brightness: Brightness.dark,
       fontFamily: AppTextStyles.bodyFontFamily,
       scaffoldBackgroundColor: AppColors.background,
-      colorScheme: const ColorScheme.dark(
-        primary: Colors.white,
+      colorScheme: ColorScheme.dark(
+        primary: AppColors.textPrimary,
         surface: AppColors.background,
         error: AppColors.error,
       ),
@@ -114,12 +114,12 @@ class SignupHeading extends StatelessWidget {
               children: [
                 TextSpan(
                   text: '0$step',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontFamily: 'Archivo',
                     fontVariations: [FontVariation('wdth', 75)],
                     fontSize: 22,
                     fontWeight: FontWeight.w800,
-                    color: Colors.white,
+                    color: AppColors.textPrimary,
                   ),
                 ),
                 TextSpan(
@@ -140,7 +140,7 @@ class SignupHeading extends StatelessWidget {
               padding: EdgeInsets.only(right: i == 2 ? 0 : 5),
               child: Container(
                 height: 2,
-                color: i < step ? Colors.white : AppColors.divider,
+                color: i < step ? AppColors.textPrimary : AppColors.divider,
               ),
             ),
           ),
@@ -151,19 +151,19 @@ class SignupHeading extends StatelessWidget {
       const SizedBox(height: 12),
       Text(
         title,
-        style: const TextStyle(
+        style: TextStyle(
           fontFamily: 'Archivo',
           fontVariations: [FontVariation('wdth', 125)],
           fontSize: 28,
           height: 1.04,
           fontWeight: FontWeight.w800,
-          color: Colors.white,
+          color: AppColors.textPrimary,
         ),
       ),
       const SizedBox(height: 16),
       Text(
         description,
-        style: const TextStyle(fontSize: 14, color: AppColors.textSecondary),
+        style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
       ),
     ],
   );
@@ -185,11 +185,13 @@ class AuthButton extends StatelessWidget {
     height: 60,
     child: TextButton(
       style: TextButton.styleFrom(
-        backgroundColor: outlined ? Colors.transparent : Colors.white,
-        foregroundColor: outlined ? Colors.white : AppColors.background,
+        backgroundColor: outlined ? Colors.transparent : AppColors.textPrimary,
+        foregroundColor: outlined
+            ? AppColors.textPrimary
+            : AppColors.background,
         shape: const StadiumBorder(),
         side: outlined
-            ? const BorderSide(color: Colors.white)
+            ? BorderSide(color: AppColors.textPrimary)
             : BorderSide.none,
       ),
       onPressed: onPressed,
@@ -252,17 +254,17 @@ class _AuthFieldState extends State<AuthField> {
         autovalidateMode: AutovalidateMode.onUserInteraction,
         validator: widget.validator,
         onChanged: (_) => setState(() {}),
-        cursorColor: Colors.white,
-        style: const TextStyle(
+        cursorColor: AppColors.textPrimary,
+        style: TextStyle(
           fontSize: 17,
           fontWeight: FontWeight.w600,
-          color: Colors.white,
+          color: AppColors.textPrimary,
         ),
         decoration: InputDecoration(
           isDense: true,
           contentPadding: const EdgeInsets.symmetric(vertical: 16),
           hintText: widget.hint,
-          hintStyle: const TextStyle(
+          hintStyle: TextStyle(
             color: AppColors.textTertiary,
             fontSize: 16,
             fontWeight: FontWeight.w400,
@@ -281,16 +283,16 @@ class _AuthFieldState extends State<AuthField> {
                   ),
                 )
               : null,
-          enabledBorder: const UnderlineInputBorder(
+          enabledBorder: UnderlineInputBorder(
             borderSide: BorderSide(color: AppColors.borderDefault),
           ),
-          focusedBorder: const UnderlineInputBorder(
-            borderSide: BorderSide(color: Colors.white, width: 2),
+          focusedBorder: UnderlineInputBorder(
+            borderSide: BorderSide(color: AppColors.textPrimary, width: 2),
           ),
-          errorBorder: const UnderlineInputBorder(
+          errorBorder: UnderlineInputBorder(
             borderSide: BorderSide(color: AppColors.error, width: 2),
           ),
-          focusedErrorBorder: const UnderlineInputBorder(
+          focusedErrorBorder: UnderlineInputBorder(
             borderSide: BorderSide(color: AppColors.error, width: 2),
           ),
         ),
@@ -302,12 +304,12 @@ class _AuthFieldState extends State<AuthField> {
           padding: const EdgeInsets.only(top: 8),
           child: Row(
             children: [
-              const Icon(Icons.check, size: 12, color: Colors.white),
+              Icon(Icons.check, size: 12, color: AppColors.textPrimary),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   widget.success!,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     color: AppColors.textSecondary,
                   ),

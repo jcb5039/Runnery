@@ -55,7 +55,7 @@ class _FriendRankingTabState extends State<FriendRankingTab> {
               const SizedBox(height: 22),
               Container(
                 padding: const EdgeInsets.only(bottom: 10),
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   border: Border(
                     bottom: BorderSide(color: AppColors.borderDefault),
                   ),
@@ -73,7 +73,7 @@ class _FriendRankingTabState extends State<FriendRankingTab> {
                     ),
                     Text(
                       _kind.reset,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                         color: AppColors.textTertiary,
@@ -131,7 +131,7 @@ class _FriendRankingTabState extends State<FriendRankingTab> {
             children: [
               Text(
                 _kind.title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: AppColors.textSecondary,
@@ -147,7 +147,7 @@ class _FriendRankingTabState extends State<FriendRankingTab> {
                     style: runningNumberStyle(72, weight: FontWeight.w600),
                   ),
                   const SizedBox(width: 4),
-                  const Text(
+                  Text(
                     '위',
                     style: TextStyle(
                       fontSize: 18,
@@ -158,7 +158,7 @@ class _FriendRankingTabState extends State<FriendRankingTab> {
                   const SizedBox(width: 10),
                   Text(
                     '$count명 중',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
                       color: AppColors.textTertiary,
@@ -172,7 +172,7 @@ class _FriendRankingTabState extends State<FriendRankingTab> {
         if (side case (final label, final value, final suffix))
           Container(
             padding: const EdgeInsets.only(left: 16),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(left: BorderSide(color: AppColors.divider)),
             ),
             child: Column(
@@ -180,7 +180,7 @@ class _FriendRankingTabState extends State<FriendRankingTab> {
               children: [
                 Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: AppColors.textSecondary,
@@ -198,7 +198,7 @@ class _FriendRankingTabState extends State<FriendRankingTab> {
                     const SizedBox(width: 3),
                     Text(
                       _kind.unit,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: AppColors.textSecondary,
@@ -207,7 +207,7 @@ class _FriendRankingTabState extends State<FriendRankingTab> {
                     const SizedBox(width: 3),
                     Text(
                       suffix,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                         color: AppColors.textTertiary,
@@ -227,7 +227,7 @@ class _FriendRankingTabState extends State<FriendRankingTab> {
     child: Text(
       text,
       textAlign: TextAlign.center,
-      style: const TextStyle(fontSize: 13, color: AppColors.textTertiary),
+      style: TextStyle(fontSize: 13, color: AppColors.textTertiary),
     ),
   );
 }
@@ -361,7 +361,7 @@ class _RankTile extends StatelessWidget {
               const SizedBox(width: 3),
               Text(
                 unit,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: AppColors.textSecondary,

@@ -153,7 +153,7 @@ class _TogetherNewPageState extends State<TogetherNewPage> {
           children: [
             _title('누구와 달릴까요?'),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               '여러 명을 함께 고를 수 있어요',
               style: TextStyle(
                 fontSize: 12,
@@ -165,7 +165,7 @@ class _TogetherNewPageState extends State<TogetherNewPage> {
             if (friends.isEmpty)
               Text(
                 widget.friends.loading ? '불러오는 중이에요' : '먼저 친구를 추가해 주세요',
-                style: const TextStyle(color: AppColors.textSecondary),
+                style: TextStyle(color: AppColors.textSecondary),
               )
             else
               Wrap(
@@ -182,7 +182,7 @@ class _TogetherNewPageState extends State<TogetherNewPage> {
               ),
             if (quick) ...[
               const SizedBox(height: 24),
-              const Text(
+              Text(
                 '보내면 바로 대기실로 가요. 친구가 앱을 열어 두었다면 바로 초대 창이 떠요. '
                 '목표 없이 자유롭게 달리고, 멈추고 끝내는 건 각자 해요.',
                 style: TextStyle(
@@ -211,7 +211,7 @@ class _TogetherNewPageState extends State<TogetherNewPage> {
                 ],
               ),
               const SizedBox(height: 10),
-              const Text(
+              Text(
                 '점이 있는 날은 이미 약속이 있어요',
                 style: TextStyle(
                   fontSize: 12,
@@ -226,7 +226,7 @@ class _TogetherNewPageState extends State<TogetherNewPage> {
                 onTap: _pickTime,
                 child: Container(
                   height: 46,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     border: Border(
                       bottom: BorderSide(color: AppColors.borderControl),
                     ),
@@ -242,7 +242,7 @@ class _TogetherNewPageState extends State<TogetherNewPage> {
                           ),
                         ),
                       ),
-                      const Icon(
+                      Icon(
                         Icons.schedule,
                         size: 20,
                         color: AppColors.textSecondary,
@@ -253,7 +253,7 @@ class _TogetherNewPageState extends State<TogetherNewPage> {
               ),
               if (inPast) ...[
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   '지난 시간이에요. 다른 시간을 골라 주세요',
                   style: TextStyle(fontSize: 12, color: AppColors.error),
                 ),
@@ -285,7 +285,7 @@ class _TogetherNewPageState extends State<TogetherNewPage> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.calendar_today_outlined,
                       color: AppColors.textSecondary,
                     ),
@@ -307,7 +307,7 @@ class _TogetherNewPageState extends State<TogetherNewPage> {
                             chosen.isEmpty
                                 ? '함께 달릴 친구를 골라 주세요'
                                 : '${chosen.map((f) => f.name).join(', ')} 님에게 약속을 보내요',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w500,
                               color: AppColors.textSecondary,
@@ -320,7 +320,7 @@ class _TogetherNewPageState extends State<TogetherNewPage> {
                 ),
               ),
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 '약속 시간이 되면 대기실에서 함께 시작해요. 시작을 누르면 대기실에 있는 모두가 같이 출발하고, 멈추고 끝내는 건 각자 해요.',
                 style: TextStyle(
                   fontSize: 12,
@@ -391,7 +391,7 @@ class _FriendChoice extends StatelessWidget {
               ),
               if (selected) ...[
                 const SizedBox(width: 4),
-                const Icon(Icons.check, size: 16, color: AppColors.background),
+                Icon(Icons.check, size: 16, color: AppColors.background),
               ],
             ],
           ),

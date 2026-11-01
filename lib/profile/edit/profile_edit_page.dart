@@ -141,7 +141,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
         _newPhoto != null || (_originalPhoto != null && !_photoRemoved);
     final action = await showModalBottomSheet<_PhotoAction>(
       context: context,
-      backgroundColor: AppColors.card,
+      backgroundColor: AppColors.sheet,
       showDragHandle: true,
       builder: (context) => _PhotoSheet(hasPhoto: hasPhoto),
     );
@@ -220,7 +220,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   Future<void> _confirmLeave() async {
     final action = await showModalBottomSheet<_LeaveAction>(
       context: context,
-      backgroundColor: AppColors.card,
+      backgroundColor: AppColors.sheet,
       showDragHandle: true,
       isScrollControlled: true,
       builder: (context) => _LeaveSheet(
@@ -360,8 +360,8 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
             child: FilledButton(
               onPressed: canSave ? _confirmLeave : null,
               style: FilledButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.black,
+                backgroundColor: AppColors.textPrimary,
+                foregroundColor: AppColors.onInverse,
                 disabledBackgroundColor: AppColors.surfacePressed,
                 disabledForegroundColor: AppColors.textTertiary,
                 shape: const StadiumBorder(),
@@ -408,7 +408,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                                   width: 2,
                                 ),
                               ),
-                              child: const Icon(
+                              child: Icon(
                                 Icons.photo_camera_outlined,
                                 size: 14,
                                 color: AppColors.textPrimary,
@@ -424,7 +424,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                 Center(
                   child: GestureDetector(
                     onTap: _changePhoto,
-                    child: const Text(
+                    child: Text(
                       '사진 변경',
                       style: TextStyle(
                         fontSize: 12,
@@ -496,11 +496,11 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                                     ? AppColors.surfacePressed
                                     : Colors.transparent,
                                 foregroundColor: _gender == g
-                                    ? Colors.white
+                                    ? AppColors.textPrimary
                                     : AppColors.textSecondary,
                                 side: BorderSide(
                                   color: _gender == g
-                                      ? Colors.white
+                                      ? AppColors.textPrimary
                                       : AppColors.borderDefault,
                                 ),
                               ),
@@ -537,7 +537,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                             children: [
                               TextSpan(
                                 text: _weight.toStringAsFixed(1),
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontFamily: 'Archivo',
                                   fontVariations: [FontVariation('wdth', 75)],
                                   fontSize: 48,
@@ -545,7 +545,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                                   color: AppColors.textPrimary,
                                 ),
                               ),
-                              const TextSpan(
+                              TextSpan(
                                 text: ' kg',
                                 style: TextStyle(
                                   fontSize: 13,
@@ -592,12 +592,12 @@ class _Section extends StatelessWidget {
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
         ),
         const SizedBox(width: 12),
-        const Expanded(child: Divider(color: AppColors.divider, height: 1)),
+        Expanded(child: Divider(color: AppColors.divider, height: 1)),
         if (caption != null) ...[
           const SizedBox(width: 12),
           Text(
             caption!,
-            style: const TextStyle(fontSize: 11, color: AppColors.textTertiary),
+            style: TextStyle(fontSize: 11, color: AppColors.textTertiary),
           ),
         ],
       ],
@@ -612,7 +612,7 @@ class _Label extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text(
     text,
-    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+    style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
   );
 }
 
@@ -665,12 +665,12 @@ class _Field extends StatelessWidget {
               isDense: true,
               contentPadding: const EdgeInsets.symmetric(vertical: 12),
               prefixText: prefix,
-              prefixStyle: const TextStyle(
+              prefixStyle: TextStyle(
                 fontSize: 16,
                 color: AppColors.textSecondary,
               ),
               suffixText: suffix,
-              suffixStyle: const TextStyle(
+              suffixStyle: TextStyle(
                 fontSize: 13,
                 color: AppColors.textSecondary,
               ),
@@ -679,7 +679,9 @@ class _Field extends StatelessWidget {
               ),
               focusedBorder: UnderlineInputBorder(
                 borderSide: BorderSide(
-                  color: error != null ? AppColors.error : Colors.white,
+                  color: error != null
+                      ? AppColors.error
+                      : AppColors.textPrimary,
                 ),
               ),
             ),
@@ -766,7 +768,11 @@ class _WeightRuler extends StatelessWidget {
               ),
             ),
             IgnorePointer(
-              child: Container(width: 2, height: 28, color: Colors.white),
+              child: Container(
+                width: 2,
+                height: 28,
+                color: AppColors.textPrimary,
+              ),
             ),
           ],
         ),
@@ -797,7 +803,7 @@ class _RulerPainter extends CustomPainter {
         final label = TextPainter(
           text: TextSpan(
             text: (min + i / 5).round().toString(),
-            style: const TextStyle(fontSize: 10, color: AppColors.textTertiary),
+            style: TextStyle(fontSize: 10, color: AppColors.textTertiary),
           ),
           textDirection: TextDirection.ltr,
         )..layout();
@@ -837,7 +843,7 @@ class _PhotoSheet extends StatelessWidget {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               '내 정보 화면에 보여요.',
               style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
             ),
@@ -853,8 +859,8 @@ class _PhotoSheet extends StatelessWidget {
               child: OutlinedButton(
                 onPressed: () => Navigator.pop(context),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  side: const BorderSide(color: AppColors.borderDefault),
+                  foregroundColor: AppColors.textPrimary,
+                  side: BorderSide(color: AppColors.borderDefault),
                   shape: const StadiumBorder(),
                 ),
                 child: const Text('취소'),
@@ -887,7 +893,7 @@ class _LeaveSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget arrow() => const Padding(
+    Widget arrow() => Padding(
       padding: EdgeInsets.symmetric(horizontal: 6),
       child: Icon(Icons.chevron_right, size: 14, color: AppColors.textTertiary),
     );
@@ -897,10 +903,7 @@ class _LeaveSheet extends StatelessWidget {
         children: [
           Text(
             label,
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppColors.textSecondary,
-            ),
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -946,7 +949,7 @@ class _LeaveSheet extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     '바뀐 내용',
                     style: TextStyle(
                       fontSize: 11,
@@ -961,7 +964,7 @@ class _LeaveSheet extends StatelessWidget {
                       Text(
                         before,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           color: AppColors.textSecondary,
                         ),
@@ -986,8 +989,8 @@ class _LeaveSheet extends StatelessWidget {
                     ? () => Navigator.pop(context, _LeaveAction.save)
                     : null,
                 style: FilledButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: Colors.black,
+                  backgroundColor: AppColors.textPrimary,
+                  foregroundColor: AppColors.onInverse,
                   disabledBackgroundColor: AppColors.surfacePressed,
                   disabledForegroundColor: AppColors.textTertiary,
                   shape: const StadiumBorder(),
@@ -1005,8 +1008,8 @@ class _LeaveSheet extends StatelessWidget {
                 onPressed: () =>
                     Navigator.pop(context, _LeaveAction.keepEditing),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  side: const BorderSide(color: AppColors.borderDefault),
+                  foregroundColor: AppColors.textPrimary,
+                  side: BorderSide(color: AppColors.borderDefault),
                   shape: const StadiumBorder(),
                 ),
                 child: const Text('계속 수정하기'),
@@ -1016,7 +1019,7 @@ class _LeaveSheet extends StatelessWidget {
             Center(
               child: TextButton(
                 onPressed: () => Navigator.pop(context, _LeaveAction.discard),
-                child: const Text(
+                child: Text(
                   '저장하지 않고 나가기',
                   style: TextStyle(
                     fontSize: 12,

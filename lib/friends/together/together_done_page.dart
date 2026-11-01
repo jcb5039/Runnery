@@ -123,7 +123,7 @@ class _TogetherDonePageState extends State<TogetherDonePage> {
           Text(
             '${t.startsAt.month}월 ${t.startsAt.day}일 '
             '(${weekdayLetter(t.startsAt)}) ${clockText(t.startsAt)} · ${t.goalLabel}',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w500,
               color: AppColors.textTertiary,
@@ -167,9 +167,9 @@ class _TogetherDonePageState extends State<TogetherDonePage> {
                 children: [
                   TextSpan(
                     text: '${hetbahn.toStringAsFixed(1)}개',
-                    style: const TextStyle(color: AppColors.primary),
+                    style: TextStyle(color: AppColors.primaryText),
                   ),
-                  const TextSpan(
+                  TextSpan(
                     text: '  1개 = 315 kcal · 함께 합친 칼로리',
                     style: TextStyle(
                       fontSize: 12,
@@ -223,7 +223,7 @@ class _TogetherDonePageState extends State<TogetherDonePage> {
     children: [
       Text(
         label,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w600,
           color: AppColors.textSecondary,
@@ -241,7 +241,7 @@ class _TogetherDonePageState extends State<TogetherDonePage> {
             const SizedBox(width: 4),
             Text(
               unit,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: AppColors.textSecondary,
@@ -317,7 +317,7 @@ class _PersonResult extends StatelessWidget {
                     const SizedBox(height: 6),
                     Text(
                       '${clockText(result.finishedAt)} 도착',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                         color: AppColors.textTertiary,
@@ -350,7 +350,7 @@ class _PersonResult extends StatelessWidget {
       children: [
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w600,
             color: AppColors.textTertiary,
@@ -367,7 +367,7 @@ class _PersonResult extends StatelessWidget {
                 if (unit.isNotEmpty)
                   TextSpan(
                     text: ' $unit',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
                       color: AppColors.textSecondary,
                     ),

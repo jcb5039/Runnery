@@ -2,6 +2,9 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+
+import '../../../design_system/app_colors.dart';
+
 import 'package:maplibre_gl/maplibre_gl.dart' show LatLng;
 
 import '../../../design_system/app_text_styles.dart';
@@ -17,27 +20,40 @@ import '../../../home/running/running_home_page.dart'
 import '../../models/running_record.dart';
 export '../../models/running_record.dart';
 
-const recordBackground = Color(0xFF0A0B0B);
-const recordMuted = Color(0xFF7D8890);
-const recordSecondary = Color(0xFF999B9B);
-const recordLine = Color(0xFF202527);
-const recordOrange = Color(0xFFFF8A00);
-const recordDelete = Color(0xFFFF5A4F);
+// 기록 화면 색. 다크는 기록 시안 값 그대로, 라이트는 앱 라이트 색을 씁니다.
+Color get recordBackground =>
+    AppColors.pick(const Color(0xFF0A0B0B), AppColors.background);
+Color get recordMuted =>
+    AppColors.pick(const Color(0xFF7D8890), AppColors.textTertiary);
+Color get recordSecondary =>
+    AppColors.pick(const Color(0xFF999B9B), AppColors.textSecondary);
+Color get recordLine =>
+    AppColors.pick(const Color(0xFF202527), AppColors.divider);
+
+/// 경로·막대 같은 주황 면.
+Color get recordOrange =>
+    AppColors.pick(const Color(0xFFFF8A00), AppColors.primary);
+
+/// 바탕 위 주황 글자.
+Color get recordOrangeText =>
+    AppColors.pick(const Color(0xFFFF8A00), AppColors.primaryText);
+Color get recordDelete =>
+    AppColors.pick(const Color(0xFFFF5A4F), AppColors.error);
 
 TextStyle recordText(
   double size, {
-  Color color = Colors.white,
+  Color? color,
   FontWeight weight = FontWeight.w500,
 }) => TextStyle(
   fontSize: size,
-  color: color,
+  color: color ?? AppColors.textPrimary,
   fontWeight: weight,
   letterSpacing: -.35,
 );
-TextStyle recordNumber(double size, {Color color = Colors.white}) =>
+TextStyle recordNumber(double size, {Color? color}) =>
     AppTextStyles.statValue.copyWith(
       fontSize: size,
-      color: color,
+      color: color ?? AppColors.textPrimary,
       fontWeight: FontWeight.w700,
       height: 1.15,
       letterSpacing: -1,
@@ -309,6 +325,7 @@ class RecordRouteThumbnail extends StatefulWidget {
 
 class _RecordRouteThumbnailState extends State<RecordRouteThumbnail> {
   Future<File?>? _photo;
+  Brightness? _loadedFor;
 
   @override
   void initState() {
@@ -323,6 +340,7 @@ class _RecordRouteThumbnailState extends State<RecordRouteThumbnail> {
   }
 
   void _load() {
+    _loadedFor = AppColors.current.brightness;
     // 위젯 테스트처럼 지도 엔진이 없으면 경로 그림만 씁니다.
     _photo = RecordRouteMap.basemapEnabled
         ? RouteThumbnails.instance.get(widget.record)
@@ -330,7 +348,13 @@ class _RecordRouteThumbnailState extends State<RecordRouteThumbnail> {
   }
 
   @override
-  Widget build(BuildContext context) => FutureBuilder<File?>(
+  Widget build(BuildContext context) {
+    // 화면 모드가 바뀌면 그 모드 색의 지도 사진을 씁니다.
+    if (_loadedFor != AppColors.current.brightness) _load();
+    return _buildPhoto();
+  }
+
+  Widget _buildPhoto() => FutureBuilder<File?>(
     future: _photo,
     builder: (context, snapshot) {
       final file = snapshot.data;
@@ -409,7 +433,8 @@ class _RecordMapPainter extends CustomPainter {
     canvas.scale(size.width / 342, size.height / 200);
     canvas.drawRect(
       const Rect.fromLTWH(0, 0, 342, 200),
-      Paint()..color = const Color(0xFF1E2633),
+      Paint()
+        ..color = AppColors.pick(const Color(0xFF1E2633), AppColors.mapLand),
     );
     final physicalBounds = detailed
         ? Rect.fromLTWH(
@@ -428,8 +453,8 @@ class _RecordMapPainter extends CustomPainter {
         .map((p) => Offset(p.dx * 342 / size.width, p.dy * 200 / size.height))
         .toList();
     for (final style in [
-      (9.0, const Color(0xFF163429)),
-      (5.5, const Color(0xFF8A4300)),
+      (9.0, AppColors.pick(const Color(0xFF163429), Colors.white)),
+      (5.5, AppColors.pick(const Color(0xFF8A4300), const Color(0xFFFFD2A8))),
       (2.8, recordOrange),
     ]) {
       canvas.drawPath(
@@ -474,7 +499,10 @@ Future<bool> confirmRecordDelete(BuildContext context, {int count = 1}) async =>
     await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF171818),
+        backgroundColor: AppColors.pick(
+          const Color(0xFF171818),
+          AppColors.background,
+        ),
         title: const Text('기록 삭제'),
         content: Text(
           count > 1
@@ -524,7 +552,10 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
     final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF171818),
+        backgroundColor: AppColors.pick(
+          const Color(0xFF171818),
+          AppColors.background,
+        ),
         title: const Text('메모'),
         content: TextField(
           controller: controller,
@@ -613,7 +644,7 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
       children: [
         Text(title, style: recordText(14, weight: FontWeight.w700)),
         const SizedBox(width: 12),
-        const Expanded(child: Divider(color: recordLine)),
+        Expanded(child: Divider(color: recordLine)),
         if (trailing != null) ...[
           const SizedBox(width: 12),
           Text(trailing, style: recordText(11, color: recordMuted)),
@@ -658,14 +689,14 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(child: a),
-        const VerticalDivider(width: 36, color: recordLine),
+        VerticalDivider(width: 36, color: recordLine),
         Expanded(child: b),
       ],
     ),
   );
   Widget _timeRow(String title, String value) => Container(
     padding: const EdgeInsets.symmetric(vertical: 14),
-    decoration: const BoxDecoration(
+    decoration: BoxDecoration(
       border: Border(bottom: BorderSide(color: recordLine)),
     ),
     child: Row(
@@ -701,12 +732,18 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
                     borderRadius: 0,
                     basemap: true,
                   ),
-                  const DecoratedBox(
+                  DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.center,
-                        colors: [Color(0xB3000000), Colors.transparent],
+                        colors: [
+                          AppColors.pick(
+                            const Color(0xB3000000),
+                            const Color(0xB3FFFFFF),
+                          ),
+                          AppColors.pick(Colors.transparent, const Color(0x00FFFFFF)),
+                        ],
                       ),
                     ),
                   ),
@@ -733,7 +770,10 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
                             PopupMenuButton<String>(
                               tooltip: '기록 메뉴',
                               icon: const Icon(Icons.more_horiz),
-                              color: const Color(0xFF202323),
+                              color: AppColors.pick(
+                                const Color(0xFF202323),
+                                AppColors.background,
+                              ),
                               onSelected: (value) =>
                                   value == 'delete' ? _delete() : _editMemo(),
                               itemBuilder: (_) => [
@@ -742,7 +782,7 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
                                   child: Text('메모 수정'),
                                 ),
                                 if (widget.onDelete != null)
-                                  const PopupMenuItem(
+                                  PopupMenuItem(
                                     value: 'delete',
                                     child: Text(
                                       '기록 삭제',
@@ -763,7 +803,7 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
                       onPressed: _expandMap,
                       style: TextButton.styleFrom(
                         backgroundColor: recordBackground,
-                        foregroundColor: Colors.white,
+                        foregroundColor: AppColors.textPrimary,
                       ),
                       icon: const Icon(Icons.open_in_full, size: 13),
                       label: const Text(
@@ -810,7 +850,7 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
                       Container(
                         margin: const EdgeInsets.only(left: 10),
                         padding: const EdgeInsets.fromLTRB(24, 12, 0, 12),
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           border: Border(
                             left: BorderSide(color: recordOrange, width: 2),
                           ),
@@ -827,7 +867,7 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
                         Icons.stop,
                       ),
                       const SizedBox(height: 34),
-                      const Divider(color: recordLine),
+                      Divider(color: recordLine),
                       const SizedBox(height: 14),
                       Text(
                         '총 거리',
@@ -848,7 +888,7 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
                         ),
                       ),
                       const SizedBox(height: 14),
-                      const Divider(height: 1, color: recordLine),
+                      Divider(height: 1, color: recordLine),
                       _pair(
                         _metric(
                           '운동 시간',
@@ -857,7 +897,7 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
                         ),
                         _metric('평균 페이스', r.paceLabel, '/km'),
                       ),
-                      const Divider(height: 1, color: recordLine),
+                      Divider(height: 1, color: recordLine),
                       _pair(
                         _metric(
                           '평균 속도',
@@ -872,7 +912,7 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
                           'km/h',
                         ),
                       ),
-                      const Divider(height: 1, color: recordLine),
+                      Divider(height: 1, color: recordLine),
                       _pair(
                         _metric(
                           '최고 페이스',
@@ -894,8 +934,11 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
                             : r.movingSeconds /
                                   (r.movingSeconds + r.pauseSeconds),
                         minHeight: 10,
-                        color: Colors.white,
-                        backgroundColor: const Color(0xFF37424A),
+                        color: AppColors.textPrimary,
+                        backgroundColor: AppColors.pick(
+                          const Color(0xFF37424A),
+                          AppColors.divider,
+                        ),
                       ),
                       _pair(
                         _metric(
@@ -966,11 +1009,14 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
                               ),
                             ),
                           ),
-                          const CircleAvatar(
-                            backgroundColor: Color(0xFF161818),
+                          CircleAvatar(
+                            backgroundColor: AppColors.pick(
+                              const Color(0xFF161818),
+                              AppColors.card,
+                            ),
                             child: Icon(
                               Icons.rice_bowl_outlined,
-                              color: Colors.white,
+                              color: AppColors.textPrimary,
                               size: 22,
                             ),
                           ),
@@ -998,7 +1044,7 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
                             child: IconButton(
                               tooltip: '메모 수정',
                               onPressed: _editMemo,
-                              icon: const Icon(
+                              icon: Icon(
                                 Icons.edit_outlined,
                                 size: 17,
                                 color: recordSecondary,
@@ -1014,7 +1060,10 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
                           width: double.infinity,
                           padding: const EdgeInsets.all(18),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF151616),
+                            color: AppColors.pick(
+                              const Color(0xFF151616),
+                              AppColors.card,
+                            ),
                             borderRadius: BorderRadius.circular(18),
                           ),
                           child: Text(
@@ -1024,7 +1073,7 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
                         ),
                       ),
                       const SizedBox(height: 42),
-                      const Divider(color: recordLine),
+                      Divider(color: recordLine),
                       const SizedBox(height: 10),
                       Text(
                         '예시 GPS 경로 · 통계 데이터\n실제 GPS 수집 및 계정 저장은 추후 연결됩니다.',
@@ -1056,7 +1105,7 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
         children: [
           CircleAvatar(
             radius: 11,
-            backgroundColor: Colors.white,
+            backgroundColor: AppColors.textPrimary,
             child: Icon(icon, color: recordBackground, size: 15),
           ),
           const SizedBox(width: 14),
@@ -1079,7 +1128,7 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
       for (var i = 0; i < r.splitSeconds.length; i++)
         Container(
           height: 41,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             border: Border(bottom: BorderSide(color: recordLine)),
           ),
           child: Row(
@@ -1112,7 +1161,7 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
                         const SizedBox(width: 8),
                         Text(
                           '가장 빠른 구간',
-                          style: recordText(10, color: recordOrange),
+                          style: recordText(10, color: recordOrangeText),
                         ),
                       ],
                     ],
@@ -1125,8 +1174,8 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
                 style: recordNumber(
                   17,
                   color: r.splitSeconds[i] == fastest
-                      ? recordOrange
-                      : Colors.white,
+                      ? recordOrangeText
+                      : AppColors.textPrimary,
                 ),
               ),
             ],
@@ -1147,14 +1196,14 @@ class _SpeedPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Rect.fromLTRB(26, 25, size.width - 24, size.height - 28);
-    void label(String text, Offset p, {Color color = recordMuted}) {
+    void label(String text, Offset p, {Color? color}) {
       final tp = TextPainter(
         text: TextSpan(
           text: text,
           style: TextStyle(
             fontFamily: AppTextStyles.bodyFontFamily,
             fontSize: 10,
-            color: color,
+            color: color ?? recordMuted,
           ),
         ),
         textDirection: TextDirection.ltr,
@@ -1231,7 +1280,7 @@ class _SpeedPainter extends CustomPainter {
     canvas.drawPath(
       _polyline(points),
       Paint()
-        ..color = Colors.white
+        ..color = AppColors.textPrimary
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.4,
     );
@@ -1244,7 +1293,7 @@ class _SpeedPainter extends CustomPainter {
           (points[maxIndex].dx - 60).clamp(0, math.max(0, size.width - 90)),
           points[maxIndex].dy - 22,
         ),
-        color: Colors.white,
+        color: AppColors.textPrimary,
       );
     }
     for (

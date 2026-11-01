@@ -1117,7 +1117,7 @@ class _RunningStartPageState extends State<RunningStartPage> {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.5),
+      barrierColor: AppColors.scrim,
       isScrollControlled: true,
       builder: (_) => CalorieQuestAchievedSheet(
         stageIndex: done - 1,
@@ -1166,7 +1166,7 @@ class _RunningStartPageState extends State<RunningStartPage> {
     final action = await showModalBottomSheet<_EndAction>(
       context: context,
       backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.5),
+      barrierColor: AppColors.scrim,
       isScrollControlled: true,
       sheetAnimationStyle: const AnimationStyle(
         duration: AppMotion.endConfirmation,
@@ -1252,7 +1252,9 @@ class _RunningStartPageState extends State<RunningStartPage> {
         if (!didPop) _openEndSheet();
       },
       child: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: SystemUiOverlayStyle.light,
+        value: (AppColors.isDark
+            ? SystemUiOverlayStyle.light
+            : SystemUiOverlayStyle.dark),
         child: Scaffold(
           backgroundColor: AppColors.mapLand,
           body: ListenableBuilder(
@@ -1364,7 +1366,7 @@ class _RunningStartPageState extends State<RunningStartPage> {
                               leading: Container(
                                 width: 8,
                                 height: 8,
-                                decoration: const BoxDecoration(
+                                decoration: BoxDecoration(
                                   color: AppColors.primary,
                                   shape: BoxShape.circle,
                                 ),
@@ -1531,7 +1533,7 @@ class _FriendLiveChip extends StatelessWidget {
     final f = friend;
     final run = f.run;
     final number = runningNumberStyle(13, color: AppColors.textPrimary);
-    const word = TextStyle(fontSize: 12, color: AppColors.textSecondary);
+    final word = TextStyle(fontSize: 12, color: AppColors.textSecondary);
     final away = awayMeters;
     return StatusChip(
       label: f.name,
@@ -1553,13 +1555,11 @@ class _FriendLiveChip extends StatelessWidget {
           children: [
             ...switch (f.state) {
               LiveFriendState.waiting => [
-                const TextSpan(text: '출발 전이에요', style: word),
+                TextSpan(text: '출발 전이에요', style: word),
               ],
-              LiveFriendState.lost => [
-                const TextSpan(text: '신호 없음', style: word),
-              ],
+              LiveFriendState.lost => [TextSpan(text: '신호 없음', style: word)],
               LiveFriendState.finished => [
-                const TextSpan(text: '끝났어요  ', style: word),
+                TextSpan(text: '끝났어요  ', style: word),
                 TextSpan(
                   text: '${f.result!.distanceKm.toStringAsFixed(2)} km',
                   style: number,
@@ -1571,7 +1571,7 @@ class _FriendLiveChip extends StatelessWidget {
                   style: number,
                 ),
                 f.state == LiveFriendState.paused
-                    ? const TextSpan(text: '  멈춤', style: word)
+                    ? TextSpan(text: '  멈춤', style: word)
                     : TextSpan(
                         text:
                             '  ${RunningFormat.livePace(run.paceSeconds?.toDouble())}',
@@ -1620,10 +1620,10 @@ class _RunningCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Text('거리', style: _labelStyle),
+              Text('거리', style: _labelStyle),
               if (session.autoPaused) ...[
                 const SizedBox(width: AppSpacing.space2),
-                const Text(
+                Text(
                   '자동 일시정지',
                   style: TextStyle(
                     fontSize: 12,
@@ -1634,7 +1634,7 @@ class _RunningCard extends StatelessWidget {
               ],
               const Spacer(),
               if (options.voiceGuide && options.mode == RunningMode.free)
-                const Text(
+                Text(
                   '1 km마다 음성 안내',
                   style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
                 ),
@@ -1661,10 +1661,7 @@ class _RunningCard extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               options.goalStatus(session.distanceMeters, session.elapsed)!,
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-              ),
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
             ),
           ],
           const SizedBox(height: AppSpacing.space4),
@@ -1735,7 +1732,7 @@ class _PausedCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
               Text(
                 '일시정지',
@@ -1750,7 +1747,7 @@ class _PausedCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             '숨을 고르고 준비되면 다시 시작하세요',
             style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
           ),
@@ -1843,7 +1840,7 @@ class _CollapsedCard extends StatelessWidget {
                 dimension: 52,
                 child: Icon(
                   paused ? Icons.play_arrow_rounded : Icons.pause,
-                  color: Colors.black,
+                  color: paused ? Colors.black : AppColors.onInverse,
                 ),
               ),
             ),
@@ -1865,8 +1862,8 @@ class _EndConfirmSheet extends StatelessWidget {
     final startedAt = session.startedAt ?? DateTime.now();
     final today = DateUtils.isSameDay(startedAt, DateTime.now());
     return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.card,
+      decoration: BoxDecoration(
+        color: AppColors.sheet,
         borderRadius: BorderRadius.vertical(
           top: Radius.circular(AppRadius.sheet),
         ),
@@ -1883,7 +1880,7 @@ class _EndConfirmSheet extends StatelessWidget {
         children: [
           const Center(child: SheetHandle()),
           const SizedBox(height: AppSpacing.space5),
-          const Text(
+          Text(
             '러닝을 종료할까요?',
             style: TextStyle(
               fontSize: 20,
@@ -1892,7 +1889,7 @@ class _EndConfirmSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             '지금까지 달린 경로와 기록이 저장돼요.',
             style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
           ),
@@ -1930,7 +1927,7 @@ class _EndConfirmSheet extends StatelessWidget {
                         '${RunningFormat.koreanDuration(session.elapsed)} · '
                         '${RunningFormat.kcal(session.calories)} kcal · '
                         '${today ? '오늘 ' : ''}${RunningFormat.time(startedAt)}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           color: AppColors.textSecondary,
                         ),
@@ -1960,7 +1957,7 @@ class _EndConfirmSheet extends StatelessWidget {
                 AppComponentMetrics.minimumTouchTarget,
               ),
             ),
-            child: const Text(
+            child: Text(
               '저장하지 않고 종료',
               style: TextStyle(
                 fontSize: 13,
@@ -1979,13 +1976,14 @@ class _EndConfirmSheet extends StatelessWidget {
 // 러닝·결과 화면 공통 조각
 // ═════════════════════════════════════════════════════
 
-const _labelStyle = TextStyle(fontSize: 12, color: AppColors.textSecondary);
+TextStyle get _labelStyle =>
+    TextStyle(fontSize: 12, color: AppColors.textSecondary);
 
 /// 러닝 숫자: Archivo 폭 75, 자릿수 고정.
 TextStyle runningNumberStyle(
   double size, {
   FontWeight weight = FontWeight.w700,
-  Color color = AppColors.textPrimary,
+  Color? color,
 }) => TextStyle(
   fontFamily: AppTextStyles.numberFontFamily,
   fontVariations: const [AppTextStyles.numberWidth],
@@ -1993,7 +1991,7 @@ TextStyle runningNumberStyle(
   fontSize: size,
   fontWeight: weight,
   height: 1,
-  color: color,
+  color: color ?? AppColors.textPrimary,
 );
 
 /// 실시간 큰 숫자: 작은 화면 56, 기준 64, Pro Max 72, Android 60.
@@ -2153,7 +2151,7 @@ class StatRow extends StatelessWidget {
                             if (cell.unit != null)
                               TextSpan(
                                 text: ' ${cell.unit}',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 11,
                                   color: AppColors.textSecondary,
                                 ),
@@ -2181,7 +2179,7 @@ class SheetHandle extends StatelessWidget {
     return Container(
       width: 36,
       height: 4,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.borderDefault,
         borderRadius: AppRadius.pillBorder,
       ),
@@ -2212,7 +2210,7 @@ class WhiteButton extends StatelessWidget {
         onPressed: onPressed,
         style: FilledButton.styleFrom(
           backgroundColor: AppColors.textPrimary,
-          foregroundColor: Colors.black,
+          foregroundColor: AppColors.onInverse,
           shape: const StadiumBorder(),
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4),
         ),
@@ -2242,7 +2240,7 @@ class OutlineButton extends StatelessWidget {
     required this.onPressed,
     this.leading,
     this.height = AppComponentMetrics.whiteButtonMediumHeight,
-    this.borderColor = AppColors.borderDefault,
+    this.borderColor,
     this.horizontalPadding = AppSpacing.space4,
   });
 
@@ -2250,7 +2248,7 @@ class OutlineButton extends StatelessWidget {
   final Widget? leading;
   final VoidCallback? onPressed;
   final double height;
-  final Color borderColor;
+  final Color? borderColor;
   final double horizontalPadding;
 
   @override
@@ -2261,7 +2259,7 @@ class OutlineButton extends StatelessWidget {
         onPressed: onPressed,
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.textPrimary,
-          side: BorderSide(color: borderColor),
+          side: BorderSide(color: borderColor ?? AppColors.borderDefault),
           shape: const StadiumBorder(),
           padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
         ),
@@ -2369,7 +2367,7 @@ class RouteMarker extends StatelessWidget {
       width: AppComponentMetrics.startMarkerLarge,
       height: AppComponentMetrics.startMarkerLarge,
       decoration: BoxDecoration(
-        color: AppColors.textPrimary,
+        color: Colors.white,
         shape: BoxShape.circle,
         border: Border.all(color: Colors.black, width: 1.5),
       ),
@@ -2438,7 +2436,7 @@ class RouteThumbnailPainter extends CustomPainter {
             ..strokeWidth = 5
             ..strokeCap = StrokeCap.round
             ..strokeJoin = StrokeJoin.round
-            ..color = Colors.black,
+            ..color = AppColors.pick(Colors.black, Colors.white),
         )
         ..drawPath(
           path,

@@ -140,7 +140,7 @@ class _FriendAddPageState extends State<FriendAddPage> {
             AppSpacing.space6,
           ),
           children: [
-            const Text(
+            Text(
               '이름이나 아이디로 찾기',
               style: TextStyle(
                 fontSize: 13,
@@ -154,7 +154,7 @@ class _FriendAddPageState extends State<FriendAddPage> {
             const SizedBox(height: 32),
             ..._requestSection(),
             const SizedBox(height: 32),
-            const Text(
+            Text(
               '친구가 되면 서로의 러닝 기록과 응원을 볼 수 있어요',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
@@ -177,24 +177,20 @@ class _FriendAddPageState extends State<FriendAddPage> {
     cursorColor: AppColors.textPrimary,
     decoration: InputDecoration(
       hintText: '이름 또는 아이디',
-      hintStyle: const TextStyle(color: AppColors.textTertiary),
-      prefixIcon: const Icon(Icons.search, color: AppColors.textSecondary),
+      hintStyle: TextStyle(color: AppColors.textTertiary),
+      prefixIcon: Icon(Icons.search, color: AppColors.textSecondary),
       prefixIconConstraints: const BoxConstraints(minWidth: 34),
       suffixIcon: _query.text.isEmpty
           ? null
           : IconButton(
               tooltip: '검색어 지우기',
-              icon: const Icon(
-                Icons.cancel,
-                size: 18,
-                color: AppColors.textTertiary,
-              ),
+              icon: Icon(Icons.cancel, size: 18, color: AppColors.textTertiary),
               onPressed: _clear,
             ),
-      enabledBorder: const UnderlineInputBorder(
+      enabledBorder: UnderlineInputBorder(
         borderSide: BorderSide(color: AppColors.borderControl),
       ),
-      focusedBorder: const UnderlineInputBorder(
+      focusedBorder: UnderlineInputBorder(
         borderSide: BorderSide(color: AppColors.textPrimary),
       ),
     ),
@@ -236,7 +232,7 @@ class _FriendAddPageState extends State<FriendAddPage> {
   Widget _searchAction(PublicProfile person) {
     final busy = _busy.contains(person.uid);
     return switch (_store.relation(person.uid)) {
-      FriendRelation.me => const Text(
+      FriendRelation.me => Text(
         '나',
         style: TextStyle(
           fontSize: 13,
@@ -244,7 +240,7 @@ class _FriendAddPageState extends State<FriendAddPage> {
           color: AppColors.textTertiary,
         ),
       ),
-      FriendRelation.friend => const Row(
+      FriendRelation.friend => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.check, size: 16, color: AppColors.textTertiary),
@@ -314,11 +310,11 @@ class _FriendAddPageState extends State<FriendAddPage> {
           ? Container(
               height: 22,
               padding: const EdgeInsets.symmetric(horizontal: 8),
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 color: AppColors.textPrimary,
                 borderRadius: AppRadius.pillBorder,
               ),
-              child: const Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(Icons.check, size: 12, color: AppColors.background),
@@ -334,7 +330,7 @@ class _FriendAddPageState extends State<FriendAddPage> {
                 ],
               ),
             )
-          : const Text(
+          : Text(
               '거절했어요',
               style: TextStyle(
                 fontSize: 13,
@@ -367,7 +363,7 @@ class _FriendAddPageState extends State<FriendAddPage> {
     padding: const EdgeInsets.symmetric(vertical: 20),
     child: Text(
       text,
-      style: const TextStyle(fontSize: 13, color: AppColors.textTertiary),
+      style: TextStyle(fontSize: 13, color: AppColors.textTertiary),
     ),
   );
 }

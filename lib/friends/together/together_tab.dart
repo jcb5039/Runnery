@@ -184,7 +184,7 @@ class _TogetherTabState extends State<TogetherTab> {
           padding: const EdgeInsets.fromLTRB(24, 16, 16, 16),
           child: Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -194,7 +194,7 @@ class _TogetherTabState extends State<TogetherTab> {
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
-                        color: AppColors.background,
+                        color: const Color(0xFF0B0B0B),
                       ),
                     ),
                     SizedBox(height: 8),
@@ -212,11 +212,11 @@ class _TogetherTabState extends State<TogetherTab> {
               Container(
                 width: 56,
                 height: 56,
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AppColors.background,
+                  color: const Color(0xFF0B0B0B),
                 ),
-                child: const Icon(Icons.arrow_forward, color: Colors.white),
+                child: Icon(Icons.arrow_forward, color: Colors.white),
               ),
             ],
           ),
@@ -261,7 +261,7 @@ class _TogetherTabState extends State<TogetherTab> {
                     const SizedBox(height: 6),
                     Text(
                       agoLabel(t.createdAt ?? now, now),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                         color: AppColors.textTertiary,
@@ -331,15 +331,11 @@ class _TogetherTabState extends State<TogetherTab> {
             Container(
               width: 28,
               height: 28,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: AppColors.textPrimary,
               ),
-              child: const Icon(
-                Icons.check,
-                size: 16,
-                color: AppColors.background,
-              ),
+              child: Icon(Icons.check, size: 16, color: AppColors.background),
             ),
             const SizedBox(width: 12),
           ],
@@ -359,7 +355,7 @@ class _TogetherTabState extends State<TogetherTab> {
                 ),
                 if (accepted) ...[
                   const SizedBox(height: 6),
-                  const Text(
+                  Text(
                     '진행 중인 약속에 추가됐어요',
                     style: TextStyle(
                       fontSize: 12,
@@ -409,7 +405,7 @@ class _TogetherTabState extends State<TogetherTab> {
     child: Text(
       text,
       textAlign: TextAlign.center,
-      style: const TextStyle(fontSize: 13, color: AppColors.textTertiary),
+      style: TextStyle(fontSize: 13, color: AppColors.textTertiary),
     ),
   );
 }
@@ -502,7 +498,7 @@ class _TogetherRow extends StatelessWidget {
                   const SizedBox(height: 9),
                   Text(
                     detail,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
                       color: AppColors.textSecondary,
@@ -515,7 +511,7 @@ class _TogetherRow extends StatelessWidget {
                         Transform.translate(
                           offset: Offset(-6.0 * i, 0),
                           child: Container(
-                            decoration: const BoxDecoration(
+                            decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               color: AppColors.background,
                             ),
@@ -531,7 +527,7 @@ class _TogetherRow extends StatelessWidget {
                           store.names(t),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
                             color: AppColors.textSecondary,
@@ -549,7 +545,7 @@ class _TogetherRow extends StatelessWidget {
     );
   }
 
-  static const _small = TextStyle(
+  static TextStyle get _small => TextStyle(
     fontSize: 11,
     fontWeight: FontWeight.w600,
     color: AppColors.textSecondary,

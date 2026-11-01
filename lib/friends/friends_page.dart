@@ -209,7 +209,7 @@ class _FriendsPageState extends State<FriendsPage> {
 
   Widget _requestBanner(int count) => Material(
     color: AppColors.surface,
-    shape: const RoundedRectangleBorder(
+    shape: RoundedRectangleBorder(
       borderRadius: AppRadius.thumbnailBorder,
       side: BorderSide(color: AppColors.divider),
     ),
@@ -240,7 +240,7 @@ class _FriendsPageState extends State<FriendsPage> {
                 ),
               ),
             ),
-            const Text(
+            Text(
               '확인하기',
               style: TextStyle(
                 fontSize: 14,
@@ -248,11 +248,7 @@ class _FriendsPageState extends State<FriendsPage> {
                 color: AppColors.textSecondary,
               ),
             ),
-            const Icon(
-              Icons.chevron_right,
-              size: 18,
-              color: AppColors.textSecondary,
-            ),
+            Icon(Icons.chevron_right, size: 18, color: AppColors.textSecondary),
           ],
         ),
       ),
@@ -302,7 +298,7 @@ class _FriendsPageState extends State<FriendsPage> {
             Text(
               _store.error ?? '친구를 추가하고 함께 달려요',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.textSecondary),
+              style: TextStyle(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 16),
             FriendPillButton(label: '친구 추가', onPressed: _openAdd),

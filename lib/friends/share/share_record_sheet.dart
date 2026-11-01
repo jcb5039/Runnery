@@ -21,7 +21,7 @@ Future<void> showShareRecordSheet(
   }
   final message = await showModalBottomSheet<String>(
     context: context,
-    backgroundColor: AppColors.card,
+    backgroundColor: AppColors.sheet,
     showDragHandle: true,
     isScrollControlled: true,
     builder: (_) => _ShareSheet(record: record, share: sharer),
@@ -118,7 +118,7 @@ class _ShareSheetState extends State<_ShareSheet> {
               shared
                   ? '이미 공유한 기록이에요. 보여줄 항목을 바꿔 다시 올릴 수 있어요.'
                   : '공유한 기록은 친구 피드에 올라가요.',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 15,
                 height: 1.5,
                 color: AppColors.textSecondary,
@@ -133,7 +133,7 @@ class _ShareSheetState extends State<_ShareSheet> {
             else ...[
               _preview(fields),
               const SizedBox(height: 20),
-              const Text(
+              Text(
                 '보여줄 항목',
                 style: TextStyle(
                   fontSize: 13,
@@ -184,7 +184,7 @@ class _ShareSheetState extends State<_ShareSheet> {
               const SizedBox(height: 8),
               Text(
                 error,
-                style: const TextStyle(fontSize: 13, color: AppColors.error),
+                style: TextStyle(fontSize: 13, color: AppColors.error),
               ),
             ],
             const SizedBox(height: 16),
@@ -244,7 +244,7 @@ class _ShareSheetState extends State<_ShareSheet> {
                       route.isEmpty ? '방금 전' : '방금 전 · $route',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                         color: AppColors.textTertiary,
@@ -307,11 +307,7 @@ class _FieldRow extends StatelessWidget {
                     : Border.all(color: AppColors.borderControl, width: 1.5),
               ),
               child: value
-                  ? const Icon(
-                      Icons.check,
-                      size: 14,
-                      color: AppColors.background,
-                    )
+                  ? Icon(Icons.check, size: 14, color: AppColors.background)
                   : null,
             ),
             const SizedBox(width: 10),
@@ -327,7 +323,7 @@ class _FieldRow extends StatelessWidget {
             if (note case final note?)
               Text(
                 note,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                   color: AppColors.textTertiary,

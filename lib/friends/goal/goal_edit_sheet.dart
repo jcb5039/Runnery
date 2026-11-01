@@ -9,7 +9,7 @@ import '../widgets/friend_widgets.dart';
 Future<bool> showGoalEditSheet(BuildContext context, FriendStore store) async {
   final saved = await showModalBottomSheet<bool>(
     context: context,
-    backgroundColor: AppColors.card,
+    backgroundColor: AppColors.sheet,
     showDragHandle: true,
     isScrollControlled: true,
     builder: (_) => _GoalSheet(store: store),
@@ -66,7 +66,7 @@ class _GoalSheetState extends State<_GoalSheet> {
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 10),
-            const Text(
+            Text(
               '매주 월요일에 새로 시작돼요. 친구들은 내 달성률을 볼 수 있어요.',
               style: TextStyle(
                 fontSize: 15,
@@ -95,7 +95,7 @@ class _GoalSheetState extends State<_GoalSheet> {
                         style: runningNumberStyle(80, weight: FontWeight.w600),
                       ),
                       const SizedBox(width: 6),
-                      const Text(
+                      Text(
                         'km',
                         style: TextStyle(
                           fontSize: 18,
@@ -121,7 +121,7 @@ class _GoalSheetState extends State<_GoalSheet> {
                   ? '지금까지 ${done.toStringAsFixed(1)} km · ${left.toStringAsFixed(1)} km 더 달리면 달성'
                   : '지금까지 ${done.toStringAsFixed(1)} km · 이미 달성했어요',
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
                 color: AppColors.textSecondary,
@@ -143,12 +143,12 @@ class _GoalSheetState extends State<_GoalSheet> {
               ],
             ),
             const SizedBox(height: 22),
-            const Divider(height: 1, color: AppColors.divider),
+            Divider(height: 1, color: AppColors.divider),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: _public,
               onChanged: (v) => setState(() => _public = v),
-              activeTrackColor: Colors.white,
+              activeTrackColor: AppColors.textPrimary,
               activeThumbColor: AppColors.background,
               inactiveTrackColor: AppColors.divider,
               inactiveThumbColor: AppColors.textSecondary,
@@ -159,7 +159,7 @@ class _GoalSheetState extends State<_GoalSheet> {
                 '친구에게 목표 공개',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
               ),
-              subtitle: const Text(
+              subtitle: Text(
                 '끄면 친구 목표 비교에 내가 보이지 않아요',
                 style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
               ),
@@ -168,7 +168,7 @@ class _GoalSheetState extends State<_GoalSheet> {
               const SizedBox(height: 8),
               Text(
                 error,
-                style: const TextStyle(fontSize: 13, color: AppColors.error),
+                style: TextStyle(fontSize: 13, color: AppColors.error),
               ),
             ],
             const SizedBox(height: 18),
@@ -203,7 +203,7 @@ class _RoundButton extends StatelessWidget {
     style: IconButton.styleFrom(
       fixedSize: const Size.square(56),
       foregroundColor: AppColors.textPrimary,
-      side: const BorderSide(color: AppColors.borderDefault),
+      side: BorderSide(color: AppColors.borderDefault),
     ),
   );
 }

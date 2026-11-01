@@ -106,11 +106,15 @@ class _AppStartPageState extends State<AppStartPage>
 
   @override
   Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
-    value: SystemUiOverlayStyle.light.copyWith(
-      statusBarColor: Colors.transparent,
-      systemNavigationBarColor: AppColors.background,
-      systemNavigationBarDividerColor: AppColors.background,
-    ),
+    value:
+        (AppColors.isDark
+                ? SystemUiOverlayStyle.light
+                : SystemUiOverlayStyle.dark)
+            .copyWith(
+              statusBarColor: Colors.transparent,
+              systemNavigationBarColor: AppColors.background,
+              systemNavigationBarDividerColor: AppColors.background,
+            ),
     child: Scaffold(
       backgroundColor: AppColors.background,
       body: AnimatedBuilder(
@@ -193,7 +197,7 @@ class _AppStartPageState extends State<AppStartPage>
                 alignment: Alignment.centerLeft,
                 child: FractionallySizedBox(
                   widthFactor: _divider.value,
-                  child: const SizedBox(
+                  child: SizedBox(
                     height: 1,
                     child: ColoredBox(color: AppColors.textSecondary),
                   ),

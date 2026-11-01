@@ -200,7 +200,7 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
   Future<void> _cancel(Together t, bool host) async {
     final ok = await showModalBottomSheet<bool>(
       context: context,
-      backgroundColor: AppColors.card,
+      backgroundColor: AppColors.sheet,
       showDragHandle: true,
       builder: (context) => SafeArea(
         child: Padding(
@@ -219,7 +219,7 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
               const SizedBox(height: 10),
               Text(
                 host ? '함께하기로 한 친구들의 약속도 사라져요.' : '다른 친구들은 그대로 함께 달릴 수 있어요.',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 15,
                   height: 1.5,
                   color: AppColors.textSecondary,
@@ -278,7 +278,7 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
                   ? const CircularProgressIndicator(strokeWidth: 2)
                   : Text(
                       _error!,
-                      style: const TextStyle(color: AppColors.textSecondary),
+                      style: TextStyle(color: AppColors.textSecondary),
                     ),
             )
           : _content(t, me),
@@ -320,7 +320,7 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
                 const SizedBox(height: 8),
                 Text(
                   '${t.goalLabel} · 시작을 누르면 대기실에 있는 모두가 함께 출발해요',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
                     height: 1.5,
                     color: AppColors.textSecondary,
@@ -342,7 +342,7 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
                   ),
                 if (_locationOk == false) ...[
                   const SizedBox(height: 16),
-                  const Text(
+                  Text(
                     '위치 권한을 허용해야 함께 달릴 수 있어요. 설정에서 위치 권한을 켜 주세요.',
                     style: TextStyle(fontSize: 13, color: AppColors.error),
                   ),
@@ -351,10 +351,7 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
                   const SizedBox(height: 16),
                   Text(
                     error,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: AppColors.error,
-                    ),
+                    style: TextStyle(fontSize: 13, color: AppColors.error),
                   ),
                 ],
               ],
@@ -380,7 +377,7 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
                     ),
                   )
                 else if (t.startedAt != null) ...[
-                  const Text(
+                  Text(
                     '함께 달리기가 이미 시작됐어요',
                     textAlign: TextAlign.center,
                     style: TextStyle(
@@ -401,7 +398,7 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
                         ? '누구든 시작을 누르면 ${TogetherLobbyPage.countdownSeconds}초 뒤에 함께 출발해요'
                         : '친구가 대기실에 들어오면 시작할 수 있어요',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       color: AppColors.textSecondary,
                     ),
@@ -463,7 +460,7 @@ class _StartButton extends StatelessWidget {
         AppComponentMetrics.primaryButtonMediumHeight,
       ),
       backgroundColor: AppColors.primary,
-      foregroundColor: AppColors.background,
+      foregroundColor: const Color(0xFF0B0B0B),
       disabledBackgroundColor: AppColors.card,
       disabledForegroundColor: AppColors.borderControl,
       shape: const RoundedRectangleBorder(borderRadius: AppRadius.pillBorder),

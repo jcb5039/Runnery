@@ -80,7 +80,7 @@ class _TogetherInviteListenerState extends State<TogetherInviteListener> {
     ];
     return showModalBottomSheet<bool>(
       context: context,
-      backgroundColor: AppColors.card,
+      backgroundColor: AppColors.sheet,
       showDragHandle: true,
       builder: (context) => SafeArea(
         child: Padding(
@@ -105,7 +105,7 @@ class _TogetherInviteListenerState extends State<TogetherInviteListener> {
                   if (others.isNotEmpty) '${others.join(', ')} 님도 함께해요.',
                   if (t.isQuick) '목표 없이 자유롭게 달려요. 참여하면 대기실로 가요.',
                 ].join(' '),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 15,
                   height: 1.5,
                   color: AppColors.textSecondary,

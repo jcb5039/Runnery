@@ -107,7 +107,7 @@ class _TabBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    decoration: const BoxDecoration(
+    decoration: BoxDecoration(
       border: Border(top: BorderSide(color: AppColors.divider)),
     ),
     child: SafeArea(
@@ -128,7 +128,9 @@ class _TabBar extends StatelessWidget {
                         Container(
                           height: 2,
                           width: 28,
-                          color: i == index ? Colors.white : Colors.transparent,
+                          color: i == index
+                              ? AppColors.textPrimary
+                              : Colors.transparent,
                         ),
                         const SizedBox(height: 8),
                         Stack(
@@ -138,7 +140,7 @@ class _TabBar extends StatelessWidget {
                               icon,
                               size: 22,
                               color: i == index
-                                  ? Colors.white
+                                  ? AppColors.textPrimary
                                   : AppColors.textTertiary,
                             ),
                             // 주황·빨강은 이 용도에 쓰지 않아 선택 탭과 같은 흰색으로 둡니다.
@@ -165,7 +167,7 @@ class _TabBar extends StatelessWidget {
                                   ),
                                   child: Text(
                                     friendBadge > 9 ? '9+' : '$friendBadge',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 10,
                                       height: 1,
                                       fontWeight: FontWeight.w800,
@@ -185,7 +187,7 @@ class _TabBar extends StatelessWidget {
                                 ? FontWeight.w700
                                 : FontWeight.w400,
                             color: i == index
-                                ? Colors.white
+                                ? AppColors.textPrimary
                                 : AppColors.textTertiary,
                           ),
                         ),

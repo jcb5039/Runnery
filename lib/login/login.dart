@@ -142,7 +142,7 @@ class _LoginPageV2State extends State<LoginPageV2> {
           const SizedBox(height: 12),
           Row(
             children: [
-              const Text(
+              Text(
                 '러 너 리',
                 style: TextStyle(
                   fontSize: 12,
@@ -187,7 +187,9 @@ class _LoginPageV2State extends State<LoginPageV2> {
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-              onPressed: busy ? null : widget.onForgotPassword ?? _forgotPassword,
+              onPressed: busy
+                  ? null
+                  : widget.onForgotPassword ?? _forgotPassword,
               style: TextButton.styleFrom(
                 foregroundColor: AppColors.textSecondary,
                 padding: EdgeInsets.zero,
@@ -227,7 +229,7 @@ class _BrandLinesV2 extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.white
+      ..color = AppColors.textPrimary
       ..strokeWidth = 2;
     const widths = [200.0, 230.0, 245.0, 220.0, 285.0];
     for (int i = 0; i < widths.length; i++) {
@@ -296,7 +298,7 @@ class _AuthGateState extends State<AuthGate> {
     future: _loaded,
     builder: (context, snapshot) {
       if (snapshot.connectionState != ConnectionState.done) {
-        return const Scaffold(backgroundColor: AppColors.background);
+        return Scaffold(backgroundColor: AppColors.background);
       }
       if (_store.isLoggedIn) return const MainTabs();
       if (_store.needsVerification) return VerifyEmailPage(store: _store);

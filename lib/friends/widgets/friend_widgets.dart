@@ -92,7 +92,7 @@ class FriendRow extends StatelessWidget {
                 '@${person.id}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                   color: AppColors.textTertiary,
@@ -187,7 +187,7 @@ class FriendProgressBar extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          const ColoredBox(color: AppColors.divider),
+          ColoredBox(color: AppColors.divider),
           FractionallySizedBox(
             alignment: Alignment.centerLeft,
             widthFactor: fraction.clamp(0.0, 1.0),
@@ -214,14 +214,14 @@ class FriendSectionHeader extends StatelessWidget {
         style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
       ),
       const SizedBox(width: 12),
-      const Expanded(
+      Expanded(
         child: Divider(height: 1, thickness: 1, color: AppColors.borderDefault),
       ),
       if (meta case final meta?) ...[
         const SizedBox(width: 12),
         Text(
           meta,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w500,
             color: AppColors.textTertiary,
@@ -257,7 +257,7 @@ class FriendPillButton extends StatelessWidget {
           )
         : OutlinedButton.styleFrom(
             foregroundColor: AppColors.textPrimary,
-            side: const BorderSide(color: AppColors.borderDefault),
+            side: BorderSide(color: AppColors.borderDefault),
           );
     final sized = style.copyWith(
       minimumSize: const WidgetStatePropertyAll(Size(0, 36)),
@@ -322,7 +322,7 @@ class FriendSheetButton extends StatelessWidget {
             style: OutlinedButton.styleFrom(
               minimumSize: size,
               foregroundColor: AppColors.textPrimary,
-              side: const BorderSide(color: AppColors.borderDefault),
+              side: BorderSide(color: AppColors.borderDefault),
               shape: shape,
               textStyle: textStyle,
             ),

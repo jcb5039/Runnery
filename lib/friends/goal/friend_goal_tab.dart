@@ -35,7 +35,7 @@ class FriendGoalTab extends StatelessWidget {
           for (final (i, row) in rows.indexed)
             _GoalTile(row: row, divider: i > 0),
         const SizedBox(height: 16),
-        const Text(
+        Text(
           '목표를 공개한 친구만 보여요',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
@@ -62,7 +62,7 @@ class FriendGoalTab extends StatelessWidget {
         Text(
           '이번 주에 ${store.myStats.weekKmAt(store.now).toStringAsFixed(1)} km 달렸어요. '
           '목표를 정하면 친구들과 달성률을 비교할 수 있어요.',
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 13,
             height: 1.5,
             color: AppColors.textSecondary,
@@ -102,7 +102,7 @@ class FriendGoalTab extends StatelessWidget {
                   Text(
                     '$period · $daysLeft일 남았어요'
                     '${goal.public ? '' : ' · 비공개'}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                       color: AppColors.textTertiary,
@@ -137,7 +137,7 @@ class FriendGoalTab extends StatelessWidget {
                     const SizedBox(width: 6),
                     Text(
                       '/ ${goal.km} km',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
                         color: AppColors.textSecondary,
@@ -159,7 +159,7 @@ class FriendGoalTab extends StatelessWidget {
         ),
         const SizedBox(height: 18),
         Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             border: Border(top: BorderSide(color: AppColors.divider)),
           ),
           child: IntrinsicHeight(
@@ -184,14 +184,14 @@ class FriendGoalTab extends StatelessWidget {
           decoration: BoxDecoration(
             border: first
                 ? null
-                : const Border(left: BorderSide(color: AppColors.divider)),
+                : Border(left: BorderSide(color: AppColors.divider)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: AppColors.textSecondary,
@@ -209,7 +209,7 @@ class FriendGoalTab extends StatelessWidget {
     child: Text(
       text,
       textAlign: TextAlign.center,
-      style: const TextStyle(fontSize: 13, color: AppColors.textTertiary),
+      style: TextStyle(fontSize: 13, color: AppColors.textTertiary),
     ),
   );
 }
@@ -312,7 +312,7 @@ class _GoalTile extends StatelessWidget {
                   const SizedBox(width: 3),
                   Text(
                     '/ ${row.goalKm} km',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: AppColors.textTertiary,

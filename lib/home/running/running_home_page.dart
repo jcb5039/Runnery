@@ -338,7 +338,7 @@ class _RunningHomePageState extends State<RunningHomePage> {
     final openSettings = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppColors.card,
+        backgroundColor: AppColors.sheet,
         title: Text(serviceOff ? '위치 서비스가 꺼져 있어요' : '위치 권한이 필요해요'),
         content: Text(
           serviceOff
@@ -373,7 +373,9 @@ class _RunningHomePageState extends State<RunningHomePage> {
         : LatLng(position.latitude, position.longitude);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light,
+      value: (AppColors.isDark
+          ? SystemUiOverlayStyle.light
+          : SystemUiOverlayStyle.dark),
       child: Scaffold(
         backgroundColor: AppColors.mapLand,
         // 시트·버튼을 지도 children에 두면 그 위의 드래그가 지도를 움직이므로 위에 겹칩니다.
@@ -582,13 +584,13 @@ class MapScaleBar extends StatelessWidget {
       children: [
         Text(
           label,
-          style: const TextStyle(fontSize: 10, color: AppColors.textPrimary),
+          style: TextStyle(fontSize: 10, color: AppColors.textPrimary),
         ),
         const SizedBox(height: 2),
         CustomPaint(size: Size(width, 5), painter: _ScaleBarPainter()),
         const SizedBox(height: 4),
         // 지도 데이터 이용 조건의 출처 표기.
-        const Text(
+        Text(
           '© OpenFreeMap © OpenMapTiles © OpenStreetMap',
           style: TextStyle(fontSize: 8, color: AppColors.textTertiary),
         ),
@@ -846,7 +848,7 @@ class _StartSheetState extends State<_StartSheet> {
         children: [
           // 키패드를 여는 동안에는 숫자·시작하기·키패드만 남겨 작은 화면에서도 가려지지 않게 합니다.
           if (!editing) ...[
-            const Text(
+            Text(
               '어떻게 달릴까요?',
               style: TextStyle(
                 fontSize: 20,
@@ -863,17 +865,11 @@ class _StartSheetState extends State<_StartSheet> {
           if (widget.mode != RunningMode.free) _goal(),
           const SizedBox(height: AppSpacing.space3),
           if (notice != null)
-            Text(
-              notice,
-              style: const TextStyle(fontSize: 12, color: AppColors.error),
-            )
+            Text(notice, style: TextStyle(fontSize: 12, color: AppColors.error))
           else if (!editing)
             Text(
               _description,
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-              ),
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
             ),
           if (!editing) ...[
             const SizedBox(height: AppSpacing.space3),
@@ -976,7 +972,7 @@ class _GoalPicker extends StatelessWidget {
           color: AppColors.textPrimary,
           disabledColor: AppColors.textTertiary,
           style: IconButton.styleFrom(
-            side: const BorderSide(color: AppColors.borderDefault),
+            side: BorderSide(color: AppColors.borderDefault),
           ),
         );
 
@@ -1026,7 +1022,7 @@ class _GoalPicker extends StatelessWidget {
                                   const SizedBox(width: 6),
                                   Text(
                                     unitShort!,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 20,
                                       fontWeight: FontWeight.w700,
                                       color: AppColors.textSecondary,
@@ -1047,7 +1043,7 @@ class _GoalPicker extends StatelessWidget {
                           const SizedBox(height: AppSpacing.space2),
                           Text(
                             unit,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 13,
                               color: AppColors.textSecondary,
                             ),
@@ -1097,7 +1093,7 @@ class _GoalPicker extends StatelessWidget {
                                 ? FontWeight.w700
                                 : FontWeight.w500,
                             color: selected
-                                ? Colors.black
+                                ? AppColors.onInverse
                                 : AppColors.textSecondary,
                           ),
                         ),
@@ -1138,14 +1134,14 @@ class _GoalKeypad extends StatelessWidget {
                 height: 48,
                 child: Center(
                   child: label == '⌫'
-                      ? const Icon(
+                      ? Icon(
                           Icons.backspace_outlined,
                           color: AppColors.textPrimary,
                           semanticLabel: '지우기',
                         )
                       : Text(
                           label,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.w600,
                             color: AppColors.textPrimary,
@@ -1164,7 +1160,7 @@ class _GoalKeypad extends StatelessWidget {
             alignment: Alignment.centerRight,
             child: TextButton(
               onPressed: onDone,
-              child: const Text(
+              child: Text(
                 '완료',
                 style: TextStyle(
                   fontSize: 15,
@@ -1233,7 +1229,7 @@ class _ModeSegment extends StatelessWidget {
                           ? FontWeight.w700
                           : FontWeight.w500,
                       color: mode == selected
-                          ? Colors.black
+                          ? AppColors.onInverse
                           : AppColors.textSecondary,
                     ),
                   ),
@@ -1413,7 +1409,7 @@ class _CountdownViewState extends State<RunningCountdownView>
                   children: [
                     Text(
                       widget.title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w700,
                         color: AppColors.textPrimary,
@@ -1422,7 +1418,7 @@ class _CountdownViewState extends State<RunningCountdownView>
                     const SizedBox(height: AppSpacing.space2),
                     Text(
                       widget.subtitle,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
                         color: AppColors.textSecondary,
                       ),
@@ -1498,9 +1494,7 @@ class MapCircleButton extends StatelessWidget {
       message: tooltip,
       child: Material(
         color: mapFloatingColor,
-        shape: const CircleBorder(
-          side: BorderSide(color: AppColors.mapButtonBorder),
-        ),
+        shape: CircleBorder(side: BorderSide(color: AppColors.mapButtonBorder)),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onPressed,
@@ -1566,7 +1560,7 @@ class StatusChip extends StatelessWidget {
               if (leading != null || icon != null) const SizedBox(width: 6),
               Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: AppColors.textPrimary,
@@ -1682,27 +1676,28 @@ class PrimaryButton extends StatelessWidget {
 // ═════════════════════════════════════════════════════
 
 /// 지도 스타일 색. 스타일 JSON에 넣기 위해 HEX 문자열로 둡니다.
+/// 라이트: 밝은 회색 땅, 흰 길(회색 테두리), 옅은 녹색 공원, 하늘색 강, 진한 회색 지명에 흰 테두리.
 abstract final class MapPalette {
-  static const land = '#1D2331';
-  static const building = '#28303F';
-  static const tower = '#2E3749';
-  static const apartment = '#2C3345';
-  static const park = '#1C4A31';
-  static const water = '#153A5C';
-  static const expressway = '#5C6882';
-  static const arterial = '#4A5467';
-  static const collector = '#3A4354';
-  static const local = '#2F3746';
-  static const alley = '#272E3A';
-  static const casing = '#141922';
-  static const subway5 = '#9B80F2';
-  static const subway9 = '#D6AF55';
-  static const labelDistrict = '#DCE2EA';
-  static const labelPlace = '#CAD2DC';
-  static const labelDong = '#A9B4C2';
-  static const labelRoad = '#909BAB';
-  static const labelWater = '#7BAFDD';
-  static const labelHalo = '#181D26';
+  static String get land => AppColors.isDark ? '#1D2331' : '#EEF1F4';
+  static String get building => AppColors.isDark ? '#28303F' : '#DEE3E9';
+  static String get tower => AppColors.isDark ? '#2E3749' : '#D7DDE4';
+  static String get apartment => AppColors.isDark ? '#2C3345' : '#DADFE6';
+  static String get park => AppColors.isDark ? '#1C4A31' : '#D4EBDA';
+  static String get water => AppColors.isDark ? '#153A5C' : '#C4DDF3';
+  static String get expressway => AppColors.isDark ? '#5C6882' : '#FFFFFF';
+  static String get arterial => AppColors.isDark ? '#4A5467' : '#FFFFFF';
+  static String get collector => AppColors.isDark ? '#3A4354' : '#FFFFFF';
+  static String get local => AppColors.isDark ? '#2F3746' : '#FFFFFF';
+  static String get alley => AppColors.isDark ? '#272E3A' : '#F7F8FA';
+  static String get casing => AppColors.isDark ? '#141922' : '#D2D8DF';
+  static String get subway5 => AppColors.isDark ? '#9B80F2' : '#9B80F2';
+  static String get subway9 => AppColors.isDark ? '#D6AF55' : '#D6AF55';
+  static String get labelDistrict => AppColors.isDark ? '#DCE2EA' : '#3A434C';
+  static String get labelPlace => AppColors.isDark ? '#CAD2DC' : '#4F5761';
+  static String get labelDong => AppColors.isDark ? '#A9B4C2' : '#646D77';
+  static String get labelRoad => AppColors.isDark ? '#909BAB' : '#7D8791';
+  static String get labelWater => AppColors.isDark ? '#7BAFDD' : '#4A7FB5';
+  static String get labelHalo => AppColors.isDark ? '#181D26' : '#FFFFFF';
 
   static const poiPark = Color(0xFF3E9A5C);
   static const poiSchool = Color(0xFF4A7FC4);
@@ -1890,12 +1885,13 @@ class _RunneryMapState extends State<RunneryMap> {
   static const _friendRouteSource = 'runnery-friend-route';
   static const _friendSource = 'runnery-friends';
 
-  late final String _style = _runneryMapStyle(
-    widget.routeWidth,
-    widget.routeOpacity,
-  );
+  // 화면 모드마다 스타일이 달라 모드별로 한 번씩 만듭니다.
+  final _styles = <Brightness, String>{};
+  String get _style => _styles[AppColors.current.brightness] ??=
+      _runneryMapStyle(widget.routeWidth, widget.routeOpacity);
 
   MapLibreMapController? _map;
+  Brightness? _mapBrightness;
   bool _styleReady = false;
   final _images = <String>{};
   String? _routeSignature;
@@ -2134,12 +2130,27 @@ class _RunneryMapState extends State<RunneryMap> {
 
   @override
   Widget build(BuildContext context) {
+    // 화면 모드가 바뀌면 지도를 새 색 스타일로 다시 만듭니다. 보던 위치는 그대로 둡니다.
+    final brightness = AppColors.current.brightness;
+    var camera = CameraPosition(
+      target: widget.initialCenter,
+      zoom: widget.initialZoom,
+    );
+    if (_mapBrightness != null && _mapBrightness != brightness) {
+      camera = _map?.cameraPosition ?? camera;
+      _styleReady = false;
+      _images.clear();
+      _routeSignature = null;
+      _friendSignature = null;
+      _markerSignature = null;
+      _labelSignature = null;
+      _sentLabels = const [];
+    }
+    _mapBrightness = brightness;
     final map = MapLibreMap(
+      key: ValueKey(brightness),
       styleString: _style,
-      initialCameraPosition: CameraPosition(
-        target: widget.initialCenter,
-        zoom: widget.initialZoom,
-      ),
+      initialCameraPosition: camera,
       onMapCreated: (controller) {
         _map = controller;
         widget.controller._map = controller;
@@ -2263,7 +2274,7 @@ String _runneryMapStyle(double routeWidth, [double routeOpacity = 1]) {
   };
 
   // 도로 위계: 테두리를 모든 도로 아래에 먼저 깔고 도로 면을 위에 그립니다.
-  const roads = [
+  final roads = [
     (
       'alley',
       ['service', 'track', 'path'],
@@ -2617,7 +2628,8 @@ String _runneryMapStyle(double routeWidth, [double routeOpacity = 1]) {
         'source': _RunneryMapState._routeSource,
         'layout': {'line-cap': 'round', 'line-join': 'round'},
         'paint': {
-          'line-color': '#000000',
+          // 경로 아래 테두리: 다크는 검정, 라이트는 흰색.
+          'line-color': AppColors.isDark ? '#000000' : '#FFFFFF',
           'line-opacity': routeOpacity < 1 ? 0.25 : 0.85,
           'line-width': routeWidth + 4,
         },
@@ -2722,6 +2734,7 @@ void _paintIcon(Canvas canvas, IconData icon, Offset center, double size) {
         fontFamily: icon.fontFamily,
         package: icon.fontPackage,
         fontSize: size,
+        // 색 배지 위 흰 아이콘은 두 모드에서 같습니다.
         color: Colors.white,
       ),
     ),
@@ -2732,13 +2745,18 @@ void _paintIcon(Canvas canvas, IconData icon, Offset center, double size) {
 
 Future<Map<String, Uint8List>>? _baseImagesCache;
 double? _baseImagesDpr;
+Brightness? _baseImagesBrightness;
 
-/// 출발·도착·일시정지 마커와 장소 아이콘.
+/// 출발·도착·일시정지 마커와 장소 아이콘. 지하철 배지 테두리가 화면 모드마다 달라 모드별로 만듭니다.
 Future<Map<String, Uint8List>> _baseMapImages(double dpr) {
-  if (_baseImagesCache != null && _baseImagesDpr == dpr) {
+  final brightness = AppColors.current.brightness;
+  if (_baseImagesCache != null &&
+      _baseImagesDpr == dpr &&
+      _baseImagesBrightness == brightness) {
     return _baseImagesCache!;
   }
   _baseImagesDpr = dpr;
+  _baseImagesBrightness = brightness;
   return _baseImagesCache = () async {
     // 마커: 흰 원 L22 + 검정 기호.
     Future<Uint8List> marker(void Function(Canvas c, Offset center) glyph) {
@@ -2858,7 +2876,7 @@ Future<Map<String, Uint8List>> _baseMapImages(double dpr) {
             Paint()
               ..style = PaintingStyle.stroke
               ..strokeWidth = 1.2
-              ..color = const Color(0xFF181D26),
+              ..color = AppColors.pick(const Color(0xFF181D26), Colors.white),
           );
         _paintIcon(c, Icons.directions_subway, o, 11);
       }),
@@ -2873,7 +2891,7 @@ Future<Uint8List> _chipImage(MapLabel label, double dpr) {
       label.kind == MapLabelKind.current || label.kind == MapLabelKind.friend;
   final spans = <TextSpan>[
     if (label.kind == MapLabelKind.current)
-      const TextSpan(
+      TextSpan(
         text: '현재 위치  ',
         style: TextStyle(color: AppColors.textSecondary),
       )
@@ -2887,13 +2905,13 @@ Future<Uint8List> _chipImage(MapLabel label, double dpr) {
         text: nameOnly ? label.name : ' ${label.name}',
         style: nameOnly
             ? const TextStyle(fontWeight: FontWeight.w700)
-            : const TextStyle(color: AppColors.textSecondary),
+            : TextStyle(color: AppColors.textSecondary),
       ),
   ];
   final tp = TextPainter(
     text: TextSpan(
       children: spans,
-      style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
+      style: TextStyle(fontSize: 12, color: AppColors.textPrimary),
     ),
     textDirection: TextDirection.ltr,
     maxLines: 1,
@@ -2908,7 +2926,7 @@ Future<Uint8List> _chipImage(MapLabel label, double dpr) {
       RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(14)),
       Paint()..color = AppColors.background.withValues(alpha: 0.92),
     );
-    final white = Paint()..color = Colors.white;
+    final white = Paint()..color = AppColors.textPrimary;
     if (label.kind == MapLabelKind.start) {
       c.drawPath(
         Path()

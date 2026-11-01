@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../design_system/app_colors.dart';
+
 import 'list/record_list_page.dart';
 import 'list/detail/record_detail_page.dart';
 
@@ -122,9 +124,14 @@ class _RecordCalendarPageState extends State<RecordCalendarPage> {
                   ),
                   decoration: BoxDecoration(
                     color: active
-                        ? const Color(0xFF151616)
+                        ? AppColors.pick(
+                            const Color(0xFF151616),
+                            AppColors.card,
+                          )
                         : Colors.transparent,
-                    border: active ? Border.all(color: Colors.white) : null,
+                    border: active
+                        ? Border.all(color: AppColors.textPrimary)
+                        : null,
                     borderRadius: BorderRadius.circular(17),
                   ),
                   child: Column(
@@ -134,14 +141,18 @@ class _RecordCalendarPageState extends State<RecordCalendarPage> {
                         '$number',
                         style: recordNumber(
                           16,
-                          color: entries.isEmpty ? recordMuted : Colors.white,
+                          color: entries.isEmpty
+                              ? recordMuted
+                              : AppColors.textPrimary,
                         ),
                       ),
                       Container(
                         margin: const EdgeInsets.only(top: 2),
                         width: 15,
                         height: 2,
-                        color: today ? Colors.white : Colors.transparent,
+                        color: today
+                            ? AppColors.textPrimary
+                            : Colors.transparent,
                       ),
                       const SizedBox(height: 5),
                       // 그날 여러 번 달렸다면 가장 긴 거리의 경로만 그립니다.
@@ -167,7 +178,7 @@ class _RecordCalendarPageState extends State<RecordCalendarPage> {
         const SizedBox(height: 16),
         Row(
           children: [
-            const Icon(Icons.route, size: 18, color: recordOrange),
+            Icon(Icons.route, size: 18, color: recordOrange),
             const SizedBox(width: 6),
             Text(
               '달린 날엔 그날의 경로가 그려져요',
@@ -176,7 +187,7 @@ class _RecordCalendarPageState extends State<RecordCalendarPage> {
           ],
         ),
         const SizedBox(height: 22),
-        const Divider(height: 1, color: recordLine),
+        Divider(height: 1, color: recordLine),
         if (runs.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 44),
@@ -227,15 +238,15 @@ class _RecordCalendarPageState extends State<RecordCalendarPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _metric('거리', r.distanceKm.toStringAsFixed(2), 'km'),
-                  const VerticalDivider(width: 24, color: recordLine),
+                  VerticalDivider(width: 24, color: recordLine),
                   _metric(
                     '운동 시간',
                     '${r.movingSeconds ~/ 60}:${(r.movingSeconds % 60).toString().padLeft(2, '0')}',
                     '',
                   ),
-                  const VerticalDivider(width: 24, color: recordLine),
+                  VerticalDivider(width: 24, color: recordLine),
                   _metric('페이스', r.paceLabel, ''),
-                  const VerticalDivider(width: 24, color: recordLine),
+                  VerticalDivider(width: 24, color: recordLine),
                   _metric('칼로리', '${r.calories}', 'kcal'),
                 ],
               ),

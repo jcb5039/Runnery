@@ -259,7 +259,7 @@ class CalorieQuestRow extends StatelessWidget {
                         stage == null
                             ? '칼로리 퀘스트 · 완료'
                             : '칼로리 퀘스트 · ${done + 1}단계',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           color: AppColors.textSecondary,
                         ),
@@ -269,7 +269,7 @@ class CalorieQuestRow extends StatelessWidget {
                         stage?.item ?? '10단계 모두 달성',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
                           color: AppColors.textPrimary,
@@ -287,12 +287,12 @@ class CalorieQuestRow extends StatelessWidget {
                       children: [
                         Text(
                           next == null ? '전체 보기' : '다음 ${next.name}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
                             color: AppColors.textTertiary,
                           ),
                         ),
-                        const Icon(
+                        Icon(
                           Icons.chevron_right,
                           size: 16,
                           color: AppColors.textTertiary,
@@ -306,12 +306,12 @@ class CalorieQuestRow extends StatelessWidget {
                           children: [
                             TextSpan(
                               text: '${CalorieQuest.remaining(kcal)} kcal',
-                              style: const TextStyle(color: AppColors.primary),
+                              style: TextStyle(color: AppColors.primaryText),
                             ),
                             const TextSpan(text: ' 남음'),
                           ],
                         ),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
                           color: AppColors.textSecondary,
@@ -380,8 +380,8 @@ class _CalorieQuestAchievedSheetState extends State<CalorieQuestAchievedSheet> {
     final stage = CalorieQuest.stages[widget.stageIndex];
     final next = CalorieQuest.stages.elementAtOrNull(widget.stageIndex + 1);
     return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.card,
+      decoration: BoxDecoration(
+        color: AppColors.sheet,
         borderRadius: BorderRadius.vertical(
           top: Radius.circular(AppRadius.sheet),
         ),
@@ -413,7 +413,7 @@ class _CalorieQuestAchievedSheetState extends State<CalorieQuestAchievedSheet> {
                             color: AppColors.primary,
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: AppColors.card,
+                              color: AppColors.sheet,
                               width: 2,
                             ),
                           ),
@@ -438,7 +438,7 @@ class _CalorieQuestAchievedSheetState extends State<CalorieQuestAchievedSheet> {
                     ),
                     child: Text(
                       '${widget.stageIndex + 1}단계 달성',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                         color: AppColors.textPrimary,
@@ -449,7 +449,7 @@ class _CalorieQuestAchievedSheetState extends State<CalorieQuestAchievedSheet> {
                   Text(
                     '${stage.fullName}만큼\n태웠어요',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 22,
                       height: 1.35,
                       fontWeight: FontWeight.w800,
@@ -460,7 +460,7 @@ class _CalorieQuestAchievedSheetState extends State<CalorieQuestAchievedSheet> {
                   Text(
                     '지금까지 ${RunningFormat.kcal(kcal)} kcal · '
                     '${_spokenDuration(widget.elapsed())}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       color: AppColors.textSecondary,
                     ),
@@ -474,7 +474,7 @@ class _CalorieQuestAchievedSheetState extends State<CalorieQuestAchievedSheet> {
                       vertical: AppSpacing.space4,
                     ),
                     child: next == null
-                        ? const Text(
+                        ? Text(
                             '10단계를 모두 달성했어요',
                             style: TextStyle(
                               fontSize: 15,
@@ -492,7 +492,7 @@ class _CalorieQuestAchievedSheetState extends State<CalorieQuestAchievedSheet> {
                                   children: [
                                     Text(
                                       '다음 ${widget.stageIndex + 2}단계',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontSize: 12,
                                         color: AppColors.textSecondary,
                                       ),
@@ -502,7 +502,7 @@ class _CalorieQuestAchievedSheetState extends State<CalorieQuestAchievedSheet> {
                                       '${next.fullName} · ${next.kcal} kcal',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w700,
                                         color: AppColors.textPrimary,
@@ -522,7 +522,7 @@ class _CalorieQuestAchievedSheetState extends State<CalorieQuestAchievedSheet> {
                                     const TextSpan(text: ' kcal 남음'),
                                   ],
                                 ),
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 11,
                                   color: AppColors.textSecondary,
                                 ),
@@ -607,7 +607,7 @@ class CalorieQuestPage extends StatelessWidget {
             return ListView(
               padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
               children: [
-                const Text(
+                Text(
                   '이번 러닝에서 태운 칼로리',
                   style: TextStyle(
                     fontSize: 13,
@@ -629,7 +629,7 @@ class CalorieQuestPage extends StatelessWidget {
                       children: [
                         Text(
                           done >= total ? '모두 달성' : '${done + 1}단계 진행 중',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
                             color: AppColors.textPrimary,
@@ -638,7 +638,7 @@ class CalorieQuestPage extends StatelessWidget {
                         const SizedBox(height: AppSpacing.space1),
                         Text(
                           '$total단계 중 $done단계 달성',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
                             color: AppColors.textSecondary,
                           ),
@@ -657,7 +657,7 @@ class CalorieQuestPage extends StatelessWidget {
                     borderRadius: AppRadius.thumbnailBorder,
                     border: Border.all(color: AppColors.divider),
                   ),
-                  child: const Row(
+                  child: Row(
                     children: [
                       Icon(
                         Icons.outlined_flag,
@@ -683,7 +683,7 @@ class CalorieQuestPage extends StatelessWidget {
                   children: [
                     Text(
                       '$total단계',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
                         color: AppColors.textPrimary,
@@ -692,7 +692,7 @@ class CalorieQuestPage extends StatelessWidget {
                     const SizedBox(width: AppSpacing.space3),
                     const Expanded(child: Divider(height: 1)),
                     const SizedBox(width: AppSpacing.space3),
-                    const Text(
+                    Text(
                       '칼로리가 오를 때마다 하나씩 달성',
                       style: TextStyle(
                         fontSize: 12,
@@ -710,7 +710,7 @@ class CalorieQuestPage extends StatelessWidget {
                     last: i == total - 1,
                   ),
                 const SizedBox(height: AppSpacing.space5),
-                const Text(
+                Text(
                   '칼로리는 제품 영양 표시를 바탕으로 한 대략적인 값이에요.',
                   style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
                 ),
@@ -748,11 +748,11 @@ class _QuestStageRow extends StatelessWidget {
       marker = Container(
         width: 30,
         height: 30,
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: AppColors.textPrimary,
           shape: BoxShape.circle,
         ),
-        child: const Icon(Icons.check, size: 17, color: Colors.black),
+        child: Icon(Icons.check, size: 17, color: AppColors.onInverse),
       );
     } else {
       marker = Container(
@@ -772,7 +772,7 @@ class _QuestStageRow extends StatelessWidget {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: current ? AppColors.primary : AppColors.textTertiary,
+            color: current ? AppColors.primaryText : AppColors.textTertiary,
           ),
         ),
       );
@@ -788,7 +788,7 @@ class _QuestStageRow extends StatelessWidget {
 
     return Container(
       decoration: current
-          ? const BoxDecoration(
+          ? BoxDecoration(
               color: AppColors.surface,
               borderRadius: AppRadius.thumbnailBorder,
             )
@@ -833,7 +833,7 @@ class _QuestStageRow extends StatelessWidget {
                           const SizedBox(height: 3),
                           Text(
                             stage.detail,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
                               color: AppColors.textTertiary,
                             ),
@@ -852,7 +852,7 @@ class _QuestStageRow extends StatelessWidget {
                             const SizedBox(height: 6),
                             Text(
                               '${RunningFormat.kcal(kcal)} / ${stage.kcal} kcal',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
                                 color: AppColors.textSecondary,
                               ),
@@ -878,7 +878,7 @@ class _QuestStageRow extends StatelessWidget {
                                       : AppColors.textPrimary,
                                 ),
                               ),
-                              const TextSpan(
+                              TextSpan(
                                 text: ' kcal',
                                 style: TextStyle(
                                   fontSize: 11,
@@ -895,21 +895,25 @@ class _QuestStageRow extends StatelessWidget {
                               horizontal: 8,
                               vertical: 3,
                             ),
-                            decoration: const BoxDecoration(
+                            decoration: BoxDecoration(
                               color: AppColors.textPrimary,
                               borderRadius: AppRadius.pillBorder,
                             ),
-                            child: const Row(
+                            child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.check, size: 12, color: Colors.black),
+                                Icon(
+                                  Icons.check,
+                                  size: 12,
+                                  color: AppColors.onInverse,
+                                ),
                                 SizedBox(width: 3),
                                 Text(
                                   '달성',
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w700,
-                                    color: Colors.black,
+                                    color: AppColors.onInverse,
                                   ),
                                 ),
                               ],
@@ -918,14 +922,14 @@ class _QuestStageRow extends StatelessWidget {
                         else if (current)
                           Text(
                             '${CalorieQuest.remaining(kcal)} kcal 남음',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
-                              color: AppColors.primary,
+                              color: AppColors.primaryText,
                             ),
                           )
                         else
-                          const Icon(
+                          Icon(
                             Icons.lock_outline,
                             size: 14,
                             color: AppColors.textTertiary,
@@ -944,6 +948,5 @@ class _QuestStageRow extends StatelessWidget {
 }
 
 /// 1,208
-String _thousands(int n) => n >= 1000
-    ? '${n ~/ 1000},${(n % 1000).toString().padLeft(3, '0')}'
-    : '$n';
+String _thousands(int n) =>
+    n >= 1000 ? '${n ~/ 1000},${(n % 1000).toString().padLeft(3, '0')}' : '$n';

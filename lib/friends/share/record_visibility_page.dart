@@ -148,7 +148,7 @@ class _RecordVisibilityPageState extends State<RecordVisibilityPage> {
             _row(
               title: '공개 범위',
               divider: true,
-              trailing: const Text(
+              trailing: Text(
                 '모든 친구',
                 style: TextStyle(
                   fontSize: 14,
@@ -165,7 +165,7 @@ class _RecordVisibilityPageState extends State<RecordVisibilityPage> {
                   Text(
                     '공개 ${week.where((r) => _shared.contains(r.id)).length}개 · '
                     '비공개 ${week.where((r) => !_shared.contains(r.id)).length}개',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                       color: AppColors.textTertiary,
@@ -185,7 +185,7 @@ class _RecordVisibilityPageState extends State<RecordVisibilityPage> {
             else
               for (final (i, record) in week.indexed) _recordRow(record, i > 0),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               '비공개로 바꾼 기록은 친구 피드에 보이지 않아요.',
               style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
             ),
@@ -219,7 +219,7 @@ class _RecordVisibilityPageState extends State<RecordVisibilityPage> {
         child: Switch(
           value: value,
           onChanged: onChanged,
-          activeTrackColor: Colors.white,
+          activeTrackColor: AppColors.textPrimary,
           activeThumbColor: AppColors.background,
           inactiveTrackColor: AppColors.divider,
           inactiveThumbColor: AppColors.textSecondary,
@@ -231,7 +231,7 @@ class _RecordVisibilityPageState extends State<RecordVisibilityPage> {
     padding: const EdgeInsets.only(bottom: 6),
     child: Text(
       text,
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 13,
         fontWeight: FontWeight.w600,
         color: AppColors.textTertiary,
@@ -311,7 +311,7 @@ class _RecordVisibilityPageState extends State<RecordVisibilityPage> {
     padding: const EdgeInsets.symmetric(vertical: 24),
     child: Text(
       text,
-      style: const TextStyle(fontSize: 13, color: AppColors.textTertiary),
+      style: TextStyle(fontSize: 13, color: AppColors.textTertiary),
     ),
   );
 }

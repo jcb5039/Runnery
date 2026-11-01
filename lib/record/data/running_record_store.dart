@@ -91,6 +91,7 @@ class RunningRecordStore extends ChangeNotifier implements LocalRecords {
     for (final file in [
       File('$folder/$id.json'),
       File('$folder/$id.map.png'),
+      File('$folder/$id.map.light.png'),
       File('$folder/$id.png'),
     ]) {
       if (await file.exists()) {
@@ -124,8 +125,9 @@ class RunningRecordStore extends ChangeNotifier implements LocalRecords {
   }
 
   /// 기록 목록 썸네일 지도 사진 파일. 기록과 같은 폴더에 두어 삭제·초기화 때 함께 지워집니다.
-  Future<File> thumbnailFile(String id) async =>
-      File('${(await _folder()).path}/$id.map.png');
+  /// 라이트 모드 사진은 색이 달라 따로 둡니다.
+  Future<File> thumbnailFile(String id, {bool light = false}) async =>
+      File('${(await _folder()).path}/$id.map${light ? '.light' : ''}.png');
 
   /// 저장된 러닝 기록을 모두 지웁니다. 새 계정을 만들 때 씁니다.
   Future<void> clear() {
@@ -175,6 +177,7 @@ class RunningRecordStore extends ChangeNotifier implements LocalRecords {
       for (final file in [
         File('$folder/$id.json'),
         File('$folder/$id.map.png'),
+        File('$folder/$id.map.light.png'),
         // 출처 띠가 찍혀 있던 첫 버전의 썸네일.
         File('$folder/$id.png'),
       ]) {

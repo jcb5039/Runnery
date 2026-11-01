@@ -178,7 +178,7 @@ class _ProfileMailPageState extends State<ProfileMailPage> {
     bottomNavigationBar: !widget.showNavigation
         ? null
         : Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(top: BorderSide(color: AppColors.divider)),
             ),
             child: SafeArea(
@@ -292,7 +292,7 @@ class _ProfileMailPageState extends State<ProfileMailPage> {
                           _account.current == null
                               ? ''
                               : '@${_account.current!.id}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
                             color: AppColors.textSecondary,
                           ),
@@ -303,8 +303,8 @@ class _ProfileMailPageState extends State<ProfileMailPage> {
                   OutlinedButton(
                     onPressed: _editProfile,
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      side: const BorderSide(color: AppColors.borderDefault),
+                      foregroundColor: AppColors.textPrimary,
+                      side: BorderSide(color: AppColors.borderDefault),
                       padding: const EdgeInsets.symmetric(horizontal: 14),
                       shape: const StadiumBorder(),
                     ),
@@ -332,12 +332,15 @@ class _ProfileMailPageState extends State<ProfileMailPage> {
                     fit: StackFit.expand,
                     children: [
                       _RunningRoutesMap(records: _records),
-                      const DecoratedBox(
+                      DecoratedBox(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
-                            colors: [Colors.transparent, Color(0xEE0B0B0B)],
+                            colors: [
+                              AppColors.background.withAlpha(0),
+                              AppColors.background.withAlpha(0xEE),
+                            ],
                             stops: [0.48, 1],
                           ),
                         ),
@@ -353,7 +356,7 @@ class _ProfileMailPageState extends State<ProfileMailPage> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text(
+                                  Text(
                                     '지금까지 달린 길',
                                     style: TextStyle(
                                       fontSize: 12,
@@ -364,7 +367,7 @@ class _ProfileMailPageState extends State<ProfileMailPage> {
                                 ],
                               ),
                             ),
-                            const Text(
+                            Text(
                               '겹쳐 달린 길일수록\n더 밝게 보여요',
                               textAlign: TextAlign.right,
                               style: TextStyle(
@@ -391,7 +394,7 @@ class _ProfileMailPageState extends State<ProfileMailPage> {
                         _value(_totalKm.toStringAsFixed(1), ' km'),
                       ),
                     ),
-                    const VerticalDivider(width: 1, color: AppColors.divider),
+                    VerticalDivider(width: 1, color: AppColors.divider),
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.only(left: 18),
@@ -404,7 +407,7 @@ class _ProfileMailPageState extends State<ProfileMailPage> {
                   ],
                 ),
               ),
-              const Divider(height: 1, color: AppColors.divider),
+              Divider(height: 1, color: AppColors.divider),
               IntrinsicHeight(
                 child: Row(
                   children: [
@@ -418,7 +421,7 @@ class _ProfileMailPageState extends State<ProfileMailPage> {
                                 text: '${_totalSeconds ~/ 3600}',
                                 style: _numberStyle(30),
                               ),
-                              const TextSpan(
+                              TextSpan(
                                 text: ' 시간 ',
                                 style: TextStyle(
                                   fontSize: 11,
@@ -429,7 +432,7 @@ class _ProfileMailPageState extends State<ProfileMailPage> {
                                 text: '${_totalSeconds ~/ 60 % 60}',
                                 style: _numberStyle(30),
                               ),
-                              const TextSpan(
+                              TextSpan(
                                 text: ' 분',
                                 style: TextStyle(
                                   fontSize: 11,
@@ -441,7 +444,7 @@ class _ProfileMailPageState extends State<ProfileMailPage> {
                         ),
                       ),
                     ),
-                    const VerticalDivider(width: 1, color: AppColors.divider),
+                    VerticalDivider(width: 1, color: AppColors.divider),
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.only(left: 18),
@@ -471,7 +474,7 @@ class _ProfileMailPageState extends State<ProfileMailPage> {
                         compact: true,
                       ),
                     ),
-                    const VerticalDivider(width: 24, color: AppColors.divider),
+                    VerticalDivider(width: 24, color: AppColors.divider),
                     Expanded(
                       child: _stat(
                         '나이',
@@ -483,7 +486,7 @@ class _ProfileMailPageState extends State<ProfileMailPage> {
                         compact: true,
                       ),
                     ),
-                    const VerticalDivider(width: 24, color: AppColors.divider),
+                    VerticalDivider(width: 24, color: AppColors.divider),
                     Expanded(
                       child: _stat(
                         '성별',
@@ -543,7 +546,7 @@ class _ProfileMailPageState extends State<ProfileMailPage> {
   TextStyle _numberStyle(double size) => AppTextStyles.statValue.copyWith(
     fontSize: size,
     fontWeight: FontWeight.w700,
-    color: Colors.white,
+    color: AppColors.textPrimary,
     height: 1.15,
   );
   Widget _value(String value, String unit, {double size = 30}) => Text.rich(
@@ -552,7 +555,7 @@ class _ProfileMailPageState extends State<ProfileMailPage> {
         TextSpan(text: value, style: _numberStyle(size)),
         TextSpan(
           text: unit,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 12,
             color: AppColors.textSecondary,
             fontWeight: FontWeight.w600,
@@ -568,7 +571,7 @@ class _ProfileMailPageState extends State<ProfileMailPage> {
       children: [
         Text(
           label,
-          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
         ),
         const SizedBox(height: 6),
         FittedBox(
@@ -586,46 +589,50 @@ class _ProfileMailPageState extends State<ProfileMailPage> {
         style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
       ),
       const SizedBox(width: 12),
-      const Expanded(child: Divider(color: AppColors.borderDefault)),
+      Expanded(child: Divider(color: AppColors.borderDefault)),
       if (caption != null) ...[
         const SizedBox(width: 12),
         Text(
           caption,
-          style: const TextStyle(fontSize: 11, color: AppColors.textTertiary),
+          style: TextStyle(fontSize: 11, color: AppColors.textTertiary),
         ),
       ],
     ],
   );
-  Widget _tab(String label, IconData icon, bool selected, VoidCallback onTap) =>
-      Expanded(
-        child: InkWell(
-          onTap: onTap,
-          child: Column(
-            children: [
-              Container(
-                height: 2,
-                width: 28,
-                color: selected ? Colors.white : Colors.transparent,
-              ),
-              const SizedBox(height: 8),
-              Icon(
-                icon,
-                size: 23,
-                color: selected ? Colors.white : AppColors.textTertiary,
-              ),
-              const SizedBox(height: 3),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
-                  color: selected ? Colors.white : AppColors.textTertiary,
-                ),
-              ),
-            ],
+  Widget _tab(
+    String label,
+    IconData icon,
+    bool selected,
+    VoidCallback onTap,
+  ) => Expanded(
+    child: InkWell(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Container(
+            height: 2,
+            width: 28,
+            color: selected ? AppColors.textPrimary : Colors.transparent,
           ),
-        ),
-      );
+          const SizedBox(height: 8),
+          Icon(
+            icon,
+            size: 23,
+            color: selected ? AppColors.textPrimary : AppColors.textTertiary,
+          ),
+          const SizedBox(height: 3),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+              color: selected ? AppColors.textPrimary : AppColors.textTertiary,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 /// 저장된 모든 러닝 경로를 반투명하게 겹쳐 그립니다. 여러 번 달린 길일수록 밝아집니다.
@@ -680,7 +687,7 @@ class _RunningRoutesMapState extends State<_RunningRoutesMap> {
   Widget build(BuildContext context) {
     final segments = _segments;
     if (segments.isEmpty) {
-      return const ColoredBox(
+      return ColoredBox(
         color: AppColors.mapLand,
         child: Align(
           alignment: Alignment(0, -0.25),

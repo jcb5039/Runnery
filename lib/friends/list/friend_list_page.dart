@@ -39,7 +39,7 @@ class _FriendListPageState extends State<FriendListPage> {
   Future<void> _manage(PublicProfile person) async {
     final action = await showModalBottomSheet<_MenuAction>(
       context: context,
-      backgroundColor: AppColors.card,
+      backgroundColor: AppColors.sheet,
       showDragHandle: true,
       builder: (context) => _MenuSheet(person: person),
     );
@@ -56,7 +56,7 @@ class _FriendListPageState extends State<FriendListPage> {
     if (action != _MenuAction.delete) return;
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
-      backgroundColor: AppColors.card,
+      backgroundColor: AppColors.sheet,
       showDragHandle: true,
       builder: (context) => _DeleteSheet(person: person),
     );
@@ -151,7 +151,7 @@ class _FriendListPageState extends State<FriendListPage> {
           Text(
             _store.error ?? '아직 친구가 없어요',
             textAlign: TextAlign.center,
-            style: const TextStyle(color: AppColors.textSecondary),
+            style: TextStyle(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 16),
           FriendPillButton(label: '친구 추가', onPressed: _openAdd),
@@ -178,7 +178,7 @@ class _WeekDistance extends StatelessWidget {
         style: runningNumberStyle(17, weight: FontWeight.w600),
       ),
       const SizedBox(width: 3),
-      const Text(
+      Text(
         'km',
         style: TextStyle(
           fontSize: 11,
@@ -222,7 +222,7 @@ class _MenuSheet extends StatelessWidget {
                     const SizedBox(height: 8),
                     Text(
                       '@${person.id}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
                         color: AppColors.textSecondary,
@@ -234,21 +234,21 @@ class _MenuSheet extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 18),
-          const Divider(height: 1, color: AppColors.divider),
+          Divider(height: 1, color: AppColors.divider),
           _item(
             context,
             Icons.directions_run,
             '함께 달리기 약속 잡기',
             _MenuAction.together,
           ),
-          const Divider(height: 1, color: AppColors.divider),
+          Divider(height: 1, color: AppColors.divider),
           _item(
             context,
             Icons.person_remove_outlined,
             '친구 삭제',
             _MenuAction.delete,
           ),
-          const Divider(height: 1, color: AppColors.divider),
+          Divider(height: 1, color: AppColors.divider),
           const SizedBox(height: 22),
           FriendSheetButton(
             label: '닫기',
@@ -305,7 +305,7 @@ class _DeleteSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          const Text(
+          Text(
             '상대에게 알림은 가지 않아요. 삭제하면 서로의 피드와 랭킹, 목표 비교에서 보이지 않아요.',
             style: TextStyle(
               fontSize: 15,

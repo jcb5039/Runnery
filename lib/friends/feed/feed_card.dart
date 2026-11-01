@@ -67,7 +67,7 @@ class FeedCard extends StatelessWidget {
                         meta,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
                           color: AppColors.textTertiary,
@@ -111,7 +111,7 @@ class FeedCard extends StatelessWidget {
               const SizedBox(height: 10),
               Text(
                 '${item.cheeredBy.join(', ')} 님이 응원했어요',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                   color: AppColors.textTertiary,
@@ -151,7 +151,7 @@ class PostStats extends StatelessWidget {
               style: runningNumberStyle(distanceSize, weight: FontWeight.w600),
             ),
             const SizedBox(width: 4),
-            const Text(
+            Text(
               'km',
               style: TextStyle(
                 fontSize: 13,
@@ -165,7 +165,7 @@ class PostStats extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             details.join(' · '),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w500,
               color: AppColors.textSecondary,
@@ -180,7 +180,7 @@ class PostStats extends StatelessWidget {
               children: [
                 TextSpan(
                   text: '${count.toStringAsFixed(1)}개',
-                  style: const TextStyle(color: AppColors.primary),
+                  style: TextStyle(color: AppColors.primaryText),
                 ),
               ],
             ),
@@ -209,11 +209,7 @@ class RouteShapeThumbnail extends StatelessWidget {
       border: Border.all(color: AppColors.divider),
     ),
     child: shape.length < 2
-        ? const Icon(
-            Icons.directions_run,
-            color: AppColors.textTertiary,
-            size: 28,
-          )
+        ? Icon(Icons.directions_run, color: AppColors.textTertiary, size: 28)
         : CustomPaint(painter: _ShapePainter(shape)),
   );
 }
@@ -332,7 +328,7 @@ class FeedSection extends StatelessWidget {
                     ? '아직 공유한 러닝이 없어요\n러닝 결과 화면에서 친구에게 공유할 수 있어요'
                     : '아직 친구들이 공유한 러닝이 없어요'),
             textAlign: TextAlign.center,
-            style: const TextStyle(color: AppColors.textSecondary),
+            style: TextStyle(color: AppColors.textSecondary),
           ),
         )
       else

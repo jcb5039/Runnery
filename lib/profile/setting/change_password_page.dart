@@ -74,8 +74,8 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
         child: FilledButton(
           onPressed: _saving ? null : _save,
           style: FilledButton.styleFrom(
-            backgroundColor: Colors.white,
-            foregroundColor: Colors.black,
+            backgroundColor: AppColors.textPrimary,
+            foregroundColor: AppColors.onInverse,
             disabledBackgroundColor: AppColors.surfacePressed,
             disabledForegroundColor: AppColors.textTertiary,
             shape: const StadiumBorder(),

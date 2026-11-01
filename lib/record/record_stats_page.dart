@@ -118,12 +118,12 @@ class _RecordStatsViewState extends State<RecordStatsView> {
 
 TextStyle _text(
   double size, {
-  Color color = AppColors.textPrimary,
+  Color? color,
   FontWeight weight = FontWeight.w600,
 }) => TextStyle(
   fontFamily: AppTextStyles.bodyFontFamily,
   fontSize: size,
-  color: color,
+  color: color ?? AppColors.textPrimary,
   fontWeight: weight,
   height: 1.2,
   letterSpacing: size * -.015,
@@ -264,7 +264,7 @@ class _CompareCard extends StatelessWidget {
                     style: _text(
                       20,
                       color: change.highlight
-                          ? AppColors.primary
+                          ? AppColors.primaryText
                           : AppColors.textSecondary,
                       weight: FontWeight.w800,
                     ),
@@ -365,7 +365,7 @@ class _Grid extends StatelessWidget {
   }
 
   Widget _row(Widget left, Widget right, {bool bottomLine = false}) {
-    const line = BorderSide(color: AppColors.divider);
+    final line = BorderSide(color: AppColors.divider);
     return Container(
       decoration: BoxDecoration(
         border: Border(bottom: bottomLine ? line : BorderSide.none),
@@ -378,7 +378,7 @@ class _Grid extends StatelessWidget {
             Expanded(
               child: Container(
                 padding: const EdgeInsets.only(left: 16),
-                decoration: const BoxDecoration(border: Border(left: line)),
+                decoration: BoxDecoration(border: Border(left: line)),
                 child: right,
               ),
             ),
@@ -429,7 +429,7 @@ class _Cell extends StatelessWidget {
           style: _text(
             13,
             color: change.highlight
-                ? AppColors.primary
+                ? AppColors.primaryText
                 : AppColors.textSecondary,
             weight: change.highlight ? FontWeight.w700 : FontWeight.w600,
           ),
@@ -645,7 +645,7 @@ class _ChartPainter extends CustomPainter {
     String text,
     Offset anchor, {
     TextAlign align = TextAlign.center,
-    Color color = AppColors.textTertiary,
+    Color? color,
     double size = 12,
     FontWeight weight = FontWeight.w500,
     double? maxX,
@@ -653,10 +653,15 @@ class _ChartPainter extends CustomPainter {
     final painter = TextPainter(
       text: TextSpan(
         text: text,
-        style: _text(size, color: color, weight: weight).copyWith(
-          letterSpacing: 0,
-          fontFeatures: const [FontFeature.tabularFigures()],
-        ),
+        style:
+            _text(
+              size,
+              color: color ?? AppColors.textTertiary,
+              weight: weight,
+            ).copyWith(
+              letterSpacing: 0,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
