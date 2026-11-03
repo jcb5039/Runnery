@@ -455,7 +455,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                   success: _idChanged && _idError == null
                       ? '사용할 수 있는 형식이에요'
                       : null,
-                  helper: '로그인 아이디 · 영문 소문자, 숫자, _, 4~16자',
+                  helper: '앱에서 보이는 이름 · 영문 소문자, 숫자, _, 4~16자',
                   action: TextInputAction.done,
                   formatters: [
                     FilteringTextInputFormatter.deny(RegExp(r'\s')),

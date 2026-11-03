@@ -82,7 +82,7 @@ class _AccountPageState extends State<AccountPage> {
           const SignupHeading(
             step: 2,
             title: 'ACCOUNT',
-            description: '로그인에 사용할 아이디와 비밀번호를 만들어주세요',
+            description: '앱에서 쓸 아이디와 로그인할 비밀번호를 만들어주세요',
           ),
           const SizedBox(height: 40),
           AuthField(
