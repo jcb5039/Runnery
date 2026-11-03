@@ -1471,9 +1471,9 @@ class _CountdownRingPainter extends CustomPainter {
 
 // ── 공통 조각 ─────────────────────────────────────────
 
-final mapFloatingColor = AppColors.mapButtonBase.withValues(
-  alpha: AppColors.mapButtonOpacity,
-);
+// 화면 모드가 바뀌면 다시 계산해야 해서 값이 아니라 getter입니다.
+Color get mapFloatingColor =>
+    AppColors.mapButtonBase.withValues(alpha: AppColors.mapButtonOpacity);
 
 /// 지도 위 원형 버튼: 지름 44, 아이콘 22.
 class MapCircleButton extends StatelessWidget {

@@ -33,15 +33,24 @@ class AuthFrame extends StatelessWidget {
   final Widget content, actions;
   @override
   Widget build(BuildContext context) => Theme(
+    // 화면 모드를 따릅니다. 색을 따로 정하지 않은 글자(RUNNERY 등)도 바탕과 반대색이 됩니다.
     data: ThemeData(
-      brightness: Brightness.dark,
+      brightness: AppColors.current.brightness,
       fontFamily: AppTextStyles.bodyFontFamily,
       scaffoldBackgroundColor: AppColors.background,
-      colorScheme: ColorScheme.dark(
-        primary: AppColors.textPrimary,
-        surface: AppColors.background,
-        error: AppColors.error,
-      ),
+      colorScheme: AppColors.isDark
+          ? ColorScheme.dark(
+              primary: AppColors.textPrimary,
+              surface: AppColors.background,
+              error: AppColors.error,
+            )
+          : ColorScheme.light(
+              primary: AppColors.textPrimary,
+              onPrimary: AppColors.onInverse,
+              surface: AppColors.background,
+              onSurface: AppColors.textPrimary,
+              error: AppColors.error,
+            ),
     ),
     child: Scaffold(
       backgroundColor: AppColors.background,

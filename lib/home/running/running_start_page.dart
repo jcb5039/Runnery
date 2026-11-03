@@ -1897,7 +1897,7 @@ class _EndConfirmSheet extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(AppSpacing.space3),
             decoration: BoxDecoration(
-              color: AppColors.background,
+              color: AppColors.pick(AppColors.background, AppColors.card),
               borderRadius: AppRadius.thumbnailBorder,
               border: Border.all(color: AppColors.divider),
             ),
