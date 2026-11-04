@@ -37,6 +37,7 @@ abstract final class AppComponentMetrics {
   static const whiteButtonSmallHeight = 52.0;
   static const runningCardButtonHeight = 54.0; // 레이아웃 제약 조건의 별도 값.
   static const runningEndButtonWidth = 120.0;
+  static const runningControlButtonSize = 64.0; // 러닝 중 아래 종료·일시정지 원형 버튼.
   static const textButtonHeight = 40.0; // 최소 터치 영역 44와 차이, 문서 참고.
   static const segmentHeights = <double>[40, 44, 48];
   static const toggleSize = Size(50, 30);
