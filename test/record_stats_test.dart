@@ -67,32 +67,107 @@ void main() {
     },
   );
 
-  test('trend is steady only within one percent', () {
+  test('trend is steady only within ten percent', () {
     final last = _run(DateTime(2026, 10, 13), 10);
     StatsTrend trendFor(double km) =>
         week([last, _run(DateTime(2026, 10, 20), km)]).trend;
-    expect(trendFor(10.1), StatsTrend.steady);
-    expect(trendFor(9.9), StatsTrend.steady);
-    expect(trendFor(10.11), StatsTrend.growing);
-    expect(trendFor(9.89), StatsTrend.falling);
+    expect(trendFor(10.9), StatsTrend.steady);
+    expect(trendFor(9.1), StatsTrend.steady);
+    expect(trendFor(11), StatsTrend.growing);
+    expect(trendFor(9), StatsTrend.falling);
   });
 
-  test('headline follows the trend', () {
+  test('a finished week compares whole weeks in percent', () {
+    // offset -1: 10월 12일 주와 10월 5일 주.
+    final last = _run(DateTime(2026, 10, 11, 23), 10); // 전 주 일요일 밤
+    expect(
+      week([last, _run(DateTime(2026, 10, 12), 15.4)], offset: -1).headline,
+      '전 주보다 54% 더 달렸어요',
+    );
+    expect(
+      week([last, _run(DateTime(2026, 10, 12), 7)], offset: -1).headline,
+      '전 주보다 30% 덜 달렸어요',
+    );
+    expect(
+      week([last, _run(DateTime(2026, 10, 12), 10.5)], offset: -1).headline,
+      '전 주와 거의 비슷해요',
+    );
+    expect(week([last], offset: -1).headline, '전 주보다 100% 덜 달렸어요');
+    expect(week([last], offset: -1).trend, StatsTrend.falling);
+  });
+
+  test('this week headline tells the distance gap so far', () {
     final last = _run(DateTime(2026, 10, 13), 10);
     expect(
       week([last, _run(DateTime(2026, 10, 20), 15.4)]).headline,
-      '지난주보다 54% 더 달렸어요',
+      '지난주 이맘때보다 5.40 km 더 달렸어요',
     );
     expect(
       week([last, _run(DateTime(2026, 10, 20), 7)]).headline,
-      '지난주보다 30% 덜 달렸어요',
+      '지난주 이맘때보다 3.00 km 덜 달렸어요',
     );
     expect(
       week([last, _run(DateTime(2026, 10, 20), 10)]).headline,
-      '지난주와 거의 비슷해요',
+      '지난주 이맘때와 비슷해요',
     );
-    expect(week([last]).headline, '지난주보다 100% 덜 달렸어요');
+    expect(week([last]).headline, '지난주 이맘때보다 10.00 km 덜 달렸어요');
     expect(week([last]).trend, StatsTrend.falling);
+  });
+
+  group('this week compares with last week up to the same day', () {
+    // 지난주: 화 5, 목 5, 토 10 = 20km.
+    final lastWeek = [
+      _run(DateTime(2026, 10, 13, 7), 5),
+      _run(DateTime(2026, 10, 15, 7), 5),
+      _run(DateTime(2026, 10, 17, 7), 10),
+    ];
+    RecordStats at(DateTime now, List<RunningRecord> thisWeek) =>
+        RecordStats.of(
+          [...lastWeek, ...thisWeek],
+          period: StatsPeriod.week,
+          now: now,
+        );
+
+    test('early in the week the gap is divided by the whole last week', () {
+      // 화요일 밤, 오늘 7km → (7 − 5) / 20 = +10%.
+      final tue = at(DateTime(2026, 10, 20, 21), [
+        _run(DateTime(2026, 10, 20, 7), 7),
+      ]);
+      expect(tue.previousSoFarKm, 5);
+      expect(tue.changePercent, closeTo(10, 1e-9));
+      expect(tue.trend, StatsTrend.growing);
+      expect(tue.headline, '지난주 이맘때보다 2.00 km 더 달렸어요');
+      // 아직 지난주 전체보다 적으니 ▼는 강조하지 않습니다.
+      expect(tue.distanceChange.text, '▼ 13.00 km');
+      expect(tue.distanceChange.highlight, isFalse);
+    });
+
+    test('today counts only after running today', () {
+      // 화요일 아침, 아직 안 달림 → 월요일까지만 비교 → 정체.
+      final morning = at(DateTime(2026, 10, 20, 6), const []);
+      expect(morning.previousSoFarKm, 0);
+      expect(morning.trend, StatsTrend.steady);
+      expect(morning.headline, '이번 주엔 아직 달리지 않았어요');
+      // 수요일 아침까지 안 달림 → (0 − 5) / 20 = −25%.
+      final wed = at(DateTime(2026, 10, 21, 6), const []);
+      expect(wed.changePercent, closeTo(-25, 1e-9));
+      expect(wed.trend, StatsTrend.falling);
+      expect(wed.headline, '지난주 이맘때보다 5.00 km 덜 달렸어요');
+    });
+
+    test('a weekend runner stays steady on weekdays', () {
+      final weekend = [
+        _run(DateTime(2026, 10, 17, 7), 10),
+        _run(DateTime(2026, 10, 18, 7), 10),
+      ];
+      final friday = RecordStats.of(
+        weekend,
+        period: StatsPeriod.week,
+        now: DateTime(2026, 10, 23, 21),
+      );
+      expect(friday.previousSoFarKm, 0);
+      expect(friday.trend, StatsTrend.steady);
+    });
   });
 
   test('falling shows a gray down arrow, growing an orange up arrow', () {
@@ -159,7 +234,9 @@ void main() {
     expect(stats.previousDays, 30);
     expect(stats.currentLabel, '10월');
     expect(stats.previousLabel, '9월');
-    expect(stats.headline, '9월보다 100% 더 달렸어요');
+    // 9월 30일 기록은 9월의 '이맘때(23일까지)' 뒤라서 아직 비교하지 않습니다.
+    expect(stats.previousSoFarKm, 0);
+    expect(stats.headline, '지난달 이맘때보다 4.00 km 더 달렸어요');
     expect(stats.currentCumulative.length, 24); // 오늘(24일)까지
     expect(stats.previousCumulative.length, 30);
     expect(stats.previousCumulative.last, 2);
@@ -168,7 +245,7 @@ void main() {
       _run(DateTime(2026, 10, 1), 2),
       _run(DateTime(2026, 9, 1), 2),
     ]);
-    expect(steady.headline, '9월과 거의 비슷해요');
+    expect(steady.headline, '지난달 이맘때와 비슷해요');
     expect(steady.runsChange.text, '9월과 같아요');
   });
 
@@ -181,7 +258,30 @@ void main() {
     expect(stats.previousCumulative.length, 28);
     expect(stats.previousCumulative[26], 0);
     expect(stats.previousCumulative.last, 5);
-    expect(stats.headline, '1월보다 100% 덜 달렸어요');
+    // 2월 10일엔 1월 30일 기록이 아직 비교 대상이 아닙니다.
+    expect(stats.trend, StatsTrend.steady);
+    expect(stats.headline, '이번 달엔 아직 달리지 않았어요');
+  });
+
+  test('a shorter previous month counts to its last day', () {
+    // 2026년 3월 30일에 달림 → 2월(28일)은 끝까지 모두 비교합니다.
+    final stats = month([
+      _run(DateTime(2026, 2, 28), 5),
+      _run(DateTime(2026, 3, 30, 7), 5),
+    ], now: DateTime(2026, 3, 30, 21));
+    expect(stats.previousSoFarKm, 5);
+    expect(stats.trend, StatsTrend.steady);
+  });
+
+  test('a finished month compares whole months', () {
+    final stats = RecordStats.of(
+      [_run(DateTime(2026, 9, 2), 4), _run(DateTime(2026, 8, 31), 2)],
+      period: StatsPeriod.month,
+      now: saturday,
+      offset: -1,
+    );
+    expect(stats.previousSoFarKm, 2);
+    expect(stats.headline, '8월보다 100% 더 달렸어요');
   });
 
   test('January compares with December of the previous year', () {

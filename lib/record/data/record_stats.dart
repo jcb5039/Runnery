@@ -6,8 +6,9 @@ enum StatsPeriod { week, month }
 /// 지난 기간과 비교한 상태.
 enum StatsTrend { growing, steady, falling }
 
-/// 달린 거리 변화가 이 비율(%) 안이면 '정체 중'으로 봅니다.
-const statsSteadyPercent = 1.0;
+/// 달린 거리 변화가 이 비율(%)보다 작으면 '정체 중'으로 봅니다.
+/// 주 3회 달리는 사람이 한 번만 빠져도 거리가 30% 넘게 변하므로 너무 좁게 잡지 않습니다.
+const statsSteadyPercent = 10.0;
 
 /// 기간 하나의 합계.
 class StatsTotals {
@@ -52,6 +53,7 @@ class RecordStats {
     required this.todayIndex,
     required this.current,
     required this.previous,
+    required this.previousSoFarKm,
     required this.currentCumulative,
     required this.previousCumulative,
   });
@@ -74,17 +76,28 @@ class RecordStats {
     var previous = const StatsTotals();
     final daily = List<double>.filled(days, 0);
     final previousDaily = List<double>.filled(previousDays, 0);
+    var ranToday = false;
     for (final r in records) {
       final i = _dayIndex(start, r.startedAt);
       if (i >= 0 && i < days) {
         current += r;
         daily[i] += r.distanceKm;
+        if (i == todayIndex) ranToday = true;
         continue;
       }
       final j = _dayIndex(previousStart, r.startedAt);
       if (j >= 0 && j < previousDays) {
         previous += r;
         previousDaily[j] += r.distanceKm;
+      }
+    }
+    // 이번 기간에서 지난 날 수. 오늘은 이미 달렸을 때만 지난 날로 칩니다.
+    final elapsed = todayIndex == null ? days : todayIndex + (ranToday ? 1 : 0);
+    var previousSoFarKm = previous.km;
+    if (elapsed < days) {
+      previousSoFarKm = 0;
+      for (var j = 0; j < elapsed && j < previousDays; j++) {
+        previousSoFarKm += previousDaily[j];
       }
     }
     return RecordStats._(
@@ -96,6 +109,7 @@ class RecordStats {
       todayIndex: todayIndex,
       current: current,
       previous: previous,
+      previousSoFarKm: previousSoFarKm,
       // 이번 기간은 오늘까지만 선을 긋습니다.
       currentCumulative: _cumulative(
         daily,
@@ -112,6 +126,10 @@ class RecordStats {
   /// 오늘이 이 기간 안이면 몇 번째 날인지(0부터).
   final int? todayIndex;
   final StatsTotals current, previous;
+
+  /// 지난 기간에서 이번 기간의 지금과 같은 시점(같은 요일·같은 날짜)까지 달린 거리.
+  /// 끝난 기간을 볼 때는 지난 기간 전체 거리와 같습니다.
+  final double previousSoFarKm;
 
   /// 날짜별 누적 거리(km). 그래프 가로축은 이번 기간의 [days]일입니다.
   final List<double> currentCumulative, previousCumulative;
@@ -143,28 +161,49 @@ class RecordStats {
   String get _previousWith => '$previousLabel${isWeek ? '와' : '과'}';
 
   /// 달린 거리 변화율(%). 지난 기간에 달리지 않았으면 null.
-  double? get changePercent =>
-      previous.km > 0 ? (current.km - previous.km) / previous.km * 100 : null;
+  ///
+  /// 진행 중인 기간은 남은 날을 지난 기간처럼 달린다고 보고 예상 합계를 비교합니다.
+  /// (지금까지 거리 + 지난 기간의 남은 날 거리 − 지난 기간 전체) ÷ 지난 기간 전체
+  /// = (지금까지 거리 − 지난 기간 같은 시점까지 거리) ÷ 지난 기간 전체.
+  /// 전체 거리로 나누므로 기간 초반의 작은 차이가 크게 튀지 않고, 기간이 끝나면 전체끼리 비교합니다.
+  double? get changePercent => previous.km > 0
+      ? (current.km - previousSoFarKm) / previous.km * 100
+      : null;
 
   StatsTrend get trend {
     final percent = changePercent;
     if (percent == null) {
       return current.km > 0 ? StatsTrend.growing : StatsTrend.steady;
     }
-    if (percent > statsSteadyPercent) return StatsTrend.growing;
-    if (percent < -statsSteadyPercent) return StatsTrend.falling;
+    // 소수 계산 오차로 경계값(예: 10%)이 9.999…%가 되지 않게 아주 조금 여유를 둡니다.
+    if (percent >= statsSteadyPercent - 1e-9) return StatsTrend.growing;
+    if (percent <= -statsSteadyPercent + 1e-9) return StatsTrend.falling;
     return StatsTrend.steady;
+  }
+
+  /// '아직 달리지 않았어요' 문구.
+  String get _notYetText {
+    if (!isWeek) {
+      return isCurrent ? '이번 달엔 아직 달리지 않았어요' : '$currentLabel엔 달리지 않았어요';
+    }
+    return isCurrent ? '이번 주엔 아직 달리지 않았어요' : '이 주엔 달리지 않았어요';
   }
 
   /// 비교 카드 맨 위 한 줄.
   String get headline {
     final percent = changePercent;
     if (percent == null) {
-      if (current.km > 0) return '$previousLabel엔 달리지 않았어요';
-      if (!isWeek) {
-        return isCurrent ? '이번 달엔 아직 달리지 않았어요' : '$currentLabel엔 달리지 않았어요';
-      }
-      return isCurrent ? '이번 주엔 아직 달리지 않았어요' : '이 주엔 달리지 않았어요';
+      return current.km > 0 ? '$previousLabel엔 달리지 않았어요' : _notYetText;
+    }
+    if (isCurrent) {
+      // 아직 기간이 끝나지 않았으니 '몇 % 더 달렸어요' 대신 지금까지의 거리 차이를 말합니다.
+      final when = isWeek ? '지난주 이맘때' : '지난달 이맘때';
+      final diff = (current.km - previousSoFarKm).abs().toStringAsFixed(2);
+      return switch (trend) {
+        StatsTrend.growing => '$when보다 $diff km 더 달렸어요',
+        StatsTrend.falling => '$when보다 $diff km 덜 달렸어요',
+        StatsTrend.steady => current.km > 0 ? '$when와 비슷해요' : _notYetText,
+      };
     }
     final rounded = percent.abs().round();
     return switch (trend) {
@@ -181,7 +220,8 @@ class RecordStats {
     if (diff.abs() < .005) return StatsChange(value);
     return StatsChange(
       '${diff > 0 ? '▲' : '▼'} $value',
-      highlight: trend == StatsTrend.growing,
+      // 진행 중인 기간은 예상으로 성장 중이어도 아직 지난 기간보다 적을 수 있습니다.
+      highlight: diff > 0 && trend == StatsTrend.growing,
     );
   }
 
