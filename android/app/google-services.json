@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1007882678480",
+    "project_id": "runnery-f0faf",
+    "storage_bucket": "runnery-f0faf.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1007882678480:android:99883972485220e56f2ed5",
+        "android_client_info": {
+          "package_name": "com.example.runnery_new"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDNr18ISSdX5ei8rcyxyybZZLMi4wDgOqs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

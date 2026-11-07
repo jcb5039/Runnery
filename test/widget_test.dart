@@ -11,6 +11,8 @@ import 'package:runnery_new/login/sign_up/basic_info.dart';
 import 'package:runnery_new/login/sign_up/account.dart';
 import 'package:runnery_new/login/sign_up/running_info.dart';
 
+import 'support/fake_account_backend.dart';
+
 void main() {
   testWidgets('Startup opens login and replaces the splash route', (
     tester,
@@ -22,7 +24,10 @@ void main() {
     // 계정 파일 읽기는 실제 비동기 I/O라서 runAsync에서 먼저 끝냅니다.
     final dir = Directory.systemTemp.createTempSync('runnery_start_test_');
     addTearDown(() => dir.deleteSync(recursive: true));
-    AccountStore.instance = AccountStore(directory: () async => dir);
+    AccountStore.instance = AccountStore(
+      directory: () async => dir,
+      backend: FakeAccountBackend(),
+    );
     await tester.runAsync(AccountStore.instance.load);
     await tester.pumpWidget(const MyApp());
     expect(find.byType(AppStartPage), findsOneWidget);

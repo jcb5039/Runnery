@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../design_system/app_colors.dart';
+import '../../friends/share/record_visibility_page.dart';
 
 /// 러닝 설정. 기기에 저장되어 앱을 다시 켜도 유지되고, 러닝 시작 화면의 기본값으로 쓰입니다.
 class ProfileSettings extends ChangeNotifier {
@@ -14,13 +15,25 @@ class ProfileSettings extends ChangeNotifier {
   /// 앱 전체가 쓰는 설정. 테스트에서는 새로 만들어 씁니다.
   static final instance = ProfileSettings();
   static const countdownOptions = ['없음', '3초', '5초', '10초'];
+  static const themeModeOptions = ['라이트', '다크', '시스템 설정'];
 
   final Future<Directory> Function() _directory;
   Future<void>? _loading;
 
   bool voice = true;
   bool autoPause = true;
+  bool calorieQuest = true;
   String countdown = '3초';
+
+  /// 화면 모드. 처음에는 라이트이고, '시스템 설정'이면 아이폰 설정을 따릅니다.
+  String themeMode = '라이트';
+
+  /// 지금 써야 할 색. [platform]은 아이폰의 다크 모드 여부입니다.
+  AppPalette paletteFor(Brightness platform) => switch (themeMode) {
+    '다크' => AppColors.dark,
+    '시스템 설정' => platform == Brightness.dark ? AppColors.dark : AppColors.light,
+    _ => AppColors.light,
+  };
 
   /// 카운트다운 초. '없음'이면 0.
   int get countdownSeconds => switch (countdown) {
@@ -42,8 +55,11 @@ class ProfileSettings extends ChangeNotifier {
           jsonDecode(await file.readAsString()) as Map<String, dynamic>;
       voice = json['voice'] as bool? ?? voice;
       autoPause = json['autoPause'] as bool? ?? autoPause;
+      calorieQuest = json['calorieQuest'] as bool? ?? calorieQuest;
       final saved = json['countdown'] as String?;
       if (countdownOptions.contains(saved)) countdown = saved!;
+      final mode = json['themeMode'] as String?;
+      if (themeModeOptions.contains(mode)) themeMode = mode!;
       notifyListeners();
     } catch (_) {
       // 읽지 못하면 기본값으로 둡니다.
@@ -64,7 +80,9 @@ class ProfileSettings extends ChangeNotifier {
         jsonEncode({
           'voice': voice,
           'autoPause': autoPause,
+          'calorieQuest': calorieQuest,
           'countdown': countdown,
+          'themeMode': themeMode,
         }),
         flush: true,
       );
@@ -81,12 +99,16 @@ class ProfileSettingPage extends StatelessWidget {
     required this.settings,
     this.onLogout,
     this.onEditProfile,
+    this.onChangePassword,
   });
   final ProfileSettings settings;
   final VoidCallback? onLogout;
 
   /// '개인 정보 수정'. 없으면 준비 중 안내를 띄웁니다.
   final VoidCallback? onEditProfile;
+
+  /// '비밀번호 변경'. 없으면 준비 중 안내를 띄웁니다.
+  final VoidCallback? onChangePassword;
 
   void _pending(BuildContext context, String label) {
     ScaffoldMessenger.of(context)
@@ -102,7 +124,7 @@ class ProfileSettingPage extends StatelessWidget {
   ) async {
     final value = await showModalBottomSheet<String>(
       context: context,
-      backgroundColor: AppColors.card,
+      backgroundColor: AppColors.sheet,
       showDragHandle: true,
       builder: (context) => SafeArea(
         // 화면이 낮아도 선택지가 잘리지 않도록 스크롤을 허용합니다.
@@ -124,7 +146,7 @@ class ProfileSettingPage extends StatelessWidget {
                   contentPadding: EdgeInsets.zero,
                   title: Text(option),
                   trailing: option == current
-                      ? const Icon(Icons.check, color: Colors.white)
+                      ? Icon(Icons.check, color: AppColors.textPrimary)
                       : null,
                   onTap: () => Navigator.pop(context, option),
                 ),
@@ -176,6 +198,12 @@ class ProfileSettingPage extends StatelessWidget {
                   settings.autoPause,
                   (v) => settings.update(() => settings.autoPause = v),
                 ),
+                _toggle(
+                  '칼로리 퀘스트',
+                  '태운 칼로리를 간식 단계로 보여줘요',
+                  settings.calorieQuest,
+                  (v) => settings.update(() => settings.calorieQuest = v),
+                ),
                 _row(
                   '카운트다운',
                   value: settings.countdown,
@@ -187,55 +215,61 @@ class ProfileSettingPage extends StatelessWidget {
                     (v) => settings.countdown = v,
                   ),
                 ),
-                // 마일 단위·1km 구간 마커·GPS 정확도 선택은 아직 동작하지 않아 항목을 뺐습니다.
+                // 마일 단위는 아직 없어 km만 보여 줍니다.
                 _row('거리 단위', value: 'km', divider: false),
+                // 시안의 '지도'(1 km 구간 표시·GPS 정확도)는 기능을 만들 때 넣습니다.
+                const SizedBox(height: 26),
+                _section('화면'),
+                _row(
+                  '화면 모드',
+                  subtitle: '처음 설치하면 라이트 모드로 시작해요',
+                  value: settings.themeMode,
+                  divider: false,
+                  onTap: () => _choose(
+                    context,
+                    '화면 모드',
+                    settings.themeMode,
+                    ProfileSettings.themeModeOptions,
+                    (v) => settings.themeMode = v,
+                  ),
+                ),
                 const SizedBox(height: 26),
                 _section('계정'),
                 _row(
                   '개인 정보 수정',
                   onTap: onEditProfile ?? () => _pending(context, '개인 정보 수정'),
                 ),
-                // 알림은 보낼 알림이 아직 없어 항목을 뺐습니다.
+                _row(
+                  '기록 공개 설정',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const RecordVisibilityPage(),
+                    ),
+                  ),
+                ),
+                // 시안의 '알림'은 켜고 끌 알림 설정이 생기면 넣습니다.
                 _row(
                   '비밀번호 변경',
                   divider: false,
-                  onTap: () => _pending(context, '비밀번호 변경'),
+                  onTap: onChangePassword ?? () => _pending(context, '비밀번호 변경'),
                 ),
                 const SizedBox(height: 26),
                 _section('앱 정보'),
-                _row('버전', value: '2.0.0'),
-                _row('이용약관', onTap: () => _pending(context, '이용약관')),
-                _row(
-                  '개인정보 처리방침',
-                  divider: false,
-                  onTap: () => _pending(context, '개인정보 처리방침'),
-                ),
+                // 이용약관·개인정보 처리방침은 문서가 준비되면 넣습니다.
+                _row('버전', value: '2.0.0', divider: false),
                 const SizedBox(height: 28),
-                const Divider(color: AppColors.borderDefault, height: 1),
+                Divider(color: AppColors.borderDefault, height: 1),
                 Row(
                   children: [
                     TextButton(
                       onPressed: onLogout ?? () => _pending(context, '로그아웃'),
                       style: TextButton.styleFrom(
                         padding: EdgeInsets.zero,
-                        foregroundColor: Colors.white,
+                        foregroundColor: AppColors.textPrimary,
                       ),
                       child: const Text('로그아웃'),
                     ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(
-                        '|',
-                        style: TextStyle(color: AppColors.borderDefault),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () => _pending(context, '회원 탈퇴'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppColors.textTertiary,
-                      ),
-                      child: const Text('회원 탈퇴'),
-                    ),
+                    // '회원 탈퇴'는 기능을 만들 때 '로그아웃 | 회원 탈퇴'로 넣습니다.
                   ],
                 ),
               ],
@@ -250,7 +284,7 @@ class ProfileSettingPage extends StatelessWidget {
     padding: const EdgeInsets.only(bottom: 6),
     child: Text(
       title,
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 12,
         color: AppColors.textTertiary,
         fontWeight: FontWeight.w600,
@@ -269,7 +303,7 @@ class ProfileSettingPage extends StatelessWidget {
     trailing: Switch(
       value: value,
       onChanged: onChanged,
-      activeTrackColor: Colors.white,
+      activeTrackColor: AppColors.textPrimary,
       activeThumbColor: AppColors.background,
       inactiveTrackColor: AppColors.divider,
       inactiveThumbColor: AppColors.textSecondary,
@@ -288,7 +322,7 @@ class ProfileSettingPage extends StatelessWidget {
   }) => Container(
     decoration: BoxDecoration(
       border: divider
-          ? const Border(bottom: BorderSide(color: AppColors.divider))
+          ? Border(bottom: BorderSide(color: AppColors.divider))
           : null,
     ),
     child: InkWell(
@@ -314,7 +348,7 @@ class ProfileSettingPage extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(
                         subtitle,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           color: AppColors.textTertiary,
                         ),
@@ -330,13 +364,13 @@ class ProfileSettingPage extends StatelessWidget {
                 if (value != null)
                   Text(
                     value,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       color: AppColors.textSecondary,
                     ),
                   ),
                 if (onTap != null)
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.only(left: 8),
                     child: Icon(
                       Icons.chevron_right,

@@ -149,7 +149,7 @@ class _RunningInfoPageState extends State<RunningInfoPage> {
                 (int.tryParse(v ?? '') ?? 0) > 0 ? null : '나이를 숫자로 입력해주세요',
           ),
           const SizedBox(height: 24),
-          const Text('GENDER', style: authLabelStyle),
+          Text('GENDER', style: authLabelStyle),
           const SizedBox(height: 10),
           Row(
             children: ['여성', '남성', '선택 안 함']
@@ -170,11 +170,11 @@ class _RunningInfoPageState extends State<RunningInfoPage> {
                                   ? AppColors.surfacePressed
                                   : Colors.transparent,
                               foregroundColor: gender == value
-                                  ? Colors.white
+                                  ? AppColors.textPrimary
                                   : AppColors.textSecondary,
                               side: BorderSide(
                                 color: gender == value
-                                    ? Colors.white
+                                    ? AppColors.textPrimary
                                     : AppColors.borderDefault,
                               ),
                             ),
@@ -189,7 +189,7 @@ class _RunningInfoPageState extends State<RunningInfoPage> {
                 .toList(),
           ),
           const SizedBox(height: 24),
-          const Row(
+          Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('WEIGHT', style: authLabelStyle),
@@ -224,8 +224,8 @@ class _RunningInfoPageState extends State<RunningInfoPage> {
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                        const TextSpan(text: ' KG', style: authLabelStyle),
-                        const WidgetSpan(
+                        TextSpan(text: ' KG', style: authLabelStyle),
+                        WidgetSpan(
                           alignment: PlaceholderAlignment.middle,
                           child: Padding(
                             padding: EdgeInsets.only(left: 8),
@@ -278,7 +278,7 @@ class _RunningInfoPageState extends State<RunningInfoPage> {
                       child: Container(
                         width: 2,
                         height: 28,
-                        color: Colors.white,
+                        color: AppColors.textPrimary,
                       ),
                     ),
                   ],
@@ -306,7 +306,7 @@ class _WeightRuler extends CustomPainter {
         final label = TextPainter(
           text: TextSpan(
             text: (i / 5).round().toString(),
-            style: const TextStyle(fontSize: 10, color: AppColors.textTertiary),
+            style: TextStyle(fontSize: 10, color: AppColors.textTertiary),
           ),
           textDirection: TextDirection.ltr,
         )..layout();

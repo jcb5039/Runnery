@@ -5,8 +5,11 @@ import '../design_system/app_colors.dart';
 import '../home/main_tabs.dart';
 import 'auth_ui/auth_ui.dart';
 import 'sign_up/basic_info.dart';
+import 'sign_up/verify_email.dart';
 
-/// 이 기기에 저장된 계정(AccountStore)으로 로그인·가입하는 화면. 성공하면 홈으로 이동합니다.
+final _emailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
+
+/// 이메일과 비밀번호로 로그인·가입하는 화면(AccountStore). 성공하면 홈으로 이동합니다.
 class LoginPageV2 extends StatefulWidget {
   const LoginPageV2({super.key, this.store, this.onForgotPassword});
 
@@ -20,12 +23,12 @@ class LoginPageV2 extends StatefulWidget {
 class _LoginPageV2State extends State<LoginPageV2> {
   late final AccountStore _store = widget.store ?? AccountStore.instance;
   final form = GlobalKey<FormState>();
-  final id = TextEditingController();
+  final email = TextEditingController();
   final password = TextEditingController();
   bool busy = false;
   @override
   void dispose() {
-    id.dispose();
+    email.dispose();
     password.dispose();
     super.dispose();
   }
@@ -36,13 +39,24 @@ class _LoginPageV2State extends State<LoginPageV2> {
     MaterialPageRoute(builder: (_) => const MainTabs()),
   );
 
+  /// 로그인·가입이 끝난 뒤: 이메일 인증 전이면 인증 안내, 아니면 홈.
+  void _next() {
+    if (_store.needsVerification) {
+      Navigator.of(context).pushReplacement<void, void>(
+        MaterialPageRoute(builder: (_) => VerifyEmailPage(store: _store)),
+      );
+    } else {
+      _openHome();
+    }
+  }
+
   Future<void> login() async {
     if (!form.currentState!.validate()) return;
     setState(() => busy = true);
     try {
-      await _store.login(id.text.trim(), password.text);
+      await _store.login(email.text.trim(), password.text);
       if (!mounted) return;
-      _openHome();
+      _next();
     } on AuthException catch (e) {
       if (mounted) message(e.message);
     } catch (_) {
@@ -53,41 +67,43 @@ class _LoginPageV2State extends State<LoginPageV2> {
   }
 
   Future<void> register() async {
-    // 계정은 하나만 저장하므로, 새로 가입하면 기존 계정과 러닝 기록이 사라집니다.
-    if (_store.hasAccount) {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('새로 가입할까요?'),
-          content: const Text(
-            '이 기기에는 계정을 하나만 저장해요. 새로 가입하면 기존 계정과 러닝 기록이 모두 삭제돼요.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('취소'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('가입하기'),
-            ),
-          ],
-        ),
-      );
-      if (ok != true || !mounted) return;
-    }
     final data = await Navigator.push<RegistrationData>(
       context,
-      MaterialPageRoute(builder: (_) => const BasicInfoPage()),
+      MaterialPageRoute(builder: (_) => BasicInfoPage(store: _store)),
     );
     if (!mounted || data == null) return;
     setState(() => busy = true);
     try {
       await _store.register(data);
       if (!mounted) return;
-      _openHome();
+      _next();
+    } on AuthException catch (e) {
+      if (mounted) message(e.message);
     } catch (_) {
       if (mounted) message('가입하지 못했어요. 다시 시도해주세요');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  /// 가입한 이메일을 받아 비밀번호 재설정 메일을 보냅니다.
+  Future<void> _forgotPassword() async {
+    final input = await showDialog<String>(
+      context: context,
+      builder: (_) => _ForgotPasswordDialog(initial: email.text.trim()),
+    );
+    if (input == null || !mounted) return;
+    if (!_emailPattern.hasMatch(input)) {
+      return message('올바른 이메일을 입력해주세요');
+    }
+    setState(() => busy = true);
+    try {
+      await _store.sendPasswordReset(input);
+      if (mounted) message('가입된 이메일이라면 재설정 메일을 보냈어요. 메일함을 확인해주세요');
+    } on AuthException catch (e) {
+      if (mounted) message(e.message);
+    } catch (_) {
+      if (mounted) message('메일을 보내지 못했어요. 다시 시도해주세요');
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -126,7 +142,7 @@ class _LoginPageV2State extends State<LoginPageV2> {
           const SizedBox(height: 12),
           Row(
             children: [
-              const Text(
+              Text(
                 '러 너 리',
                 style: TextStyle(
                   fontSize: 12,
@@ -148,11 +164,15 @@ class _LoginPageV2State extends State<LoginPageV2> {
           ),
           const SizedBox(height: 48),
           AuthField(
-            label: 'ID',
-            controller: id,
-            hint: '아이디를 입력하세요',
-            validator: (v) =>
-                v == null || v.trim().isEmpty ? '아이디를 입력해주세요' : null,
+            label: 'EMAIL',
+            controller: email,
+            hint: '이메일을 입력하세요',
+            keyboard: TextInputType.emailAddress,
+            validator: (v) => v == null || v.trim().isEmpty
+                ? '이메일을 입력해주세요'
+                : _emailPattern.hasMatch(v.trim())
+                ? null
+                : '올바른 이메일을 입력해주세요',
           ),
           const SizedBox(height: 24),
           AuthField(
@@ -167,8 +187,9 @@ class _LoginPageV2State extends State<LoginPageV2> {
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-              onPressed:
-                  widget.onForgotPassword ?? () => message('비밀번호 찾기는 준비 중이에요'),
+              onPressed: busy
+                  ? null
+                  : widget.onForgotPassword ?? _forgotPassword,
               style: TextButton.styleFrom(
                 foregroundColor: AppColors.textSecondary,
                 padding: EdgeInsets.zero,
@@ -208,7 +229,7 @@ class _BrandLinesV2 extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.white
+      ..color = AppColors.textPrimary
       ..strokeWidth = 2;
     const widths = [200.0, 230.0, 245.0, 220.0, 285.0];
     for (int i = 0; i < widths.length; i++) {
@@ -220,7 +241,47 @@ class _BrandLinesV2 extends CustomPainter {
   bool shouldRepaint(covariant _BrandLinesV2 oldDelegate) => false;
 }
 
-/// 앱을 켤 때 저장된 로그인 상태를 읽어 홈 또는 로그인 화면을 엽니다.
+/// 비밀번호 재설정 메일을 받을 이메일을 입력받는 창. 닫을 때 입력한 이메일을 돌려줍니다.
+class _ForgotPasswordDialog extends StatefulWidget {
+  const _ForgotPasswordDialog({required this.initial});
+  final String initial;
+  @override
+  State<_ForgotPasswordDialog> createState() => _ForgotPasswordDialogState();
+}
+
+class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
+  late final _controller = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('비밀번호 찾기'),
+    content: TextField(
+      controller: _controller,
+      autofocus: true,
+      keyboardType: TextInputType.emailAddress,
+      decoration: const InputDecoration(hintText: '가입한 이메일을 입력해주세요'),
+      onSubmitted: (v) => Navigator.pop(context, v.trim()),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('취소'),
+      ),
+      TextButton(
+        onPressed: () => Navigator.pop(context, _controller.text.trim()),
+        child: const Text('메일 보내기'),
+      ),
+    ],
+  );
+}
+
+/// 앱을 켤 때 이전 로그인을 이어서 확인해 홈, 이메일 인증, 로그인 화면 중 하나를 엽니다.
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key, this.store});
   final AccountStore? store;
@@ -237,9 +298,11 @@ class _AuthGateState extends State<AuthGate> {
     future: _loaded,
     builder: (context, snapshot) {
       if (snapshot.connectionState != ConnectionState.done) {
-        return const Scaffold(backgroundColor: AppColors.background);
+        return Scaffold(backgroundColor: AppColors.background);
       }
-      return _store.isLoggedIn ? const MainTabs() : LoginPageV2(store: _store);
+      if (_store.isLoggedIn) return const MainTabs();
+      if (_store.needsVerification) return VerifyEmailPage(store: _store);
+      return LoginPageV2(store: _store);
     },
   );
 }

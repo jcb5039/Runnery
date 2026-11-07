@@ -164,10 +164,14 @@ class _HomePageV2State extends State<HomePageV2> with WidgetsBindingObserver {
     final movingSeconds = today.fold<int>(0, (sum, r) => sum + r.movingSeconds);
     final kcal = today.fold<double>(0, (sum, r) => sum + r.energyKcal).round();
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light.copyWith(
-        statusBarColor: Colors.transparent,
-        systemNavigationBarColor: AppColors.background,
-      ),
+      value:
+          (AppColors.isDark
+                  ? SystemUiOverlayStyle.light
+                  : SystemUiOverlayStyle.dark)
+              .copyWith(
+                statusBarColor: Colors.transparent,
+                systemNavigationBarColor: AppColors.background,
+              ),
       child: Scaffold(
         backgroundColor: AppColors.background,
         bottomNavigationBar: widget.showNavigation ? _navigation() : null,
@@ -204,10 +208,8 @@ class _HomePageV2State extends State<HomePageV2> with WidgetsBindingObserver {
                             onPressed: () => _open('내 정보'),
                             style: OutlinedButton.styleFrom(
                               padding: EdgeInsets.zero,
-                              foregroundColor: Colors.white,
-                              side: const BorderSide(
-                                color: AppColors.borderControl,
-                              ),
+                              foregroundColor: AppColors.textPrimary,
+                              side: BorderSide(color: AppColors.borderControl),
                               shape: const CircleBorder(),
                             ),
                             child: Text(
@@ -232,7 +234,7 @@ class _HomePageV2State extends State<HomePageV2> with WidgetsBindingObserver {
                             ),
                           ),
                           const SizedBox(width: 12),
-                          const Expanded(
+                          Expanded(
                             child: Divider(color: AppColors.borderDefault),
                           ),
                           const SizedBox(width: 12),
@@ -246,7 +248,7 @@ class _HomePageV2State extends State<HomePageV2> with WidgetsBindingObserver {
                               child: Text(
                                 _dateLabel(_now),
                                 maxLines: 1,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 12,
                                   color: AppColors.textTertiary,
                                 ),
@@ -321,9 +323,10 @@ class _HomePageV2State extends State<HomePageV2> with WidgetsBindingObserver {
                                 ),
                               ),
                               const SizedBox(width: 10),
-                              const CircleAvatar(
+                              CircleAvatar(
                                 radius: 28,
-                                backgroundColor: AppColors.background,
+                                // 주황 버튼 안 검정 원은 두 모드에서 같습니다.
+                                backgroundColor: const Color(0xFF0B0B0B),
                                 child: Icon(
                                   Icons.play_arrow_rounded,
                                   size: 28,
@@ -346,7 +349,7 @@ class _HomePageV2State extends State<HomePageV2> with WidgetsBindingObserver {
   }
 
   Widget _navigation() => Container(
-    decoration: const BoxDecoration(
+    decoration: BoxDecoration(
       border: Border(top: BorderSide(color: AppColors.divider)),
     ),
     child: SafeArea(
@@ -415,7 +418,7 @@ class _RunSummary extends StatelessWidget {
                         letterSpacing: -4,
                       ),
                     ),
-                    const TextSpan(
+                    TextSpan(
                       text: ' km',
                       style: TextStyle(
                         fontSize: 20,
@@ -433,13 +436,13 @@ class _RunSummary extends StatelessWidget {
           flex: 2,
           child: Container(
             padding: const EdgeInsets.only(left: 16),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(left: BorderSide(color: AppColors.divider)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   '운동 시간',
                   style: TextStyle(
                     fontSize: 12,
@@ -455,7 +458,7 @@ class _RunSummary extends StatelessWidget {
                   ]),
                 ),
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   '소모 칼로리',
                   style: TextStyle(
                     fontSize: 12,
@@ -484,10 +487,7 @@ class _RunSummary extends StatelessWidget {
           TextSpan(text: number),
           TextSpan(
             text: unit,
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppColors.textSecondary,
-            ),
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
           ),
         ],
       ],
@@ -536,7 +536,12 @@ class _RouteCard extends StatelessWidget {
               const _LiveLocationMap()
             else
               ColoredBox(
-                color: r == null ? AppColors.mapLand : const Color(0xFF1E2633),
+                color: r == null
+                    ? AppColors.mapLand
+                    : AppColors.pick(
+                        const Color(0xFF1E2633),
+                        AppColors.mapLand,
+                      ),
                 child: r == null
                     ? Center(
                         child: Padding(
@@ -544,7 +549,7 @@ class _RouteCard extends StatelessWidget {
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(
+                              Icon(
                                 Icons.route,
                                 size: 28,
                                 color: AppColors.textTertiary,
@@ -552,7 +557,7 @@ class _RouteCard extends StatelessWidget {
                               const SizedBox(height: 10),
                               Text(
                                 error ? '기록을 불러오지 못했어요' : '아직 러닝 기록이 없어요',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w700,
                                   color: AppColors.textSecondary,
@@ -561,7 +566,7 @@ class _RouteCard extends StatelessWidget {
                               const SizedBox(height: 4),
                               Text(
                                 error ? '눌러서 다시 시도해요' : '첫 러닝을 시작해 보세요',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 12,
                                   color: AppColors.textTertiary,
                                 ),
@@ -578,14 +583,17 @@ class _RouteCard extends StatelessWidget {
                       ),
               ),
             // 지도 드래그를 막지 않도록 장식 레이어는 터치를 통과시킵니다.
-            const IgnorePointer(
+            IgnorePointer(
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     stops: [.65, 1],
-                    colors: [Colors.transparent, Color(0xEE0B0B0B)],
+                    colors: [
+                      AppColors.background.withAlpha(0),
+                      AppColors.background.withAlpha(0xEE),
+                    ],
                   ),
                 ),
                 child: SizedBox.expand(),
@@ -745,7 +753,7 @@ class _LiveLocationMapState extends State<_LiveLocationMap> {
   void _onPosition(Position p) {
     final first = _position == null;
     setState(() => _position = p);
-    if (!first && _follow) _map.moveTo(LatLng(p.latitude, p.longitude));
+    if (!first && _follow) _map.follow(LatLng(p.latitude, p.longitude));
   }
 
   bool _locating = false;
@@ -780,11 +788,11 @@ class _LiveLocationMapState extends State<_LiveLocationMap> {
         color: AppColors.mapLand,
         child: Center(
           child: _denied
-              ? const Text(
+              ? Text(
                   '위치 권한을 허용하면 내 주변 지도가 보여요',
                   style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
                 )
-              : const Icon(
+              : Icon(
                   Icons.location_searching,
                   size: 24,
                   color: AppColors.textTertiary,
@@ -861,13 +869,13 @@ class _NavItem extends StatelessWidget {
             Container(
               height: 2,
               width: 28,
-              color: selected ? Colors.white : Colors.transparent,
+              color: selected ? AppColors.textPrimary : Colors.transparent,
             ),
             const SizedBox(height: 8),
             Icon(
               icon,
               size: 22,
-              color: selected ? Colors.white : AppColors.textTertiary,
+              color: selected ? AppColors.textPrimary : AppColors.textTertiary,
             ),
             const SizedBox(height: 4),
             Text(
@@ -875,7 +883,9 @@ class _NavItem extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
-                color: selected ? Colors.white : AppColors.textTertiary,
+                color: selected
+                    ? AppColors.textPrimary
+                    : AppColors.textTertiary,
               ),
             ),
           ],
@@ -902,7 +912,7 @@ class _LogoPainter extends CustomPainter {
         ..strokeWidth = 2.4,
     );
     for (final p in [const Offset(4, 19), const Offset(21, 5)]) {
-      canvas.drawCircle(p, 3, Paint()..color = Colors.white);
+      canvas.drawCircle(p, 3, Paint()..color = AppColors.textPrimary);
       canvas.drawCircle(p, 1.3, Paint()..color = AppColors.background);
     }
   }

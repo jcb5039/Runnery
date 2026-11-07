@@ -21,8 +21,11 @@ enum RouteSnapshotChannel {
         let output = args["output"] as? String,
         lats.count == lngs.count, lats.count == starts.count, !lats.isEmpty
       else { return result(FlutterMethodNotImplemented) }
+      // 라이트 모드면 경로 아래 테두리를 흰색으로 그립니다(없으면 다크).
+      let light = args["light"] as? Bool ?? false
       snapshot(
         style: style,
+        light: light,
         points: zip(lats, lngs).map { CLLocationCoordinate2D(latitude: $0, longitude: $1) },
         starts: starts,
         size: CGSize(width: size, height: size),
@@ -34,6 +37,7 @@ enum RouteSnapshotChannel {
 
   private static func snapshot(
     style: String,
+    light: Bool,
     points: [CLLocationCoordinate2D],
     starts: [Bool],
     size: CGSize,
@@ -56,7 +60,7 @@ enum RouteSnapshotChannel {
     snapshotter.start { snapshot, _ in
       running.remove(snapshotter)
       guard let snapshot else { return done(false) }
-      let image = drawRoute(on: snapshot, points: points, starts: starts)
+      let image = drawRoute(on: snapshot, points: points, starts: starts, light: light)
       do {
         try image.pngData()?.write(to: output, options: .atomic)
         done(true)
@@ -89,7 +93,8 @@ enum RouteSnapshotChannel {
   private static func drawRoute(
     on snapshot: MLNMapSnapshot,
     points: [CLLocationCoordinate2D],
-    starts: [Bool]
+    starts: [Bool],
+    light: Bool
   ) -> UIImage {
     let base = snapshot.image
     let format = UIGraphicsImageRendererFormat()
@@ -104,7 +109,7 @@ enum RouteSnapshotChannel {
       }
       path.lineCapStyle = .round
       path.lineJoinStyle = .round
-      UIColor(white: 0, alpha: 0.55).setStroke()
+      (light ? UIColor(white: 1, alpha: 0.9) : UIColor(white: 0, alpha: 0.55)).setStroke()
       path.lineWidth = 5
       path.stroke()
       UIColor(red: 1, green: 0.478, blue: 0, alpha: 1).setStroke()

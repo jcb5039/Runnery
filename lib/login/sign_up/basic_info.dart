@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 
+import '../../account/account_store.dart';
 import '../auth_ui/auth_ui.dart';
 import 'account.dart';
 
 class BasicInfoPage extends StatefulWidget {
-  const BasicInfoPage({super.key});
+  const BasicInfoPage({super.key, this.store});
+
+  /// 기본값은 AccountStore.instance. 다음 화면(아이디 확인)에 그대로 넘깁니다.
+  final AccountStore? store;
   @override
   State<BasicInfoPage> createState() => _BasicInfoPageState();
 }
@@ -25,8 +29,11 @@ class _BasicInfoPageState extends State<BasicInfoPage> {
     final result = await Navigator.push<RegistrationData>(
       context,
       MaterialPageRoute(
-        builder: (_) =>
-            AccountPage(name: name.text.trim(), email: email.text.trim()),
+        builder: (_) => AccountPage(
+          name: name.text.trim(),
+          email: email.text.trim(),
+          store: widget.store,
+        ),
       ),
     );
     if (mounted && result != null) Navigator.pop(context, result);

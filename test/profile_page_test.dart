@@ -45,8 +45,8 @@ void main() {
     expect(tester.takeException(), null);
     await tester.tap(find.byTooltip('설정'));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('회원 탈퇴'), 250);
-    expect(find.text('회원 탈퇴'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('로그아웃'), 250);
+    expect(find.text('로그아웃'), findsOneWidget);
     expect(tester.takeException(), null);
     tester.view.resetPhysicalSize();
     tester.view.resetDevicePixelRatio();

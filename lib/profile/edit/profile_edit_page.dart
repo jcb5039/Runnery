@@ -33,7 +33,6 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
 
   /// 눈금자 1kg = 34px (0.2kg마다 눈금 하나).
   static const _pxPerKg = 34.0;
-  static final _emailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
   static final _idPattern = RegExp(r'^[a-z0-9_]{4,16}$');
 
   late final AccountStore _store = widget.store ?? AccountStore.instance;
@@ -41,6 +40,8 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   late final File? _originalPhoto = _store.photoFile;
 
   late final _name = TextEditingController(text: _original.name);
+
+  /// 로그인에 쓰는 이메일이라 여기서는 보여 주기만 합니다.
   late final _email = TextEditingController(text: _original.email);
   late final _id = TextEditingController(text: _original.id);
   late final _age = TextEditingController(text: '${_original.age}');
@@ -61,7 +62,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   @override
   void initState() {
     super.initState();
-    for (final c in [_name, _email, _id, _age]) {
+    for (final c in [_name, _id, _age]) {
       c.addListener(() => setState(() {}));
     }
     _ruler.addListener(() {
@@ -83,9 +84,6 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
 
   String? get _nameError => _name.text.trim().isEmpty ? '이름을 입력해 주세요' : null;
 
-  String? get _emailError =>
-      _emailPattern.hasMatch(_email.text.trim()) ? null : '이메일 형식을 확인해 주세요';
-
   bool get _idChanged => _id.text.trim() != _original.id;
 
   /// 원래 아이디는 가입 때 규칙이 달랐을 수 있어, 바꿨을 때만 검사합니다.
@@ -101,10 +99,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   }
 
   bool get _valid =>
-      _nameError == null &&
-      _emailError == null &&
-      _idError == null &&
-      _ageError == null;
+      _nameError == null && _idError == null && _ageError == null;
 
   // ── 바뀐 내용 ─────────────────────────────────────
 
@@ -114,8 +109,6 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   List<(String, String, String)> get _textChanges => [
     if (_name.text.trim() != _original.name)
       ('이름', _original.name, _name.text.trim()),
-    if (_email.text.trim() != _original.email)
-      ('이메일', _original.email, _email.text.trim()),
     if (_idChanged) ('아이디', '@${_original.id}', '@${_id.text.trim()}'),
     if (_ageValue != _original.age)
       ('나이', '${_original.age}세', '${_age.text.trim()}세'),
@@ -148,7 +141,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
         _newPhoto != null || (_originalPhoto != null && !_photoRemoved);
     final action = await showModalBottomSheet<_PhotoAction>(
       context: context,
-      backgroundColor: AppColors.card,
+      backgroundColor: AppColors.sheet,
       showDragHandle: true,
       builder: (context) => _PhotoSheet(hasPhoto: hasPhoto),
     );
@@ -191,7 +184,6 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     try {
       await _store.updateProfile(
         name: _name.text,
-        email: _email.text,
         id: _id.text,
         age: _ageValue!,
         gender: _gender,
@@ -200,6 +192,9 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
         removePhoto: _photoRemoved,
       );
       return true;
+    } on AuthException catch (e) {
+      if (mounted) _message(e.message);
+      return false;
     } catch (_) {
       if (mounted) _message('저장하지 못했어요. 다시 시도해 주세요.');
       return false;
@@ -225,7 +220,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   Future<void> _confirmLeave() async {
     final action = await showModalBottomSheet<_LeaveAction>(
       context: context,
-      backgroundColor: AppColors.card,
+      backgroundColor: AppColors.sheet,
       showDragHandle: true,
       isScrollControlled: true,
       builder: (context) => _LeaveSheet(
@@ -365,8 +360,8 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
             child: FilledButton(
               onPressed: canSave ? _confirmLeave : null,
               style: FilledButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.black,
+                backgroundColor: AppColors.textPrimary,
+                foregroundColor: AppColors.onInverse,
                 disabledBackgroundColor: AppColors.surfacePressed,
                 disabledForegroundColor: AppColors.textTertiary,
                 shape: const StadiumBorder(),
@@ -413,7 +408,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                                   width: 2,
                                 ),
                               ),
-                              child: const Icon(
+                              child: Icon(
                                 Icons.photo_camera_outlined,
                                 size: 14,
                                 color: AppColors.textPrimary,
@@ -429,7 +424,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                 Center(
                   child: GestureDetector(
                     onTap: _changePhoto,
-                    child: const Text(
+                    child: Text(
                       '사진 변경',
                       style: TextStyle(
                         fontSize: 12,
@@ -449,9 +444,8 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                 _Field(
                   label: '이메일',
                   controller: _email,
-                  error: _emailError,
-                  keyboard: TextInputType.emailAddress,
-                  action: TextInputAction.done,
+                  enabled: false,
+                  helper: '로그인에 쓰는 이메일은 바꿀 수 없어요',
                 ),
                 _Field(
                   label: '아이디',
@@ -459,9 +453,9 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                   prefix: '@',
                   error: _idError,
                   success: _idChanged && _idError == null
-                      ? '사용할 수 있는 아이디예요'
+                      ? '사용할 수 있는 형식이에요'
                       : null,
-                  helper: '로그인 아이디 · 영문 소문자, 숫자, _, 4~16자',
+                  helper: '앱에서 보이는 이름 · 영문 소문자, 숫자, _, 4~16자',
                   action: TextInputAction.done,
                   formatters: [
                     FilteringTextInputFormatter.deny(RegExp(r'\s')),
@@ -502,11 +496,11 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                                     ? AppColors.surfacePressed
                                     : Colors.transparent,
                                 foregroundColor: _gender == g
-                                    ? Colors.white
+                                    ? AppColors.textPrimary
                                     : AppColors.textSecondary,
                                 side: BorderSide(
                                   color: _gender == g
-                                      ? Colors.white
+                                      ? AppColors.textPrimary
                                       : AppColors.borderDefault,
                                 ),
                               ),
@@ -543,7 +537,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                             children: [
                               TextSpan(
                                 text: _weight.toStringAsFixed(1),
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontFamily: 'Archivo',
                                   fontVariations: [FontVariation('wdth', 75)],
                                   fontSize: 48,
@@ -551,7 +545,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                                   color: AppColors.textPrimary,
                                 ),
                               ),
-                              const TextSpan(
+                              TextSpan(
                                 text: ' kg',
                                 style: TextStyle(
                                   fontSize: 13,
@@ -598,12 +592,12 @@ class _Section extends StatelessWidget {
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
         ),
         const SizedBox(width: 12),
-        const Expanded(child: Divider(color: AppColors.divider, height: 1)),
+        Expanded(child: Divider(color: AppColors.divider, height: 1)),
         if (caption != null) ...[
           const SizedBox(width: 12),
           Text(
             caption!,
-            style: const TextStyle(fontSize: 11, color: AppColors.textTertiary),
+            style: TextStyle(fontSize: 11, color: AppColors.textTertiary),
           ),
         ],
       ],
@@ -618,7 +612,7 @@ class _Label extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text(
     text,
-    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+    style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
   );
 }
 
@@ -635,10 +629,12 @@ class _Field extends StatelessWidget {
     this.keyboard,
     this.action,
     this.formatters,
+    this.enabled = true,
   });
 
   final String label;
   final TextEditingController controller;
+  final bool enabled;
   final String? error, success, helper, prefix, suffix;
   final TextInputType? keyboard;
   final TextInputAction? action;
@@ -656,21 +652,25 @@ class _Field extends StatelessWidget {
           _Label(label),
           TextField(
             controller: controller,
+            enabled: enabled,
             keyboardType: keyboard,
             textInputAction: action,
             inputFormatters: formatters,
-            style: const TextStyle(fontSize: 16, color: AppColors.textPrimary),
+            style: TextStyle(
+              fontSize: 16,
+              color: enabled ? AppColors.textPrimary : AppColors.textSecondary,
+            ),
             cursorColor: AppColors.textPrimary,
             decoration: InputDecoration(
               isDense: true,
               contentPadding: const EdgeInsets.symmetric(vertical: 12),
               prefixText: prefix,
-              prefixStyle: const TextStyle(
+              prefixStyle: TextStyle(
                 fontSize: 16,
                 color: AppColors.textSecondary,
               ),
               suffixText: suffix,
-              suffixStyle: const TextStyle(
+              suffixStyle: TextStyle(
                 fontSize: 13,
                 color: AppColors.textSecondary,
               ),
@@ -679,7 +679,9 @@ class _Field extends StatelessWidget {
               ),
               focusedBorder: UnderlineInputBorder(
                 borderSide: BorderSide(
-                  color: error != null ? AppColors.error : Colors.white,
+                  color: error != null
+                      ? AppColors.error
+                      : AppColors.textPrimary,
                 ),
               ),
             ),
@@ -766,7 +768,11 @@ class _WeightRuler extends StatelessWidget {
               ),
             ),
             IgnorePointer(
-              child: Container(width: 2, height: 28, color: Colors.white),
+              child: Container(
+                width: 2,
+                height: 28,
+                color: AppColors.textPrimary,
+              ),
             ),
           ],
         ),
@@ -797,7 +803,7 @@ class _RulerPainter extends CustomPainter {
         final label = TextPainter(
           text: TextSpan(
             text: (min + i / 5).round().toString(),
-            style: const TextStyle(fontSize: 10, color: AppColors.textTertiary),
+            style: TextStyle(fontSize: 10, color: AppColors.textTertiary),
           ),
           textDirection: TextDirection.ltr,
         )..layout();
@@ -837,7 +843,7 @@ class _PhotoSheet extends StatelessWidget {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               '내 정보 화면에 보여요.',
               style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
             ),
@@ -853,8 +859,8 @@ class _PhotoSheet extends StatelessWidget {
               child: OutlinedButton(
                 onPressed: () => Navigator.pop(context),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  side: const BorderSide(color: AppColors.borderDefault),
+                  foregroundColor: AppColors.textPrimary,
+                  side: BorderSide(color: AppColors.borderDefault),
                   shape: const StadiumBorder(),
                 ),
                 child: const Text('취소'),
@@ -887,7 +893,7 @@ class _LeaveSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget arrow() => const Padding(
+    Widget arrow() => Padding(
       padding: EdgeInsets.symmetric(horizontal: 6),
       child: Icon(Icons.chevron_right, size: 14, color: AppColors.textTertiary),
     );
@@ -897,10 +903,7 @@ class _LeaveSheet extends StatelessWidget {
         children: [
           Text(
             label,
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppColors.textSecondary,
-            ),
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -946,7 +949,7 @@ class _LeaveSheet extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     '바뀐 내용',
                     style: TextStyle(
                       fontSize: 11,
@@ -961,7 +964,7 @@ class _LeaveSheet extends StatelessWidget {
                       Text(
                         before,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           color: AppColors.textSecondary,
                         ),
@@ -986,8 +989,8 @@ class _LeaveSheet extends StatelessWidget {
                     ? () => Navigator.pop(context, _LeaveAction.save)
                     : null,
                 style: FilledButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: Colors.black,
+                  backgroundColor: AppColors.textPrimary,
+                  foregroundColor: AppColors.onInverse,
                   disabledBackgroundColor: AppColors.surfacePressed,
                   disabledForegroundColor: AppColors.textTertiary,
                   shape: const StadiumBorder(),
@@ -1005,8 +1008,8 @@ class _LeaveSheet extends StatelessWidget {
                 onPressed: () =>
                     Navigator.pop(context, _LeaveAction.keepEditing),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  side: const BorderSide(color: AppColors.borderDefault),
+                  foregroundColor: AppColors.textPrimary,
+                  side: BorderSide(color: AppColors.borderDefault),
                   shape: const StadiumBorder(),
                 ),
                 child: const Text('계속 수정하기'),
@@ -1016,7 +1019,7 @@ class _LeaveSheet extends StatelessWidget {
             Center(
               child: TextButton(
                 onPressed: () => Navigator.pop(context, _LeaveAction.discard),
-                child: const Text(
+                child: Text(
                   '저장하지 않고 나가기',
                   style: TextStyle(
                     fontSize: 12,

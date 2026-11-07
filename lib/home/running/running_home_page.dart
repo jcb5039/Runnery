@@ -34,6 +34,7 @@ class RunningStartOptions {
     required this.mode,
     required this.voiceGuide,
     required this.autoPause,
+    this.calorieQuest = true,
     this.goalKm = RunningGoal.defaultKm,
     this.goalMinutes = RunningGoal.defaultMinutes,
   });
@@ -41,6 +42,9 @@ class RunningStartOptions {
   final RunningMode mode;
   final bool voiceGuide;
   final bool autoPause;
+
+  /// 러닝 카드에 칼로리 퀘스트 줄을 보여 주고 단계 달성 창을 띄웁니다.
+  final bool calorieQuest;
 
   /// 거리 목표(km). [RunningMode.distanceGoal]일 때만 씁니다.
   final double goalKm;
@@ -116,13 +120,35 @@ enum RunningLocationState {
 /// 러닝 화면이 '화면이 꺼져도 받기' 설정으로 통로를 새로 열게 합니다.
 final runningLocationActive = ValueNotifier<bool>(false);
 
+/// 위치 서비스와 권한을 확인하고, 아직 묻지 않았으면 권한을 요청합니다.
+/// 러닝 시작 화면과 함께 달리기 대기실이 함께 씁니다.
+Future<RunningLocationState> checkRunningLocation() async {
+  if (!await Geolocator.isLocationServiceEnabled()) {
+    return RunningLocationState.serviceDisabled;
+  }
+  var permission = await Geolocator.checkPermission();
+  if (permission == LocationPermission.denied) {
+    permission = await Geolocator.requestPermission();
+  }
+  return switch (permission) {
+    LocationPermission.whileInUse ||
+    LocationPermission.always => RunningLocationState.ready,
+    LocationPermission.deniedForever => RunningLocationState.deniedForever,
+    LocationPermission.denied ||
+    LocationPermission.unableToDetermine => RunningLocationState.denied,
+  };
+}
+
 /// 러닝용 GPS 설정. 1초 간격.
 /// [background]가 true면 화면이 꺼지거나 다른 앱으로 가도 위치를 계속 받습니다(러닝 중에만).
 LocationSettings runningLocationSettings({bool background = false}) =>
     switch (defaultTargetPlatform) {
       TargetPlatform.iOS => AppleSettings(
-        // bestForNavigation은 내비게이션용(충전 중 권장)이라 배터리를 많이 씁니다. 러닝에는 best로 충분합니다.
-        accuracy: LocationAccuracy.best,
+        // 러닝 중에는 움직임 센서까지 함께 써서 경로를 부드럽게 다듬는 내비게이션용 정확도를 씁니다.
+        // best로 낮췄더니 경로가 지그재그로 흔들렸습니다. 다른 화면은 배터리를 아끼려고 best를 씁니다.
+        accuracy: background
+            ? LocationAccuracy.bestForNavigation
+            : LocationAccuracy.best,
         activityType: ActivityType.fitness,
         pauseLocationUpdatesAutomatically: false,
         allowBackgroundLocationUpdates: background,
@@ -188,22 +214,7 @@ class _RunningHomePageState extends State<RunningHomePage> {
 
   // ── 위치 ────────────────────────────────────────────
 
-  Future<RunningLocationState> _checkLocation() async {
-    if (!await Geolocator.isLocationServiceEnabled()) {
-      return RunningLocationState.serviceDisabled;
-    }
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-    return switch (permission) {
-      LocationPermission.whileInUse ||
-      LocationPermission.always => RunningLocationState.ready,
-      LocationPermission.deniedForever => RunningLocationState.deniedForever,
-      LocationPermission.denied ||
-      LocationPermission.unableToDetermine => RunningLocationState.denied,
-    };
-  }
+  Future<RunningLocationState> _checkLocation() => checkRunningLocation();
 
   Future<void> _startLocation() async {
     final state = await _checkLocation();
@@ -219,7 +230,7 @@ class _RunningHomePageState extends State<RunningHomePage> {
   void _onPosition(Position position) {
     setState(() => _position = position);
     final point = LatLng(position.latitude, position.longitude);
-    if (_followUser) _map.moveTo(point);
+    if (_followUser) _map.follow(point);
     _updatePlaceName(point);
   }
 
@@ -288,6 +299,7 @@ class _RunningHomePageState extends State<RunningHomePage> {
       mode: _mode,
       voiceGuide: _voiceGuide,
       autoPause: _autoPause,
+      calorieQuest: _settings.calorieQuest,
       goalKm: _goalKm,
       goalMinutes: _goalMinutes,
     );
@@ -326,7 +338,7 @@ class _RunningHomePageState extends State<RunningHomePage> {
     final openSettings = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppColors.card,
+        backgroundColor: AppColors.sheet,
         title: Text(serviceOff ? '위치 서비스가 꺼져 있어요' : '위치 권한이 필요해요'),
         content: Text(
           serviceOff
@@ -361,7 +373,9 @@ class _RunningHomePageState extends State<RunningHomePage> {
         : LatLng(position.latitude, position.longitude);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light,
+      value: (AppColors.isDark
+          ? SystemUiOverlayStyle.light
+          : SystemUiOverlayStyle.dark),
       child: Scaffold(
         backgroundColor: AppColors.mapLand,
         // 시트·버튼을 지도 children에 두면 그 위의 드래그가 지도를 움직이므로 위에 겹칩니다.
@@ -388,7 +402,7 @@ class _RunningHomePageState extends State<RunningHomePage> {
               switchInCurve: Curves.linear,
               switchOutCurve: Curves.linear,
               child: _countingDown
-                  ? _CountdownView(
+                  ? RunningCountdownView(
                       key: const ValueKey('countdown'),
                       voiceGuide: _voiceGuide,
                       seconds: _settings.countdownSeconds,
@@ -570,13 +584,13 @@ class MapScaleBar extends StatelessWidget {
       children: [
         Text(
           label,
-          style: const TextStyle(fontSize: 10, color: AppColors.textPrimary),
+          style: TextStyle(fontSize: 10, color: AppColors.textPrimary),
         ),
         const SizedBox(height: 2),
         CustomPaint(size: Size(width, 5), painter: _ScaleBarPainter()),
         const SizedBox(height: 4),
         // 지도 데이터 이용 조건의 출처 표기.
-        const Text(
+        Text(
           '© OpenFreeMap © OpenMapTiles © OpenStreetMap',
           style: TextStyle(fontSize: 8, color: AppColors.textTertiary),
         ),
@@ -834,7 +848,7 @@ class _StartSheetState extends State<_StartSheet> {
         children: [
           // 키패드를 여는 동안에는 숫자·시작하기·키패드만 남겨 작은 화면에서도 가려지지 않게 합니다.
           if (!editing) ...[
-            const Text(
+            Text(
               '어떻게 달릴까요?',
               style: TextStyle(
                 fontSize: 20,
@@ -851,17 +865,11 @@ class _StartSheetState extends State<_StartSheet> {
           if (widget.mode != RunningMode.free) _goal(),
           const SizedBox(height: AppSpacing.space3),
           if (notice != null)
-            Text(
-              notice,
-              style: const TextStyle(fontSize: 12, color: AppColors.error),
-            )
+            Text(notice, style: TextStyle(fontSize: 12, color: AppColors.error))
           else if (!editing)
             Text(
               _description,
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-              ),
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
             ),
           if (!editing) ...[
             const SizedBox(height: AppSpacing.space3),
@@ -964,7 +972,7 @@ class _GoalPicker extends StatelessWidget {
           color: AppColors.textPrimary,
           disabledColor: AppColors.textTertiary,
           style: IconButton.styleFrom(
-            side: const BorderSide(color: AppColors.borderDefault),
+            side: BorderSide(color: AppColors.borderDefault),
           ),
         );
 
@@ -1014,7 +1022,7 @@ class _GoalPicker extends StatelessWidget {
                                   const SizedBox(width: 6),
                                   Text(
                                     unitShort!,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 20,
                                       fontWeight: FontWeight.w700,
                                       color: AppColors.textSecondary,
@@ -1035,7 +1043,7 @@ class _GoalPicker extends StatelessWidget {
                           const SizedBox(height: AppSpacing.space2),
                           Text(
                             unit,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 13,
                               color: AppColors.textSecondary,
                             ),
@@ -1085,7 +1093,7 @@ class _GoalPicker extends StatelessWidget {
                                 ? FontWeight.w700
                                 : FontWeight.w500,
                             color: selected
-                                ? Colors.black
+                                ? AppColors.onInverse
                                 : AppColors.textSecondary,
                           ),
                         ),
@@ -1126,14 +1134,14 @@ class _GoalKeypad extends StatelessWidget {
                 height: 48,
                 child: Center(
                   child: label == '⌫'
-                      ? const Icon(
+                      ? Icon(
                           Icons.backspace_outlined,
                           color: AppColors.textPrimary,
                           semanticLabel: '지우기',
                         )
                       : Text(
                           label,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.w600,
                             color: AppColors.textPrimary,
@@ -1152,7 +1160,7 @@ class _GoalKeypad extends StatelessWidget {
             alignment: Alignment.centerRight,
             child: TextButton(
               onPressed: onDone,
-              child: const Text(
+              child: Text(
                 '완료',
                 style: TextStyle(
                   fontSize: 15,
@@ -1221,7 +1229,7 @@ class _ModeSegment extends StatelessWidget {
                           ? FontWeight.w700
                           : FontWeight.w500,
                       color: mode == selected
-                          ? Colors.black
+                          ? AppColors.onInverse
                           : AppColors.textSecondary,
                     ),
                   ),
@@ -1237,27 +1245,36 @@ class _ModeSegment extends StatelessWidget {
 // ── 카운트다운 ────────────────────────────────────────
 
 /// 05-1 카운트다운. 3·2·1 후 자동 시작, 화면을 누르면 바로 시작합니다.
-class _CountdownView extends StatefulWidget {
-  const _CountdownView({
+/// 함께 달리기 대기실도 같은 화면을 씁니다(누르면 한 사람만 먼저 출발하므로 [skippable]을 끕니다).
+class RunningCountdownView extends StatefulWidget {
+  const RunningCountdownView({
     super.key,
-    required this.voiceGuide,
     required this.seconds,
-    required this.position,
     required this.onFinished,
+    this.voiceGuide,
+    this.position,
+    this.title = '곧 러닝을 시작해요',
+    this.subtitle = '화면을 누르면 바로 시작돼요',
+    this.skippable = true,
   });
 
-  final bool voiceGuide;
+  /// 위쪽 음성 안내 칩. null이면 음성·GPS 칩을 함께 숨깁니다.
+  final bool? voiceGuide;
 
   /// 설정의 카운트다운 초(3·5·10).
   final int seconds;
   final Position? position;
   final VoidCallback onFinished;
+  final String title, subtitle;
+
+  /// 화면을 눌러 바로 시작할 수 있는지.
+  final bool skippable;
 
   @override
-  State<_CountdownView> createState() => _CountdownViewState();
+  State<RunningCountdownView> createState() => _CountdownViewState();
 }
 
-class _CountdownViewState extends State<_CountdownView>
+class _CountdownViewState extends State<RunningCountdownView>
     with SingleTickerProviderStateMixin {
   late final _seconds = widget.seconds;
 
@@ -1304,35 +1321,37 @@ class _CountdownViewState extends State<_CountdownView>
   Widget build(BuildContext context) {
     final ringSize = math.min(MediaQuery.sizeOf(context).width * 0.66, 280.0);
 
+    final voiceGuide = widget.voiceGuide;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: _finish,
+      onTap: widget.skippable ? _finish : null,
       child: ColoredBox(
         color: AppColors.background.withValues(alpha: 0.55),
         child: SafeArea(
           child: Stack(
             children: [
-              Positioned(
-                top: AppSpacing.topControlSafeAreaGapMax,
-                left: AppSpacing.space4,
-                right: AppSpacing.space4,
-                child: Row(
-                  children: [
-                    StatusChip(
-                      label: widget.voiceGuide ? '음성 안내 켜짐' : '음성 안내 꺼짐',
-                      icon: widget.voiceGuide
-                          ? Icons.volume_up_outlined
-                          : Icons.volume_off_outlined,
-                    ),
-                    const Spacer(),
-                    GpsStatusChip(
-                      locationState: RunningLocationState.ready,
-                      position: widget.position,
-                      compact: true,
-                    ),
-                  ],
+              if (voiceGuide != null)
+                Positioned(
+                  top: AppSpacing.topControlSafeAreaGapMax,
+                  left: AppSpacing.space4,
+                  right: AppSpacing.space4,
+                  child: Row(
+                    children: [
+                      StatusChip(
+                        label: voiceGuide ? '음성 안내 켜짐' : '음성 안내 꺼짐',
+                        icon: voiceGuide
+                            ? Icons.volume_up_outlined
+                            : Icons.volume_off_outlined,
+                      ),
+                      const Spacer(),
+                      GpsStatusChip(
+                        locationState: RunningLocationState.ready,
+                        position: widget.position,
+                        compact: true,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
               Align(
                 alignment: const Alignment(0, -0.12),
                 child: AnimatedBuilder(
@@ -1383,22 +1402,22 @@ class _CountdownViewState extends State<_CountdownView>
                   },
                 ),
               ),
-              const Align(
-                alignment: Alignment(0, 0.5),
+              Align(
+                alignment: const Alignment(0, 0.5),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      '곧 러닝을 시작해요',
+                      widget.title,
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w700,
                         color: AppColors.textPrimary,
                       ),
                     ),
-                    SizedBox(height: AppSpacing.space2),
+                    const SizedBox(height: AppSpacing.space2),
                     Text(
-                      '화면을 누르면 바로 시작돼요',
+                      widget.subtitle,
                       style: TextStyle(
                         fontSize: 13,
                         color: AppColors.textSecondary,
@@ -1452,9 +1471,9 @@ class _CountdownRingPainter extends CustomPainter {
 
 // ── 공통 조각 ─────────────────────────────────────────
 
-final mapFloatingColor = AppColors.mapButtonBase.withValues(
-  alpha: AppColors.mapButtonOpacity,
-);
+// 화면 모드가 바뀌면 다시 계산해야 해서 값이 아니라 getter입니다.
+Color get mapFloatingColor =>
+    AppColors.mapButtonBase.withValues(alpha: AppColors.mapButtonOpacity);
 
 /// 지도 위 원형 버튼: 지름 44, 아이콘 22.
 class MapCircleButton extends StatelessWidget {
@@ -1475,9 +1494,7 @@ class MapCircleButton extends StatelessWidget {
       message: tooltip,
       child: Material(
         color: mapFloatingColor,
-        shape: const CircleBorder(
-          side: BorderSide(color: AppColors.mapButtonBorder),
-        ),
+        shape: CircleBorder(side: BorderSide(color: AppColors.mapButtonBorder)),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onPressed,
@@ -1543,7 +1560,7 @@ class StatusChip extends StatelessWidget {
               if (leading != null || icon != null) const SizedBox(width: 6),
               Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: AppColors.textPrimary,
@@ -1659,27 +1676,28 @@ class PrimaryButton extends StatelessWidget {
 // ═════════════════════════════════════════════════════
 
 /// 지도 스타일 색. 스타일 JSON에 넣기 위해 HEX 문자열로 둡니다.
+/// 라이트: 밝은 회색 땅, 흰 길(회색 테두리), 옅은 녹색 공원, 하늘색 강, 진한 회색 지명에 흰 테두리.
 abstract final class MapPalette {
-  static const land = '#1D2331';
-  static const building = '#28303F';
-  static const tower = '#2E3749';
-  static const apartment = '#2C3345';
-  static const park = '#1C4A31';
-  static const water = '#153A5C';
-  static const expressway = '#5C6882';
-  static const arterial = '#4A5467';
-  static const collector = '#3A4354';
-  static const local = '#2F3746';
-  static const alley = '#272E3A';
-  static const casing = '#141922';
-  static const subway5 = '#9B80F2';
-  static const subway9 = '#D6AF55';
-  static const labelDistrict = '#DCE2EA';
-  static const labelPlace = '#CAD2DC';
-  static const labelDong = '#A9B4C2';
-  static const labelRoad = '#909BAB';
-  static const labelWater = '#7BAFDD';
-  static const labelHalo = '#181D26';
+  static String get land => AppColors.isDark ? '#1D2331' : '#EEF1F4';
+  static String get building => AppColors.isDark ? '#28303F' : '#DEE3E9';
+  static String get tower => AppColors.isDark ? '#2E3749' : '#D7DDE4';
+  static String get apartment => AppColors.isDark ? '#2C3345' : '#DADFE6';
+  static String get park => AppColors.isDark ? '#1C4A31' : '#D4EBDA';
+  static String get water => AppColors.isDark ? '#153A5C' : '#C4DDF3';
+  static String get expressway => AppColors.isDark ? '#5C6882' : '#FFFFFF';
+  static String get arterial => AppColors.isDark ? '#4A5467' : '#FFFFFF';
+  static String get collector => AppColors.isDark ? '#3A4354' : '#FFFFFF';
+  static String get local => AppColors.isDark ? '#2F3746' : '#FFFFFF';
+  static String get alley => AppColors.isDark ? '#272E3A' : '#F7F8FA';
+  static String get casing => AppColors.isDark ? '#141922' : '#D2D8DF';
+  static String get subway5 => AppColors.isDark ? '#9B80F2' : '#9B80F2';
+  static String get subway9 => AppColors.isDark ? '#D6AF55' : '#D6AF55';
+  static String get labelDistrict => AppColors.isDark ? '#DCE2EA' : '#3A434C';
+  static String get labelPlace => AppColors.isDark ? '#CAD2DC' : '#4F5761';
+  static String get labelDong => AppColors.isDark ? '#A9B4C2' : '#646D77';
+  static String get labelRoad => AppColors.isDark ? '#909BAB' : '#7D8791';
+  static String get labelWater => AppColors.isDark ? '#7BAFDD' : '#4A7FB5';
+  static String get labelHalo => AppColors.isDark ? '#181D26' : '#FFFFFF';
 
   static const poiPark = Color(0xFF3E9A5C);
   static const poiSchool = Color(0xFF4A7FC4);
@@ -1719,7 +1737,7 @@ class MapMarker {
   final MapMarkerKind kind;
 }
 
-enum MapLabelKind { start, finish, current }
+enum MapLabelKind { start, finish, current, friend }
 
 /// 지명 칩: '▶ 출발 여의나루역', '■ 도착 여의도공원', '현재 위치 여의나루역 2번 출구'.
 class MapLabel {
@@ -1737,6 +1755,14 @@ class MapUserLocation {
   const MapUserLocation(this.point, this.accuracy);
   final LatLng point;
   final double accuracy;
+}
+
+/// 함께 달리는 친구: 흰 점과 이름 칩, 지나간 길(흰 선)로 그립니다. 주황은 내 경로에만 씁니다.
+class MapFriend {
+  const MapFriend(this.point, this.name, {this.route = const []});
+  final LatLng point;
+  final String name;
+  final List<LatLng> route;
 }
 
 /// 축척 계산에 필요한 카메라 값.
@@ -1761,7 +1787,23 @@ class RunneryMapController extends ValueNotifier<MapViewport?> {
     );
   }
 
+  /// '내 위치 따라가기'용. 마지막으로 따라간 곳에서 [followMeters] 넘게 움직였을 때만 지도를 옮깁니다.
+  /// GPS는 서 있어도 몇 m씩 흔들려서, 매번 따라가면 지도가 1초마다 움찔하며 글자가 깜빡여 보였습니다.
+  static const followMeters = 10.0;
+  LatLng? _followed;
+
+  Future<void> follow(LatLng target) async {
+    final last = _followed;
+    if (last != null &&
+        _RunneryMapState._metersBetween(last, target) < followMeters) {
+      return;
+    }
+    _followed = target;
+    await moveTo(target);
+  }
+
   Future<void> moveTo(LatLng target, {double? zoom}) async {
+    _followed = target;
     await _map?.animateCamera(
       zoom == null
           ? CameraUpdate.newLatLng(target)
@@ -1793,10 +1835,16 @@ class RunneryMap extends StatefulWidget {
     this.markers = const [],
     this.labels = const [],
     this.userLocation,
+    this.friends = const [],
     this.fitPoints = const [],
     this.fitPadding = EdgeInsets.zero,
     this.onUserGesture,
+    this.routeUpdateInterval = Duration.zero,
   });
+
+  /// 경로를 지도에 다시 보내는 최소 간격. 지도 데이터를 바꿀 때마다 지도 엔진이 글자 배치를 다시 해서
+  /// 지명·도로명이 깜빡이므로, 러닝 중처럼 경로가 계속 늘어날 때는 간격을 둡니다.
+  final Duration routeUpdateInterval;
 
   final RunneryMapController controller;
   final LatLng initialCenter;
@@ -1816,6 +1864,9 @@ class RunneryMap extends StatefulWidget {
   final List<MapLabel> labels;
   final MapUserLocation? userLocation;
 
+  /// 함께 달리는 친구들. 내 경로와 같은 간격([routeUpdateInterval])으로 다시 그립니다.
+  final List<MapFriend> friends;
+
   /// 처음 한 번 이 좌표들이 모두 보이게 맞춥니다.
   final List<LatLng> fitPoints;
   final EdgeInsets fitPadding;
@@ -1827,49 +1878,53 @@ class RunneryMap extends StatefulWidget {
   State<RunneryMap> createState() => _RunneryMapState();
 }
 
-class _RunneryMapState extends State<RunneryMap>
-    with SingleTickerProviderStateMixin {
+class _RunneryMapState extends State<RunneryMap> {
   static const _routeSource = 'runnery-route';
   static const _markerSource = 'runnery-markers';
   static const _labelSource = 'runnery-labels';
-  static const _meSource = 'runnery-me';
+  static const _friendRouteSource = 'runnery-friend-route';
+  static const _friendSource = 'runnery-friends';
 
-  late final String _style = _runneryMapStyle(
-    widget.routeWidth,
-    widget.routeOpacity,
-  );
-  late final AnimationController _pulse = AnimationController(
-    vsync: this,
-    duration: AppMotion.locationPulseInterval,
-  )..addListener(_onPulse);
+  // 화면 모드마다 스타일이 달라 모드별로 한 번씩 만듭니다.
+  final _styles = <Brightness, String>{};
+  String get _style => _styles[AppColors.current.brightness] ??=
+      _runneryMapStyle(widget.routeWidth, widget.routeOpacity);
 
   MapLibreMapController? _map;
+  Brightness? _mapBrightness;
   bool _styleReady = false;
   final _images = <String>{};
   String? _routeSignature;
+  String? _friendSignature;
   String? _markerSignature;
   String? _labelSignature;
-  bool? _labelsVisible;
-  int _lastPulseMs = 0;
-  double _gestureDistance = 0;
+  List<MapLabel> _sentLabels = const [];
+  static const _labelMoveMeters = 20.0;
 
-  @override
-  void initState() {
-    super.initState();
-    if (widget.userLocation != null) _pulse.repeat();
+  static double _metersBetween(LatLng a, LatLng b) {
+    const r = 6371000.0;
+    final dLat = (b.latitude - a.latitude) * math.pi / 180;
+    final dLng = (b.longitude - a.longitude) * math.pi / 180;
+    final x =
+        math.pow(math.sin(dLat / 2), 2) +
+        math.cos(a.latitude * math.pi / 180) *
+            math.cos(b.latitude * math.pi / 180) *
+            math.pow(math.sin(dLng / 2), 2);
+    return 2 * r * math.asin(math.sqrt(x));
   }
+
+  bool? _labelsVisible;
+  DateTime? _routeSentAt;
+  double _gestureDistance = 0;
 
   @override
   void didUpdateWidget(RunneryMap old) {
     super.didUpdateWidget(old);
-    if (widget.userLocation != null && !_pulse.isAnimating) _pulse.repeat();
-    if (widget.userLocation == null && _pulse.isAnimating) _pulse.stop();
     _sync();
   }
 
   @override
   void dispose() {
-    _pulse.dispose();
     if (identical(widget.controller._map, _map)) widget.controller._map = null;
     super.dispose();
   }
@@ -1898,19 +1953,36 @@ class _RunneryMapState extends State<RunneryMap>
       for (final s in widget.route) s.length,
       widget.route.lastOrNull?.lastOrNull,
     ].join('/');
-    if (routeSignature != _routeSignature) {
-      _routeSignature = routeSignature;
-      await map.setGeoJsonSource(
-        _routeSource,
-        _features([
-          for (final segment in widget.route)
-            if (segment.length >= 2)
-              _feature({
-                'type': 'LineString',
-                'coordinates': [for (final p in segment) _coord(p)],
-              }),
-        ]),
-      );
+    final friendSignature = [
+      for (final f in widget.friends) '${f.name}${f.point}${f.route.length}',
+    ].join('/');
+    final sentAt = _routeSentAt;
+    final waiting =
+        sentAt != null &&
+        DateTime.now().difference(sentAt) < widget.routeUpdateInterval;
+    // 내 경로와 친구는 한꺼번에 보내, 지명이 다시 배치되는(깜빡이는) 횟수를 늘리지 않습니다.
+    if (!waiting &&
+        (routeSignature != _routeSignature ||
+            friendSignature != _friendSignature)) {
+      _routeSentAt = DateTime.now();
+      if (routeSignature != _routeSignature) {
+        _routeSignature = routeSignature;
+        await map.setGeoJsonSource(
+          _routeSource,
+          _features([
+            for (final segment in widget.route)
+              if (segment.length >= 2)
+                _feature({
+                  'type': 'LineString',
+                  'coordinates': [for (final p in segment) _coord(p)],
+                }),
+          ]),
+        );
+      }
+      if (friendSignature != _friendSignature) {
+        _friendSignature = friendSignature;
+        await _sendFriends(map, dpr);
+      }
     }
 
     final markerSignature = widget.markers
@@ -1927,13 +1999,28 @@ class _RunneryMapState extends State<RunneryMap>
       );
     }
 
-    final labelSignature = widget.labels
+    // 칩 이름이 그대로이고 20m 안에서만 움직였으면 이전 자리를 그대로 씁니다. GPS는 서 있어도
+    // 1~2m씩 흔들려서, 매번 다시 그리면 '현재 위치' 칩이 1초마다 사라졌다 나타나며 깜빡였습니다.
+    final labels = [
+      for (final l in widget.labels)
+        () {
+          final before = _sentLabels
+              .where((p) => p.kind == l.kind && p.name == l.name)
+              .firstOrNull;
+          return before != null &&
+                  _metersBetween(before.point, l.point) < _labelMoveMeters
+              ? MapLabel(before.point, l.kind, l.name, above: l.above)
+              : l;
+        }(),
+    ];
+    final labelSignature = labels
         .map((l) => '${l.kind.name}${l.point}${l.name}${l.above}')
         .join();
     if (labelSignature != _labelSignature) {
       _labelSignature = labelSignature;
+      _sentLabels = labels;
       final features = <Map<String, Object?>>[];
-      for (final label in widget.labels) {
+      for (final label in labels) {
         final id = 'chip-${label.kind.name}-${label.name.hashCode}';
         if (_images.add(id)) {
           await map.addImage(id, await _chipImage(label, dpr));
@@ -1954,35 +2041,31 @@ class _RunneryMapState extends State<RunneryMap>
         await map.setLayerVisibility(id, widget.showLabels);
       }
     }
-
-    await _syncUserLocation();
   }
 
-  Future<void> _syncUserLocation() async {
-    final map = _map;
-    if (map == null || !_styleReady) return;
-    final me = widget.userLocation;
+  /// 친구 지나간 길(흰 선)과 점·이름 칩.
+  Future<void> _sendFriends(MapLibreMapController map, double dpr) async {
+    final features = <Map<String, Object?>>[];
+    for (final f in widget.friends) {
+      final label = MapLabel(f.point, MapLabelKind.friend, f.name);
+      final id = 'chip-friend-${f.name.hashCode}';
+      if (_images.add(id)) await map.addImage(id, await _chipImage(label, dpr));
+      features
+        ..add(_feature(_point(f.point), {'icon': 'marker-friend'}))
+        ..add(_feature(_point(f.point), {'icon': id, 'chip': true}));
+    }
+    await map.setGeoJsonSource(_friendSource, _features(features));
     await map.setGeoJsonSource(
-      _meSource,
+      _friendRouteSource,
       _features([
-        if (me != null)
-          _feature(_point(me.point), {
-            // 줌 0에서의 정확도 반경(px). 스타일에서 줌마다 2배씩 키웁니다.
-            'acc0':
-                me.accuracy /
-                (78271.517 * math.cos(me.point.latitude * math.pi / 180)),
-            'pulse': Curves.easeOut.transform(_pulse.value),
-          }),
+        for (final f in widget.friends)
+          if (f.route.length >= 2)
+            _feature({
+              'type': 'LineString',
+              'coordinates': [for (final p in f.route) _coord(p)],
+            }),
       ]),
     );
-  }
-
-  void _onPulse() {
-    // 2.2초 파동을 초당 약 15번만 갱신해 지도 엔진 부담을 줄입니다.
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastPulseMs < 66) return;
-    _lastPulseMs = now;
-    _syncUserLocation();
   }
 
   Future<void> _fit() async {
@@ -2047,17 +2130,36 @@ class _RunneryMapState extends State<RunneryMap>
 
   @override
   Widget build(BuildContext context) {
+    // 화면 모드가 바뀌면 지도를 새 색 스타일로 다시 만듭니다. 보던 위치는 그대로 둡니다.
+    final brightness = AppColors.current.brightness;
+    var camera = CameraPosition(
+      target: widget.initialCenter,
+      zoom: widget.initialZoom,
+    );
+    if (_mapBrightness != null && _mapBrightness != brightness) {
+      camera = _map?.cameraPosition ?? camera;
+      _styleReady = false;
+      _images.clear();
+      _routeSignature = null;
+      _friendSignature = null;
+      _markerSignature = null;
+      _labelSignature = null;
+      _sentLabels = const [];
+    }
+    _mapBrightness = brightness;
     final map = MapLibreMap(
+      key: ValueKey(brightness),
       styleString: _style,
-      initialCameraPosition: CameraPosition(
-        target: widget.initialCenter,
-        zoom: widget.initialZoom,
-      ),
+      initialCameraPosition: camera,
       onMapCreated: (controller) {
         _map = controller;
         widget.controller._map = controller;
       },
       onStyleLoadedCallback: _onStyleLoaded,
+      // 내 위치는 지도 데이터가 아니라 지도 엔진의 기본 위치 표시(지도 위에 따로 얹는 점)로 그립니다.
+      // 위치가 바뀔 때마다 지도 데이터를 바꾸면 화면의 모든 지명·도로명이 다시 배치되며 깜빡였습니다.
+      // 색은 AppDelegate에서 주황으로 맞춥니다.
+      myLocationEnabled: widget.userLocation != null,
       trackCameraPosition: true,
       onCameraMove: widget.controller._update,
       onCameraIdle: () => widget.controller._update(_map?.cameraPosition),
@@ -2172,7 +2274,7 @@ String _runneryMapStyle(double routeWidth, [double routeOpacity = 1]) {
   };
 
   // 도로 위계: 테두리를 모든 도로 아래에 먼저 깔고 도로 면을 위에 그립니다.
-  const roads = [
+  final roads = [
     (
       'alley',
       ['service', 'track', 'path'],
@@ -2344,7 +2446,8 @@ String _runneryMapStyle(double routeWidth, [double routeOpacity = 1]) {
       _RunneryMapState._routeSource: geojson(),
       _RunneryMapState._markerSource: geojson(),
       _RunneryMapState._labelSource: geojson(),
-      _RunneryMapState._meSource: geojson(),
+      _RunneryMapState._friendRouteSource: geojson(),
+      _RunneryMapState._friendSource: geojson(),
     },
     'layers': [
       {
@@ -2496,14 +2599,37 @@ String _runneryMapStyle(double routeWidth, [double routeOpacity = 1]) {
           false,
         ],
       ),
-      // ── 러닝 데이터: 경로 > 내 위치 > 마커 > 지명 칩 ──
+      // ── 러닝 데이터: 친구 경로 > 경로 > 친구 점·이름 > 내 위치 > 마커 > 지명 칩 ──
+      {
+        'id': 'friend-route-casing',
+        'type': 'line',
+        'source': _RunneryMapState._friendRouteSource,
+        'layout': {'line-cap': 'round', 'line-join': 'round'},
+        'paint': {
+          'line-color': '#000000',
+          'line-opacity': 0.6,
+          'line-width': routeWidth + 2,
+        },
+      },
+      {
+        'id': 'friend-route',
+        'type': 'line',
+        'source': _RunneryMapState._friendRouteSource,
+        'layout': {'line-cap': 'round', 'line-join': 'round'},
+        'paint': {
+          'line-color': '#FFFFFF',
+          'line-opacity': 0.6,
+          'line-width': routeWidth - 1,
+        },
+      },
       {
         'id': 'route-casing',
         'type': 'line',
         'source': _RunneryMapState._routeSource,
         'layout': {'line-cap': 'round', 'line-join': 'round'},
         'paint': {
-          'line-color': '#000000',
+          // 경로 아래 테두리: 다크는 검정, 라이트는 흰색.
+          'line-color': AppColors.isDark ? '#000000' : '#FFFFFF',
           'line-opacity': routeOpacity < 1 ? 0.25 : 0.85,
           'line-width': routeWidth + 4,
         },
@@ -2520,61 +2646,30 @@ String _runneryMapStyle(double routeWidth, [double routeOpacity = 1]) {
         },
       },
       {
-        'id': 'me-accuracy',
-        'type': 'circle',
-        'source': _RunneryMapState._meSource,
-        'paint': {
-          'circle-radius': [
-            'interpolate', ['exponential', 2], ['zoom'], //
-            0,
-            ['get', 'acc0'],
-            22,
-            [
-              '*',
-              ['get', 'acc0'],
-              4194304,
-            ],
-          ],
-          'circle-color': 'rgba(255,122,0,0.16)',
-          'circle-stroke-color': 'rgba(255,122,0,0.35)',
-          'circle-stroke-width': 1,
+        'id': 'friend-dots',
+        'type': 'symbol',
+        'source': _RunneryMapState._friendSource,
+        'filter': [
+          '!',
+          ['has', 'chip'],
+        ],
+        'layout': {
+          'icon-image': ['get', 'icon'],
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
         },
       },
       {
-        'id': 'me-pulse',
-        'type': 'circle',
-        'source': _RunneryMapState._meSource,
-        'paint': {
-          'circle-radius': [
-            '+',
-            9,
-            [
-              '*',
-              20,
-              ['get', 'pulse'],
-            ],
-          ],
-          'circle-color': '#FF7A00',
-          'circle-opacity': [
-            '*',
-            0.35,
-            [
-              '-',
-              1,
-              ['get', 'pulse'],
-            ],
-          ],
-        },
-      },
-      {
-        'id': 'me-dot',
-        'type': 'circle',
-        'source': _RunneryMapState._meSource,
-        'paint': {
-          'circle-radius': 6,
-          'circle-color': '#FF7A00',
-          'circle-stroke-color': '#FFFFFF',
-          'circle-stroke-width': 3,
+        'id': 'friend-chips',
+        'type': 'symbol',
+        'source': _RunneryMapState._friendSource,
+        'filter': ['has', 'chip'],
+        'layout': {
+          'icon-image': ['get', 'icon'],
+          'icon-anchor': 'bottom',
+          'icon-offset': [0, -14],
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
         },
       },
       {
@@ -2639,6 +2734,7 @@ void _paintIcon(Canvas canvas, IconData icon, Offset center, double size) {
         fontFamily: icon.fontFamily,
         package: icon.fontPackage,
         fontSize: size,
+        // 색 배지 위 흰 아이콘은 두 모드에서 같습니다.
         color: Colors.white,
       ),
     ),
@@ -2649,13 +2745,18 @@ void _paintIcon(Canvas canvas, IconData icon, Offset center, double size) {
 
 Future<Map<String, Uint8List>>? _baseImagesCache;
 double? _baseImagesDpr;
+Brightness? _baseImagesBrightness;
 
-/// 출발·도착·일시정지 마커와 장소 아이콘.
+/// 출발·도착·일시정지 마커와 장소 아이콘. 지하철 배지 테두리가 화면 모드마다 달라 모드별로 만듭니다.
 Future<Map<String, Uint8List>> _baseMapImages(double dpr) {
-  if (_baseImagesCache != null && _baseImagesDpr == dpr) {
+  final brightness = AppColors.current.brightness;
+  if (_baseImagesCache != null &&
+      _baseImagesDpr == dpr &&
+      _baseImagesBrightness == brightness) {
     return _baseImagesCache!;
   }
   _baseImagesDpr = dpr;
+  _baseImagesBrightness = brightness;
   return _baseImagesCache = () async {
     // 마커: 흰 원 L22 + 검정 기호.
     Future<Uint8List> marker(void Function(Canvas c, Offset center) glyph) {
@@ -2718,6 +2819,13 @@ Future<Map<String, Uint8List>> _baseMapImages(double dpr) {
         (c, o) =>
             c.drawRect(Rect.fromCenter(center: o, width: 8, height: 8), black),
       ),
+      // 함께 달리는 친구: 흰 점 + 검정 테두리(주황인 내 위치와 구분).
+      'marker-friend': await _drawPng(const Size.square(26), dpr, (c) {
+        const o = Offset(13, 13);
+        c
+          ..drawCircle(o, 9, Paint()..color = Colors.black)
+          ..drawCircle(o, 7, Paint()..color = Colors.white);
+      }),
       'marker-pause': await marker((c, o) {
         c
           ..drawRect(
@@ -2768,7 +2876,7 @@ Future<Map<String, Uint8List>> _baseMapImages(double dpr) {
             Paint()
               ..style = PaintingStyle.stroke
               ..strokeWidth = 1.2
-              ..color = const Color(0xFF181D26),
+              ..color = AppColors.pick(const Color(0xFF181D26), Colors.white),
           );
         _paintIcon(c, Icons.directions_subway, o, 11);
       }),
@@ -2778,37 +2886,39 @@ Future<Map<String, Uint8List>> _baseMapImages(double dpr) {
 
 /// 지명 칩 이미지.
 Future<Uint8List> _chipImage(MapLabel label, double dpr) {
+  // 현재 위치·친구 칩은 이름을 굵게, 출발·도착 칩은 이름을 흐리게 씁니다.
+  final nameOnly =
+      label.kind == MapLabelKind.current || label.kind == MapLabelKind.friend;
   final spans = <TextSpan>[
     if (label.kind == MapLabelKind.current)
-      const TextSpan(
+      TextSpan(
         text: '현재 위치  ',
         style: TextStyle(color: AppColors.textSecondary),
       )
-    else
+    else if (!nameOnly)
       TextSpan(
         text: label.kind == MapLabelKind.start ? '출발' : '도착',
         style: const TextStyle(fontWeight: FontWeight.w700),
       ),
     if (label.name != null)
       TextSpan(
-        text: label.kind == MapLabelKind.current
-            ? label.name
-            : ' ${label.name}',
-        style: label.kind == MapLabelKind.current
+        text: nameOnly ? label.name : ' ${label.name}',
+        style: nameOnly
             ? const TextStyle(fontWeight: FontWeight.w700)
-            : const TextStyle(color: AppColors.textSecondary),
+            : TextStyle(color: AppColors.textSecondary),
       ),
   ];
   final tp = TextPainter(
     text: TextSpan(
       children: spans,
-      style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
+      style: TextStyle(fontSize: 12, color: AppColors.textPrimary),
     ),
     textDirection: TextDirection.ltr,
     maxLines: 1,
     ellipsis: '…',
   )..layout(maxWidth: 220);
-  final hasGlyph = label.kind != MapLabelKind.current;
+  final hasGlyph =
+      label.kind == MapLabelKind.start || label.kind == MapLabelKind.finish;
   final glyph = hasGlyph ? 15.0 : 0.0;
   final size = Size(tp.width + glyph + 24, 28);
   return _drawPng(size, dpr, (c) {
@@ -2816,7 +2926,7 @@ Future<Uint8List> _chipImage(MapLabel label, double dpr) {
       RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(14)),
       Paint()..color = AppColors.background.withValues(alpha: 0.92),
     );
-    final white = Paint()..color = Colors.white;
+    final white = Paint()..color = AppColors.textPrimary;
     if (label.kind == MapLabelKind.start) {
       c.drawPath(
         Path()

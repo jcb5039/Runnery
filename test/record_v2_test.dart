@@ -182,6 +182,51 @@ void main() {
     expect(find.byType(RecordRouteMap), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('stats tab compares this week and switches to month', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final now = DateTime.now();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordListPageV2(
+          records: [
+            RunningRecord(
+              id: 'today',
+              startedAt: DateTime(now.year, now.month, now.day, 0, 1),
+              distanceKm: 3,
+              movingSeconds: 1200,
+              calories: 200,
+              route: const [],
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('통계'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('이전 달'), findsNothing);
+    expect(find.text('성장 중'), findsOneWidget);
+    expect(find.text('지난주엔 달리지 않았어요'), findsOneWidget);
+    expect(find.text('3.00'), findsOneWidget);
+    expect(find.text('▲ 3.00 km'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('이전 주'));
+    await tester.pumpAndSettle();
+    expect(find.text('정체 중'), findsOneWidget);
+    expect(find.text('이 주엔 달리지 않았어요'), findsOneWidget);
+
+    await tester.tap(find.text('월간'));
+    await tester.pumpAndSettle();
+    expect(find.text('${now.year}년 ${now.month}월'), findsOneWidget);
+    expect(find.byTooltip('이전 달'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 class _MemoryStore extends RunningRecordStore {

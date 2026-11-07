@@ -10,6 +10,8 @@ import '../../design_system/app_component_metrics.dart';
 import '../../design_system/app_motion.dart';
 import '../../design_system/app_radius.dart';
 import '../../design_system/app_spacing.dart';
+import '../../friends/share/share_record_sheet.dart';
+import '../../record/data/record_from_session.dart';
 import 'running_home_page.dart';
 import 'running_start_page.dart';
 
@@ -38,7 +40,9 @@ class RunningResultPage extends StatelessWidget {
         if (!didPop) _done(context);
       },
       child: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: SystemUiOverlayStyle.light,
+        value: (AppColors.isDark
+            ? SystemUiOverlayStyle.light
+            : SystemUiOverlayStyle.dark),
         child: Scaffold(
           backgroundColor: AppColors.background,
           body: FutureBuilder(
@@ -78,7 +82,7 @@ class RunningResultPage extends StatelessWidget {
                                   onPressed: () => _done(context),
                                 ),
                                 const Spacer(),
-                                _ShareButton(),
+                                _ShareButton(record: record),
                               ],
                             ),
                             const SizedBox(height: AppSpacing.space5),
@@ -87,7 +91,7 @@ class RunningResultPage extends StatelessWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text(
+                                  Text(
                                     '오늘의 러닝',
                                     style: TextStyle(
                                       fontSize: 28,
@@ -99,7 +103,7 @@ class RunningResultPage extends StatelessWidget {
                                   Text(
                                     '${RunningFormat.monthDay(record.startedAt)} · '
                                     '${RunningFormat.timeRange(record.startedAt, record.endedAt)}',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 13,
                                       color: AppColors.textSecondary,
                                     ),
@@ -175,7 +179,7 @@ class _ResultSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.background,
         borderRadius: BorderRadius.vertical(
           top: Radius.circular(AppRadius.sheet),
@@ -193,7 +197,7 @@ class _ResultSheet extends StatelessWidget {
         children: [
           const Center(child: SheetHandle()),
           const SizedBox(height: AppSpacing.space4),
-          const Text('총 거리', style: _labelStyle),
+          Text('총 거리', style: _labelStyle),
           const SizedBox(height: 6),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -270,7 +274,9 @@ class RunningRouteDetailPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final topInset = MediaQuery.paddingOf(context).top;
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light,
+      value: (AppColors.isDark
+          ? SystemUiOverlayStyle.light
+          : SystemUiOverlayStyle.dark),
       child: Scaffold(
         backgroundColor: AppColors.background,
         body: FutureBuilder(
@@ -315,7 +321,7 @@ class RunningRouteDetailPage extends StatelessWidget {
                         const SizedBox(height: AppSpacing.space6),
                         const Divider(height: 1),
                         const SizedBox(height: AppSpacing.space6),
-                        const Text('총 거리', style: _labelStyle),
+                        Text('총 거리', style: _labelStyle),
                         const SizedBox(height: 6),
                         UnitValue(
                           value: RunningFormat.km(record.distanceMeters),
@@ -372,7 +378,7 @@ class RunningRouteDetailPage extends StatelessWidget {
                             if (record.averageAccuracy case final a?)
                               '평균 정확도 ±${a.round()} m',
                           ].join(' · '),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 11,
                             color: AppColors.textTertiary,
                           ),
@@ -416,7 +422,7 @@ class RunningRouteDetailPage extends StatelessWidget {
                     tooltip: '뒤로',
                     onPressed: () => Navigator.of(context).pop(),
                   ),
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       '러닝 경로 상세',
                       textAlign: TextAlign.center,
@@ -427,7 +433,7 @@ class RunningRouteDetailPage extends StatelessWidget {
                       ),
                     ),
                   ),
-                  _ShareButton(),
+                  _ShareButton(record: record),
                 ],
               ),
             ),
@@ -464,7 +470,7 @@ class _DateHeader extends StatelessWidget {
       children: [
         Text(
           RunningFormat.fullDate(record.startedAt),
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.w800,
             color: AppColors.textPrimary,
@@ -480,7 +486,7 @@ class _DateHeader extends StatelessWidget {
             ),
             ?places?.area,
           ].join(' · '),
-          style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+          style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
         ),
       ],
     );
@@ -508,15 +514,12 @@ class _Timeline extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textTertiary,
-                  ),
+                  style: TextStyle(fontSize: 11, color: AppColors.textTertiary),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   place ?? '-',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
@@ -527,10 +530,7 @@ class _Timeline extends StatelessWidget {
           ),
           Text(
             RunningFormat.time(time),
-            style: const TextStyle(
-              fontSize: 13,
-              color: AppColors.textSecondary,
-            ),
+            style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
           ),
         ],
       );
@@ -558,10 +558,7 @@ class _Timeline extends StatelessWidget {
                 '${RunningFormat.koreanDuration(record.movingDuration)} 동안 달린 길',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textTertiary,
-                ),
+                style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
               ),
             ),
           ],
@@ -599,22 +596,19 @@ class _TimeSection extends StatelessWidget {
 
     Widget row(String label, String value) => Container(
       padding: const EdgeInsets.symmetric(vertical: 14),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(top: BorderSide(color: AppColors.divider)),
       ),
       child: Row(
         children: [
           Text(
             label,
-            style: const TextStyle(
-              fontSize: 13,
-              color: AppColors.textSecondary,
-            ),
+            style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
           ),
           const Spacer(),
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w700,
               color: AppColors.textPrimary,
@@ -697,7 +691,7 @@ class _SpeedSection extends StatelessWidget {
           height: 170,
           child: enough
               ? CustomPaint(painter: _SpeedChartPainter(record))
-              : const Center(
+              : Center(
                   child: Text(
                     '속도를 그리기에는 기록이 짧아요',
                     style: TextStyle(
@@ -709,7 +703,7 @@ class _SpeedSection extends StatelessWidget {
         ),
         if (enough && record.pausePoints.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.space3),
-          const Row(
+          Row(
             children: [
               _PauseDot(),
               SizedBox(width: 6),
@@ -754,7 +748,7 @@ class _SplitSection extends StatelessWidget {
         const _SectionHeader(title: '구간 기록', info: '1 km 페이스'),
         const SizedBox(height: AppSpacing.space3),
         if (splits.isEmpty)
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(vertical: AppSpacing.space4),
             child: Text(
               '구간을 나누기에는 거리가 짧아요',
@@ -776,7 +770,7 @@ class _SplitSection extends StatelessWidget {
                                 text: '${split.index}',
                                 style: runningNumberStyle(15),
                               ),
-                              const TextSpan(
+                              TextSpan(
                                 text: ' km',
                                 style: TextStyle(
                                   fontSize: 10,
@@ -820,7 +814,7 @@ class _SplitSection extends StatelessWidget {
                               ),
                             ),
                             if (identical(split, fastest))
-                              const Padding(
+                              Padding(
                                 padding: EdgeInsets.only(
                                   left: AppSpacing.space2,
                                 ),
@@ -828,7 +822,7 @@ class _SplitSection extends StatelessWidget {
                                   '가장 빠른 구간',
                                   style: TextStyle(
                                     fontSize: 11,
-                                    color: AppColors.primary,
+                                    color: AppColors.primaryText,
                                   ),
                                 ),
                               ),
@@ -837,7 +831,7 @@ class _SplitSection extends StatelessWidget {
                       : Text(
                           '남은 ${RunningFormat.km(split.meters)} km · '
                           '${RunningFormat.clock(split.duration)} 걸림',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
                             color: AppColors.textTertiary,
                           ),
@@ -853,7 +847,7 @@ class _SplitSection extends StatelessWidget {
                     style: runningNumberStyle(
                       17,
                       color: identical(split, fastest)
-                          ? AppColors.primary
+                          ? AppColors.primaryText
                           : split.isFull
                           ? AppColors.textPrimary
                           : AppColors.textSecondary,
@@ -865,7 +859,7 @@ class _SplitSection extends StatelessWidget {
           ),
         if (full.length >= 2) ...[
           const SizedBox(height: AppSpacing.space2),
-          const Text(
+          Text(
             '선이 길수록 빠르게 달린 구간이에요',
             style: TextStyle(fontSize: 11, color: AppColors.textTertiary),
           ),
@@ -1091,21 +1085,34 @@ class _FullMapPage extends StatelessWidget {
 // 공통 조각
 // ═════════════════════════════════════════════════════
 
-const _labelStyle = TextStyle(fontSize: 12, color: AppColors.textSecondary);
+TextStyle get _labelStyle =>
+    TextStyle(fontSize: 12, color: AppColors.textSecondary);
 
 List<(String, String)> _speedParts(double? kmh) =>
     kmh == null ? [('-', '')] : [(RunningFormat.speed(kmh), 'km/h')];
 
-/// 공유는 1차 MVP 범위가 아니라 안내만 합니다.
+/// 18-3 친구에게 기록 공유 창을 엽니다. 저장된 기록과 같은 번호로 올라가고, 장소 이름도 함께 담습니다.
 class _ShareButton extends StatelessWidget {
+  const _ShareButton({required this.record});
+
+  final RunningRecord record;
+
+  Future<void> _share(BuildContext context) async {
+    final places = await record.places;
+    if (!context.mounted) return;
+    await showShareRecordSheet(
+      context,
+      recordFromSession(record)
+          .withPlaces(area: places.area, start: places.start, end: places.end),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return MapCircleButton(
       icon: Icons.ios_share,
-      tooltip: '공유',
-      onPressed: () => ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('공유는 다음 버전에서 지원해요'))),
+      tooltip: '친구에게 공유',
+      onPressed: () => _share(context),
     );
   }
 }
@@ -1123,21 +1130,19 @@ class _SectionHeader extends StatelessWidget {
       children: [
         Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.w700,
             color: AppColors.textPrimary,
           ),
         ),
         const SizedBox(width: AppSpacing.space3),
-        const Expanded(
-          child: Divider(color: AppColors.borderDefault, height: 1),
-        ),
+        Expanded(child: Divider(color: AppColors.borderDefault, height: 1)),
         if (info != null) ...[
           const SizedBox(width: AppSpacing.space3),
           Text(
             info!,
-            style: const TextStyle(fontSize: 11, color: AppColors.textTertiary),
+            style: TextStyle(fontSize: 11, color: AppColors.textTertiary),
           ),
         ],
       ],
@@ -1169,7 +1174,7 @@ class _StatGrid extends StatelessWidget {
       children: [
         for (final row in rows)
           Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(top: BorderSide(color: AppColors.divider)),
             ),
             child: IntrinsicHeight(
@@ -1232,7 +1237,7 @@ class _HetbahnBadge extends StatelessWidget {
             shape: BoxShape.circle,
             border: Border.all(color: AppColors.borderDefault),
           ),
-          child: const Icon(
+          child: Icon(
             Icons.rice_bowl_outlined,
             size: 22,
             color: AppColors.textPrimary,
@@ -1251,13 +1256,13 @@ class _HetbahnBadge extends StatelessWidget {
                     text: '${RunningFormat.hetbahn(record.hetbahnCount)}개',
                     style: TextStyle(
                       color: compact
-                          ? AppColors.primary
+                          ? AppColors.primaryText
                           : AppColors.textPrimary,
                     ),
                   ),
                 ],
               ),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
                 color: AppColors.textPrimary,
@@ -1268,10 +1273,7 @@ class _HetbahnBadge extends StatelessWidget {
               compact
                   ? '1개 = ${RunningConfig.hetbahnKcal.round()} kcal'
                   : '1개(210g) = ${RunningConfig.hetbahnKcal.round()} kcal',
-              style: const TextStyle(
-                fontSize: 11,
-                color: AppColors.textTertiary,
-              ),
+              style: TextStyle(fontSize: 11, color: AppColors.textTertiary),
             ),
           ],
         ),
@@ -1292,7 +1294,7 @@ class _PauseDot extends StatelessWidget {
         shape: BoxShape.circle,
         border: Border.all(color: AppColors.textTertiary),
       ),
-      child: const Icon(Icons.pause, size: 10, color: AppColors.textTertiary),
+      child: Icon(Icons.pause, size: 10, color: AppColors.textTertiary),
     );
   }
 }
@@ -1340,10 +1342,7 @@ class _SpeedChartPainter extends CustomPainter {
       chart.bottom - chart.height * ((kmh - yMin) / (yMax - yMin)),
     );
 
-    final labelStyle = const TextStyle(
-      fontSize: 10,
-      color: AppColors.textTertiary,
-    );
+    final labelStyle = TextStyle(fontSize: 10, color: AppColors.textTertiary);
     void label(
       String text,
       Offset anchor, {
@@ -1437,7 +1436,7 @@ class _SpeedChartPainter extends CustomPainter {
     final topLabel = TextPainter(
       text: TextSpan(
         text: '최고 ${RunningFormat.speed(record.maxSpeedKmh ?? top.kmh)} km/h',
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 10,
           fontWeight: FontWeight.w700,
           color: AppColors.textPrimary,

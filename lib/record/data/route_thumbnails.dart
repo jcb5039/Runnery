@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../../design_system/app_colors.dart';
 import '../../home/running/running_home_page.dart' show runneryThumbnailStyle;
 import '../models/running_record.dart';
 import 'running_record_store.dart';
@@ -36,16 +37,21 @@ class RouteThumbnails {
   Future<File?> get(RunningRecord record) async {
     // 위치가 하나라도 있으면 그 주변 지도를 보여 줍니다(위치가 없는 기록은 경로 그림 칸).
     if (!_supported || record.route.isEmpty) return null;
-    final file = await _store.thumbnailFile(record.id);
+    final file = await _store.thumbnailFile(
+      record.id,
+      light: !AppColors.isDark,
+    );
     if (await file.exists()) return file;
     final failedAt = _failedAt[record.id];
     if (failedAt != null && DateTime.now().difference(failedAt) < _retryAfter) {
       return null;
     }
-    return _making[record.id] ??= _make(
+    // 다크·라이트 사진은 따로 만듭니다.
+    final key = '${record.id}:${file.path}';
+    return _making[key] ??= _make(
       record,
       file,
-    ).whenComplete(() => _making.remove(record.id));
+    ).whenComplete(() => _making.remove(key));
   }
 
   Future<File?> _make(RunningRecord record, File file) {
@@ -53,6 +59,7 @@ class RouteThumbnails {
       try {
         final ok = await _channel.invokeMethod<bool>('snapshot', {
           'style': runneryThumbnailStyle(),
+          'light': !AppColors.isDark,
           'lat': [for (final p in record.route) p.latitude],
           'lng': [for (final p in record.route) p.longitude],
           'starts': [

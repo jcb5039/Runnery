@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:maplibre_gl/maplibre_gl.dart' show LatLng;
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../account/account_store.dart';
 import '../../design_system/app_colors.dart';
@@ -15,10 +16,14 @@ import '../../design_system/app_motion.dart';
 import '../../design_system/app_radius.dart';
 import '../../design_system/app_spacing.dart';
 import '../../design_system/app_text_styles.dart';
+import 'calorie_quest.dart';
 import 'running_home_page.dart';
 import 'running_live_activity.dart';
 import 'running_voice.dart';
 import 'running_result_page.dart';
+import '../../friends/data/record_share.dart';
+import '../../friends/data/together_live.dart';
+import '../../friends/data/together_store.dart';
 import '../../record/data/record_from_session.dart';
 import '../../record/data/record_places.dart';
 import '../../record/data/route_thumbnails.dart';
@@ -41,6 +46,12 @@ abstract final class RunningConfig {
 
   /// 이보다 짧은 이동은 제자리 GPS 흔들림으로 보고 누적을 미룹니다.
   static const minSegmentMeters = 3.0;
+
+  /// GPS 오차가 클수록 점 사이 간격을 넓힙니다(오차의 절반, 최대 10m). 오차 ±14m에서 3m마다 점을 찍으면
+  /// 흔들림이 그대로 지그재그 경로가 됩니다.
+  static const maxSegmentMeters = 10.0;
+  static double segmentMetersFor(double accuracy) =>
+      (accuracy / 2).clamp(minSegmentMeters, maxSegmentMeters);
 
   /// 이보다 빠른 이동(약 43km/h)은 좌표 튐으로 보고 제외합니다.
   static const maxSpeedMetersPerSecond = 12.0;
@@ -66,13 +77,20 @@ abstract final class RunningConfig {
 
   /// 자동 일시정지 중 이 속도 이상이거나 멈춘 곳에서 이만큼 벗어나면 다시 시간을 잽니다.
   static const autoResumeMetersPerSecond = 0.8;
+
+  /// 아이폰이 현재 속도를 주지 않을 때(시뮬레이터 등)만 쓰는 거리 기준.
+  /// 서 있어도 GPS가 10m 넘게 흔들릴 수 있어, 속도를 알 때는 쓰지 않습니다.
   static const autoResumeMeters = 10.0;
 
   /// 자동 일시정지 중 움직임이 이만큼 이어져야 다시 잽니다. 한 발짝 움직였다 멈추면 다시 재지 않습니다.
-  static const autoResumeAfter = Duration(seconds: 3);
+  static const autoResumeAfter = Duration(seconds: 5);
 
   /// 이 속도(분속 134m ≈ 시속 8km) 미만은 걷기, 이상은 달리기 공식으로 칼로리를 계산합니다.
   static const walkRunThresholdMetersPerMinute = 134.0;
+
+  /// 함께 달리기: 친구가 이 거리 안에 있을 때만 지도에 점·지나간 길을 그립니다. 그보다 멀면
+  /// 러닝 중 지도(확대 고정)에서는 어차피 화면 밖이라, 친구 칩에 떨어진 거리만 적습니다.
+  static const friendMapRadiusMeters = 1000.0;
 }
 
 /// 칼로리·페이스·햇반 환산. 의료용이 아닌 운동 참고용 추정값입니다.
@@ -344,17 +362,31 @@ class RunningRecord {
         }
         final elapsed = segment[i].moving - segment[j].moving;
         if (elapsed < RunningConfig.speedWindow) continue;
-        final meters = segment[i].meters - segment[j].meters;
+        // 10초 묶음 안의 점과 점 사이 속도 중 가운데 값. GPS가 한 번 튄 구간이 묶음 전체 속도를
+        // 끌어올려 최고 속도·그래프가 뻥튀기되지 않게 합니다.
+        final pairSpeeds = [
+          for (var k = j + 1; k <= i; k++)
+            if (segment[k].moving > segment[k - 1].moving)
+              (segment[k].meters - segment[k - 1].meters) /
+                  ((segment[k].moving - segment[k - 1].moving).inMilliseconds /
+                      1000),
+        ];
+        if (pairSpeeds.isEmpty) continue;
         samples.add(
-          SpeedSample(
-            segment[i].meters / 1000,
-            meters / (elapsed.inMilliseconds / 1000) * 3.6,
-          ),
+          SpeedSample(segment[i].meters / 1000, _median(pairSpeeds) * 3.6),
         );
       }
     }
     return samples;
   }();
+
+  static double _median(List<double> values) {
+    final sorted = [...values]..sort();
+    final mid = sorted.length ~/ 2;
+    return sorted.length.isOdd
+        ? sorted[mid]
+        : (sorted[mid - 1] + sorted[mid]) / 2;
+  }
 
   double? get maxSpeedKmh => speedSamples.isEmpty
       ? null
@@ -739,6 +771,12 @@ class RunningSession extends ChangeNotifier {
     diagnostics.accuracyOk();
     _lastGoodFixAt = _now();
     _lastGoodSpeed = p.speed >= 0 ? p.speed : null;
+    // 아이폰이 알려 주는 현재 속도가 걷는 속도 이상이면, 위치 변화가 굼떠도 움직이는 중으로 봅니다.
+    // (천천히 걷거나 모퉁이를 돌 때 위치가 3m씩 안 바뀌어 걷는 중에 멈추던 문제)
+    if (!_autoPaused &&
+        (_lastGoodSpeed ?? 0) >= RunningConfig.movingMetersPerSecond) {
+      _lastMovedAt = _now();
+    }
     final anchor = _anchor;
     if (anchor == null) return _setAnchor(p);
 
@@ -759,9 +797,9 @@ class RunningSession extends ChangeNotifier {
     // 3m 미만 좌표도 '멈췄다'는 신호이므로 거리 기준보다 먼저 봅니다.
     final doppler = p.speed >= 0 ? p.speed : null;
     if (_autoPaused) {
-      final moving =
-          (doppler ?? 0) >= RunningConfig.autoResumeMetersPerSecond ||
-          meters >= RunningConfig.autoResumeMeters;
+      final moving = doppler != null
+          ? doppler >= RunningConfig.autoResumeMetersPerSecond
+          : meters >= RunningConfig.autoResumeMeters;
       if (!moving) {
         _movingSince = _movingLastAt = null;
         return;
@@ -780,7 +818,7 @@ class RunningSession extends ChangeNotifier {
     }
 
     // 기준점을 유지하므로 천천히 움직여도 3m를 넘는 순간 한꺼번에 더해집니다.
-    if (meters < RunningConfig.minSegmentMeters) return;
+    if (meters < RunningConfig.segmentMetersFor(p.accuracy)) return;
     if ((doppler ?? meters / seconds) >= RunningConfig.movingMetersPerSecond ||
         meters / seconds >= RunningConfig.movingMetersPerSecond) {
       _lastMovedAt = _now();
@@ -851,9 +889,13 @@ class RunningStartPage extends StatefulWidget {
     super.key,
     required this.options,
     this.initialCenter,
+    this.togetherId,
   });
 
   final RunningStartOptions options;
+
+  /// 함께 달리기 대기실에서 시작했으면 그 약속 번호. 저장한 뒤 결과를 약속에 올립니다.
+  final String? togetherId;
 
   /// 시작 화면에서 마지막으로 잡힌 위치. 지도가 엉뚱한 곳에서 시작하지 않게 합니다.
   final LatLng? initialCenter;
@@ -862,7 +904,8 @@ class RunningStartPage extends StatefulWidget {
   State<RunningStartPage> createState() => _RunningStartPageState();
 }
 
-class _RunningStartPageState extends State<RunningStartPage> {
+class _RunningStartPageState extends State<RunningStartPage>
+    with SingleTickerProviderStateMixin {
   static const _zoom = MapZoom.running;
 
   late final _session = RunningSession(
@@ -873,10 +916,18 @@ class _RunningStartPageState extends State<RunningStartPage> {
   );
   final _map = RunneryMapController();
   bool _followUser = true;
-  bool _showMapLabels = true;
-  bool _collapsed = false;
   bool _ending = false;
   bool _goalReached = false;
+
+  /// 0이면 지도, 1이면 크게 보기(주황 전체 화면).
+  late final _page = AnimationController(
+    vsync: this,
+    duration: AppMotion.pauseTransition,
+  );
+
+  /// 달성을 알린 칼로리 퀘스트 단계 수.
+  int _questShown = 0;
+  bool _questSheetOpen = false;
   final _liveActivity = RunningLiveActivity();
 
   final _voice = RunningVoice();
@@ -888,17 +939,27 @@ class _RunningStartPageState extends State<RunningStartPage> {
   late final AppLifecycleListener _lifecycle;
   Position? _followedPosition;
 
+  /// 함께 달리기면 친구들과 거리·위치·지나간 길을 주고받습니다.
+  TogetherLive? _live;
+
   @override
   void initState() {
     super.initState();
-    // 화면이 꺼져도 위치를 계속 받으므로, 배터리를 아끼려고 화면을 억지로 켜 두지 않습니다.
+    // 달리는 중 기록을 보기 쉽도록 러닝 화면에서는 화면이 자동으로 꺼지지 않게 합니다.
+    // (화면을 직접 꺼도 위치는 계속 받습니다.)
+    WakelockPlus.enable();
     _session
       ..addListener(_followCamera)
       ..addListener(_checkGoal)
+      ..addListener(_checkQuest)
       ..addListener(_updateLiveActivity)
       ..addListener(_announceKm)
       ..addListener(_announceAutoPause)
       ..start();
+    if (widget.togetherId case final id?) {
+      _live = TogetherLive(id)..start();
+      _session.addListener(_shareLive);
+    }
     // '5킬로미터예요', '30분이에요': 거리는 받침이 없고 시간은 받침이 있습니다.
     final goal = _goalText;
     _say(
@@ -915,10 +976,14 @@ class _RunningStartPageState extends State<RunningStartPage> {
 
   @override
   void dispose() {
+    // 끝났거나 화면을 닫으면 친구들에게 보이던 내 위치·지나간 길을 지웁니다.
+    _live?.dispose();
+    WakelockPlus.disable();
     _lifecycle.dispose();
     _liveActivity.end();
     _session.dispose();
     _map.dispose();
+    _page.dispose();
     super.dispose();
   }
 
@@ -930,7 +995,34 @@ class _RunningStartPageState extends State<RunningStartPage> {
     final p = _session.lastPosition;
     if (p == null || identical(p, _followedPosition)) return;
     _followedPosition = p;
-    if (_followUser) _map.moveTo(LatLng(p.latitude, p.longitude));
+    if (_followUser) _map.follow(LatLng(p.latitude, p.longitude));
+  }
+
+  void _shareLive() {
+    final p = _session.lastPosition;
+    final routePoint = _session.segments.lastOrNull?.lastOrNull?.latLng;
+    _live?.update(
+      meters: _session.distanceMeters,
+      moving: _session.elapsed,
+      paused: _session.status != RunningStatus.running || _session.autoPaused,
+      position: p == null ? null : (p.latitude, p.longitude),
+      routePoint: routePoint == null
+          ? null
+          : (routePoint.latitude, routePoint.longitude),
+    );
+  }
+
+  /// 내 위치에서 친구까지 거리(m). 둘 중 하나라도 위치를 모르면 null.
+  double? _awayMeters(LiveFriend f) {
+    final me = _session.lastPosition;
+    final friend = f.run?.position;
+    if (me == null || friend == null) return null;
+    return Geolocator.distanceBetween(
+      me.latitude,
+      me.longitude,
+      friend.$1,
+      friend.$2,
+    );
   }
 
   /// 다이내믹 아일랜드에 보낼 값. 거리는 화면처럼 0.01 km 단위로 맞춥니다.
@@ -1016,6 +1108,43 @@ class _RunningStartPageState extends State<RunningStartPage> {
     );
   }
 
+  /// 칼로리 퀘스트 단계를 새로 넘으면 진동·음성으로 알리고 달성 창을 띄웁니다. 기록은 계속됩니다.
+  void _checkQuest() {
+    if (!widget.options.calorieQuest) return;
+    final done = CalorieQuest.completed(_session.calories);
+    if (done <= _questShown) return;
+    _questShown = done;
+    final stage = CalorieQuest.stages[done - 1];
+    HapticFeedback.heavyImpact();
+    _say('칼로리 퀘스트 $done단계 달성. ${stage.fullName}만큼 태웠어요.');
+    // 이미 창이 떠 있거나 종료 확인 중이면 창은 띄우지 않습니다(카드의 퀘스트 줄은 바뀝니다).
+    if (_ending || _questSheetOpen) return;
+    _questSheetOpen = true;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      barrierColor: AppColors.scrim,
+      isScrollControlled: true,
+      builder: (_) => CalorieQuestAchievedSheet(
+        stageIndex: done - 1,
+        listenable: _session,
+        calories: () => _session.calories,
+        elapsed: () => _session.elapsed,
+      ),
+    ).whenComplete(() => _questSheetOpen = false);
+  }
+
+  void _openQuestPage() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => CalorieQuestPage(
+          listenable: _session,
+          calories: () => _session.calories,
+        ),
+      ),
+    );
+  }
+
   void _recenter() {
     setState(() => _followUser = true);
     final p = _session.lastPosition;
@@ -1025,7 +1154,6 @@ class _RunningStartPageState extends State<RunningStartPage> {
   void _pause() {
     HapticFeedback.mediumImpact();
     _say('일시정지했어요.');
-    setState(() => _collapsed = false);
     _session.pause();
   }
 
@@ -1043,7 +1171,7 @@ class _RunningStartPageState extends State<RunningStartPage> {
     final action = await showModalBottomSheet<_EndAction>(
       context: context,
       backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.5),
+      barrierColor: AppColors.scrim,
       isScrollControlled: true,
       sheetAnimationStyle: const AnimationStyle(
         duration: AppMotion.endConfirmation,
@@ -1062,6 +1190,17 @@ class _RunningStartPageState extends State<RunningStartPage> {
             RecordPlaces.instance.fill(RunningRecordStore.instance, [saved]);
             // 결과 화면을 보는 동안 목록용 지도 사진을 미리 만들어, 목록에 들어가면 바로 보이게 합니다.
             RouteThumbnails.instance.get(saved);
+            if (widget.togetherId case final id?) {
+              unawaited(TogetherStore.instance.runFinished(id, saved));
+            }
+            // 자동 공유를 켜 두었으면 장소 이름을 찾은 뒤 친구 피드에 올립니다.
+            unawaited(
+              record.places.then(
+                (p) => RecordShare.instance.shareIfAuto(
+                  saved.withPlaces(area: p.area, start: p.start, end: p.end),
+                ),
+              ),
+            );
             break;
           } catch (_) {
             if (!mounted) return;
@@ -1117,14 +1256,20 @@ class _RunningStartPageState extends State<RunningStartPage> {
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _openEndSheet();
       },
-      child: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: SystemUiOverlayStyle.light,
-        child: Scaffold(
-          backgroundColor: AppColors.mapLand,
-          body: ListenableBuilder(
-            listenable: _session,
-            builder: (context, _) => _buildMap(context),
-          ),
+      child: Scaffold(
+        backgroundColor: AppColors.mapLand,
+        body: Stack(
+          children: [
+            ListenableBuilder(
+              listenable: Listenable.merge([_session, ?_live]),
+              builder: (context, _) => _buildMap(context),
+            ),
+            // 넘기는 동안 매 프레임 다시 그리므로 지도와 따로 둡니다.
+            ListenableBuilder(
+              listenable: Listenable.merge([_session, _page]),
+              builder: (context, _) => _buildControls(context),
+            ),
+          ],
         ),
       ),
     );
@@ -1137,463 +1282,493 @@ class _RunningStartPageState extends State<RunningStartPage> {
         : LatLng(position.latitude, position.longitude);
     final firstPoint = _session.segments.firstOrNull?.firstOrNull;
     final pausePoint = _session.currentPausePoint;
+    // 달리는 중이거나 잠깐 멈춘, 1km 안의 친구만 지도에 그립니다.
+    final friends = [
+      for (final f in _live?.friends ?? const <LiveFriend>[])
+        if (f.run?.position case (final lat, final lng)?)
+          if ((f.state == LiveFriendState.running ||
+                  f.state == LiveFriendState.paused) &&
+              (_awayMeters(f) ?? double.infinity) <=
+                  RunningConfig.friendMapRadiusMeters)
+            MapFriend(
+              LatLng(lat, lng),
+              f.name,
+              route: [for (final (a, b) in f.run!.route) LatLng(a, b)],
+            ),
+    ];
 
-    // 카드·버튼은 지도 children 밖에 겹쳐야 그 위의 드래그가 지도를 움직이지 않습니다.
-    return Stack(
-      children: [
-        RunneryMap(
-          controller: _map,
-          initialCenter:
-              point ?? widget.initialCenter ?? const LatLng(37.5665, 126.9780),
-          initialZoom: _zoom,
-          showLabels: _showMapLabels,
-          routeWidth: RouteWidth.running,
-          route: [
-            for (final segment in _session.segments)
-              [for (final p in segment) p.latLng],
-          ],
-          markers: [
-            if (firstPoint != null)
-              MapMarker(firstPoint.latLng, MapMarkerKind.start),
-            if (pausePoint != null)
-              MapMarker(pausePoint.latLng, MapMarkerKind.pause),
-          ],
-          // 일시정지 중에는 현재 위치 대신 일시정지 마커를 보여줍니다.
-          userLocation: point == null || pausePoint != null
-              ? null
-              : MapUserLocation(point, position!.accuracy.clamp(5, 60)),
-          onUserGesture: () {
-            if (_followUser) setState(() => _followUser = false);
-          },
-        ),
-        _buildControls(context),
+    return RunneryMap(
+      controller: _map,
+      initialCenter:
+          point ?? widget.initialCenter ?? const LatLng(37.5665, 126.9780),
+      initialZoom: _zoom,
+      routeWidth: RouteWidth.running,
+      // 경로가 1초마다 늘어날 때마다 다시 그리면 지명·도로명이 깜빡여 5초마다 그립니다(기록은 그대로 1초마다).
+      routeUpdateInterval: const Duration(seconds: 5),
+      route: [
+        for (final segment in _session.segments)
+          [for (final p in segment) p.latLng],
       ],
+      markers: [
+        if (firstPoint != null)
+          MapMarker(firstPoint.latLng, MapMarkerKind.start),
+        if (pausePoint != null)
+          MapMarker(pausePoint.latLng, MapMarkerKind.pause),
+      ],
+      // 일시정지 중에는 현재 위치 대신 일시정지 마커를 보여줍니다.
+      userLocation: point == null || pausePoint != null
+          ? null
+          : MapUserLocation(point, position!.accuracy.clamp(5, 60)),
+      friends: friends,
+      onUserGesture: () {
+        if (_followUser) setState(() => _followUser = false);
+      },
     );
   }
 
+  /// 옆으로 밀면 손가락을 따라 크게 보기 화면이 들어오고 나갑니다.
+  void _dragPage(DragUpdateDetails details) {
+    _page.value -= details.primaryDelta! / MediaQuery.sizeOf(context).width;
+  }
+
+  void _endPageDrag(DragEndDetails details) {
+    final v = details.primaryVelocity ?? 0;
+    final toBig = v.abs() > 300 ? v < 0 : _page.value > 0.5;
+    _showPage(toBig ? 1 : 0);
+  }
+
+  void _showPage(int page) {
+    _page.animateTo(page.toDouble(), curve: AppMotion.pushSlideCurve);
+  }
+
+  // 카드·버튼은 지도 위에 겹쳐야 그 위의 드래그가 지도를 움직이지 않습니다.
   Widget _buildControls(BuildContext context) {
     final paused = _session.status == RunningStatus.paused;
-    return Stack(
-      children: [
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          child: SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.space4,
-                AppSpacing.topControlSafeAreaGapMax,
-                AppSpacing.space4,
-                0,
-              ),
-              child: Row(
-                children: paused
-                    ? [
-                        const StatusChip(label: '일시정지됨', icon: Icons.pause),
-                        const Spacer(),
-                        StatusChip(
-                          label: '쉬는 시간',
-                          trailing: Text(
-                            RunningFormat.timer(_session.pauseElapsed),
-                            style: runningNumberStyle(
-                              13,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                        ),
-                      ]
-                    : [
-                        StatusChip(
-                          label: '기록 중',
-                          leading: Container(
-                            width: 8,
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              color: AppColors.primary,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ),
-                        const Spacer(),
-                        GpsStatusChip(
-                          locationState: switch (_session.gpsError) {
-                            LocationServiceDisabledException() =>
-                              RunningLocationState.serviceDisabled,
-                            PermissionDeniedException() =>
-                              RunningLocationState.denied,
-                            _ => RunningLocationState.ready,
-                          },
-                          position: _session.lastPosition,
-                        ),
-                      ],
+    final page = _page.value;
+    Widget swipe(Widget child) => GestureDetector(
+      onHorizontalDragUpdate: _dragPage,
+      onHorizontalDragEnd: _endPageDrag,
+      child: child,
+    );
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: page > 0.5 || !AppColors.isDark
+          ? SystemUiOverlayStyle.dark
+          : SystemUiOverlayStyle.light,
+      child: Stack(
+        children: [
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.mapCardHorizontal,
+                  AppSpacing.space2,
+                  AppSpacing.mapCardHorizontal,
+                  0,
+                ),
+                child: swipe(
+                  _RunningCard(
+                    session: _session,
+                    options: widget.options,
+                    onExpand: () => _showPage(1),
+                    onOpenQuest: _openQuestPage,
+                  ),
+                ),
               ),
             ),
           ),
-        ),
-        Positioned(
-          left: AppSpacing.mapCardHorizontal,
-          right: AppSpacing.mapCardHorizontal,
-          bottom: AppSpacing.mapCardBottom,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Padding(
-                    padding: EdgeInsets.only(
-                      left:
-                          AppSpacing.mapScaleLeft -
-                          AppSpacing.mapCardHorizontal,
-                    ),
-                    child: MapScaleBar(camera: _map),
-                  ),
-                  const Spacer(),
+          // 06-8 크게 보기: 화면 전체를 주황으로 덮습니다.
+          if (page > 0)
+            Positioned.fill(
+              child: FractionalTranslation(
+                translation: Offset(1 - page, 0),
+                child: swipe(_BigStatsPage(session: _session)),
+              ),
+            ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.space2),
+                child: swipe(
                   Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      MapCircleButton(
-                        icon: Icons.layers_outlined,
-                        tooltip: _showMapLabels ? '지명 숨기기' : '지명 보기',
-                        onPressed: () =>
-                            setState(() => _showMapLabels = !_showMapLabels),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Column(
+                            children: [
+                              // 크게 보기에서는 지도가 가려져 현재 위치 버튼을 숨깁니다.
+                              IgnorePointer(
+                                ignoring: page > 0,
+                                child: Opacity(
+                                  opacity: 1 - page,
+                                  child: MapCircleButton(
+                                    icon: _followUser
+                                        ? Icons.my_location
+                                        : Icons.location_searching,
+                                    tooltip: '현재 위치',
+                                    onPressed: _recenter,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: AppSpacing.space4),
+                              _ControlButton(
+                                tooltip: '러닝 종료',
+                                color: mapFloatingColor,
+                                onPressed: _openEndSheet,
+                                child: Container(
+                                  width: 16,
+                                  height: 16,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.textPrimary,
+                                    borderRadius: BorderRadius.circular(3),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(width: AppSpacing.space6),
+                          paused
+                              ? _ControlButton(
+                                  tooltip: '다시 시작',
+                                  color: AppColors.primary,
+                                  onPressed: _resume,
+                                  child: const Icon(
+                                    Icons.play_arrow_rounded,
+                                    size: 34,
+                                    color: Colors.black,
+                                  ),
+                                )
+                              : _ControlButton(
+                                  tooltip: '일시정지',
+                                  color: AppColors.textPrimary,
+                                  onPressed: _pause,
+                                  child: Icon(
+                                    Icons.pause,
+                                    size: 30,
+                                    color: AppColors.onInverse,
+                                  ),
+                                ),
+                        ],
                       ),
-                      const SizedBox(height: AppSpacing.mapControlGap),
-                      MapCircleButton(
-                        icon: _followUser
-                            ? Icons.my_location
-                            : Icons.location_searching,
-                        tooltip: '현재 위치',
-                        onPressed: _recenter,
+                      const SizedBox(height: AppSpacing.space4),
+                      _PageDots(
+                        page: page,
+                        onTap: () => _showPage(page > 0.5 ? 0 : 1),
                       ),
                     ],
                   ),
-                ],
+                ),
               ),
-              const SizedBox(height: AppSpacing.mapControlAboveCard),
-              _buildCard(context, paused),
-            ],
+            ),
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCard(BuildContext context, bool paused) {
-    final Widget content;
-    if (_collapsed) {
-      content = _CollapsedCard(
-        key: const ValueKey('collapsed'),
-        session: _session,
-        onPause: _pause,
-        onResume: _resume,
-      );
-    } else if (paused) {
-      content = _PausedCard(
-        key: const ValueKey('paused'),
-        session: _session,
-        onResume: _resume,
-        onEnd: _openEndSheet,
-      );
-    } else {
-      content = _RunningCard(
-        key: const ValueKey('running'),
-        session: _session,
-        options: widget.options,
-        onPause: _pause,
-        onEnd: _openEndSheet,
-      );
-    }
-
-    // 카드를 아래로 밀면 한 줄 요약으로 접고, 위로 밀면 펼칩니다.
-    return GestureDetector(
-      onVerticalDragEnd: (details) {
-        final v = details.primaryVelocity ?? 0;
-        if (v.abs() < 100) return;
-        setState(() => _collapsed = v > 0);
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.background.withValues(alpha: 0.96),
-          borderRadius: AppRadius.sheetBorder,
-          border: Border.all(color: AppColors.divider),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => setState(() => _collapsed = !_collapsed),
-              child: const SizedBox(
-                width: double.infinity,
-                height: 20,
-                child: Center(child: SheetHandle()),
-              ),
-            ),
-            AnimatedSize(
-              duration: AppMotion.pauseTransition,
-              curve: AppMotion.pushSlideCurve,
-              alignment: Alignment.bottomCenter,
-              child: AnimatedSwitcher(
-                duration: AppMotion.pauseTransition,
-                child: content,
-              ),
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }
 }
 
-/// 06 실시간 러닝 카드.
+/// 06 실시간 러닝 카드: 거리·시간·페이스·칼로리와 칼로리 퀘스트를 한 카드에 둡니다.
 class _RunningCard extends StatelessWidget {
   const _RunningCard({
-    super.key,
     required this.session,
     required this.options,
-    required this.onPause,
-    required this.onEnd,
+    required this.onExpand,
+    required this.onOpenQuest,
   });
 
   final RunningSession session;
   final RunningStartOptions options;
-  final VoidCallback onPause;
-  final VoidCallback onEnd;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Text('거리', style: _labelStyle),
-              if (session.autoPaused) ...[
-                const SizedBox(width: AppSpacing.space2),
-                const Text(
-                  '자동 일시정지',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ],
-              const Spacer(),
-              if (options.voiceGuide && options.mode == RunningMode.free)
-                const Text(
-                  '1 km마다 음성 안내',
-                  style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
-                ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          UnitValue(
-            value: RunningFormat.km(session.distanceMeters),
-            unit: 'km',
-            size: runningHeroSize(context),
-          ),
-          if (options.goalProgress(session.distanceMeters, session.elapsed)
-              case final progress?) ...[
-            const SizedBox(height: AppSpacing.space3),
-            ClipRRect(
-              borderRadius: AppRadius.pillBorder,
-              child: LinearProgressIndicator(
-                value: progress.clamp(0.0, 1.0),
-                minHeight: 6,
-                color: AppColors.textPrimary,
-                backgroundColor: AppColors.divider,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              options.goalStatus(session.distanceMeters, session.elapsed)!,
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ],
-          const SizedBox(height: AppSpacing.space4),
-          const Divider(height: 1),
-          const SizedBox(height: AppSpacing.space3),
-          StatRow(
-            cells: [
-              StatCell(
-                label: '시간',
-                value: RunningFormat.clock(session.elapsed),
-              ),
-              StatCell(
-                label: '페이스',
-                value: RunningFormat.livePace(session.paceSecondsPerKm),
-                unit: '/km',
-              ),
-              StatCell(
-                label: '칼로리',
-                value: RunningFormat.kcal(session.calories),
-                unit: 'kcal',
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.space4),
-          Row(
-            children: [
-              EndRunButton(onPressed: onEnd),
-              const SizedBox(width: AppSpacing.space3),
-              Expanded(
-                child: WhiteButton(
-                  label: '일시정지',
-                  icon: Icons.pause,
-                  height: AppComponentMetrics.runningCardButtonHeight,
-                  onPressed: onPause,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 07 일시정지 카드.
-class _PausedCard extends StatelessWidget {
-  const _PausedCard({
-    super.key,
-    required this.session,
-    required this.onResume,
-    required this.onEnd,
-  });
-
-  final RunningSession session;
-  final VoidCallback onResume;
-  final VoidCallback onEnd;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Text(
-                '일시정지',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              Spacer(),
-              Icon(Icons.pause, color: AppColors.textPrimary, size: 26),
-            ],
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            '숨을 고르고 준비되면 다시 시작하세요',
-            style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: AppSpacing.space4),
-          const Divider(height: 1),
-          const SizedBox(height: AppSpacing.space3),
-          StatRow(
-            cells: [
-              StatCell(
-                label: '거리',
-                value: RunningFormat.km(session.distanceMeters),
-                unit: 'km',
-              ),
-              StatCell(
-                label: '시간',
-                value: RunningFormat.clock(session.elapsed),
-              ),
-              StatCell(
-                label: '칼로리',
-                value: RunningFormat.kcal(session.calories),
-                unit: 'kcal',
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.space4),
-          Row(
-            children: [
-              EndRunButton(onPressed: onEnd),
-              const SizedBox(width: AppSpacing.space3),
-              Expanded(
-                child: _OrangeButton(label: '다시 시작', onPressed: onResume),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 06-3 한 줄 요약 카드.
-class _CollapsedCard extends StatelessWidget {
-  const _CollapsedCard({
-    super.key,
-    required this.session,
-    required this.onPause,
-    required this.onResume,
-  });
-
-  final RunningSession session;
-  final VoidCallback onPause;
-  final VoidCallback onResume;
+  final VoidCallback onExpand;
+  final VoidCallback onOpenQuest;
 
   @override
   Widget build(BuildContext context) {
     final paused = session.status == RunningStatus.paused;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 12, 12),
-      child: Row(
+    final status = TextStyle(
+      fontSize: 12,
+      fontWeight: FontWeight.w700,
+      color: AppColors.textPrimary,
+    );
+    return Container(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.space4,
+        AppSpacing.space3,
+        AppSpacing.space2,
+        AppSpacing.space3,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.background.withValues(alpha: 0.96),
+        borderRadius: AppRadius.sheetBorder,
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: StatRow(
-              dividers: false,
-              cells: [
-                StatCell(
-                  label: '거리',
-                  value: RunningFormat.km(session.distanceMeters),
-                  unit: 'km',
-                ),
-                StatCell(
-                  label: '시간',
-                  value: RunningFormat.clock(session.elapsed),
-                ),
-                StatCell(
-                  label: '페이스',
-                  value: RunningFormat.livePace(session.paceSecondsPerKm),
-                  unit: '/km',
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: AppSpacing.space2),
-          Material(
-            color: paused ? AppColors.primary : AppColors.textPrimary,
-            shape: const CircleBorder(),
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: paused ? onResume : onPause,
-              child: SizedBox.square(
-                dimension: 52,
-                child: Icon(
-                  paused ? Icons.play_arrow_rounded : Icons.pause,
-                  color: Colors.black,
-                ),
+          if (paused || session.autoPaused) ...[
+            Padding(
+              padding: const EdgeInsets.only(right: AppSpacing.space2),
+              child: Row(
+                children: [
+                  Icon(Icons.pause, size: 14, color: AppColors.textPrimary),
+                  const SizedBox(width: AppSpacing.space1),
+                  Text(paused ? '일시정지됨' : '자동 일시정지', style: status),
+                  const Spacer(),
+                  if (paused) ...[
+                    Text('쉬는 시간  ', style: _labelStyle),
+                    Text(
+                      RunningFormat.timer(session.pauseElapsed),
+                      style: runningNumberStyle(13),
+                    ),
+                  ],
+                ],
               ),
             ),
+            const SizedBox(height: AppSpacing.space3),
+          ],
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: StatRow(
+                  cells: [
+                    StatCell(
+                      label: '거리',
+                      value: RunningFormat.km(session.distanceMeters),
+                      unit: 'km',
+                    ),
+                    StatCell(
+                      label: '시간',
+                      value: RunningFormat.clock(session.elapsed),
+                    ),
+                    StatCell(
+                      label: '페이스',
+                      value: RunningFormat.livePace(session.paceSecondsPerKm),
+                      unit: '/km',
+                    ),
+                    StatCell(
+                      label: '칼로리',
+                      value: RunningFormat.kcal(session.calories),
+                      unit: 'kcal',
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: '크게 보기',
+                onPressed: onExpand,
+                visualDensity: VisualDensity.compact,
+                icon: Icon(
+                  Icons.open_in_full,
+                  size: 18,
+                  color: AppColors.textTertiary,
+                ),
+              ),
+            ],
           ),
+          if (options.calorieQuest) ...[
+            const SizedBox(height: AppSpacing.space3),
+            const Divider(height: 1, endIndent: AppSpacing.space2),
+            const SizedBox(height: AppSpacing.space2),
+            Padding(
+              padding: const EdgeInsets.only(right: AppSpacing.space2),
+              child: CalorieQuestRow(
+                kcal: session.calories,
+                onTap: onOpenQuest,
+              ),
+            ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+/// 06-8 크게 보기: 주황 바탕에 거리를 크게, 페이스·시간·칼로리를 아래에.
+class _BigStatsPage extends StatelessWidget {
+  const _BigStatsPage({required this.session});
+
+  final RunningSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    const ink = Colors.black;
+    final cells = [
+      (Icons.speed, RunningFormat.livePace(session.paceSecondsPerKm), '페이스'),
+      (Icons.timer_outlined, RunningFormat.clock(session.elapsed), '시간'),
+      (
+        Icons.local_fire_department_outlined,
+        RunningFormat.kcal(session.calories),
+        '칼로리',
+      ),
+    ];
+    return ColoredBox(
+      color: AppColors.primary,
+      child: SafeArea(
+        child: Padding(
+          // 아래 정지·일시정지 버튼 자리를 비웁니다.
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.space6,
+            AppSpacing.space4,
+            AppSpacing.space6,
+            AppComponentMetrics.runningControlButtonSize * 2,
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (session.status == RunningStatus.paused)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: AppSpacing.space4),
+                  child: Text(
+                    '일시정지됨',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: ink,
+                    ),
+                  ),
+                ),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  RunningFormat.km(session.distanceMeters),
+                  style: runningNumberStyle(
+                    180,
+                    weight: FontWeight.w800,
+                    color: ink,
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.space2),
+              const Text(
+                'km',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  color: ink,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.space10),
+              Row(
+                children: [
+                  for (final (icon, value, label) in cells)
+                    Expanded(
+                      child: Column(
+                        children: [
+                          Icon(icon, size: 24, color: ink),
+                          const SizedBox(height: AppSpacing.space2),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              value,
+                              style: runningNumberStyle(40, color: ink),
+                            ),
+                          ),
+                          const SizedBox(height: AppSpacing.space1),
+                          Text(
+                            label,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: ink,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 러닝 중 아래 둥근 버튼: 종료(흰색)·일시정지(검정)·다시 시작(주황).
+class _ControlButton extends StatelessWidget {
+  const _ControlButton({
+    required this.tooltip,
+    required this.color,
+    required this.onPressed,
+    required this.child,
+  });
+
+  final String tooltip;
+  final Color color;
+  final VoidCallback onPressed;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: color,
+        shape: CircleBorder(side: BorderSide(color: AppColors.mapButtonBorder)),
+        clipBehavior: Clip.antiAlias,
+        elevation: 2,
+        child: InkWell(
+          onTap: onPressed,
+          child: SizedBox.square(
+            dimension: AppComponentMetrics.runningControlButtonSize,
+            child: Center(child: child),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 지도·크게 보기 중 어느 화면인지 보여 주는 점 두 개. 누르면 다른 화면으로 넘깁니다.
+class _PageDots extends StatelessWidget {
+  const _PageDots({required this.page, required this.onTap});
+
+  /// 0이면 지도, 1이면 크게 보기.
+  final double page;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget dot(double active) => Container(
+      width: 6 + 16 * active,
+      height: 6,
+      margin: const EdgeInsets.symmetric(horizontal: 3),
+      decoration: BoxDecoration(
+        color: Color.lerp(
+          AppColors.textTertiary,
+          AppColors.textPrimary,
+          active,
+        ),
+        borderRadius: AppRadius.pillBorder,
+      ),
+    );
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.space3,
+          vertical: AppSpacing.space2,
+        ),
+        decoration: BoxDecoration(
+          color: mapFloatingColor,
+          borderRadius: AppRadius.pillBorder,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [dot(1 - page), dot(page)],
+        ),
       ),
     );
   }
@@ -1610,8 +1785,8 @@ class _EndConfirmSheet extends StatelessWidget {
     final startedAt = session.startedAt ?? DateTime.now();
     final today = DateUtils.isSameDay(startedAt, DateTime.now());
     return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.card,
+      decoration: BoxDecoration(
+        color: AppColors.sheet,
         borderRadius: BorderRadius.vertical(
           top: Radius.circular(AppRadius.sheet),
         ),
@@ -1628,7 +1803,7 @@ class _EndConfirmSheet extends StatelessWidget {
         children: [
           const Center(child: SheetHandle()),
           const SizedBox(height: AppSpacing.space5),
-          const Text(
+          Text(
             '러닝을 종료할까요?',
             style: TextStyle(
               fontSize: 20,
@@ -1637,7 +1812,7 @@ class _EndConfirmSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             '지금까지 달린 경로와 기록이 저장돼요.',
             style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
           ),
@@ -1645,7 +1820,7 @@ class _EndConfirmSheet extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(AppSpacing.space3),
             decoration: BoxDecoration(
-              color: AppColors.background,
+              color: AppColors.pick(AppColors.background, AppColors.card),
               borderRadius: AppRadius.thumbnailBorder,
               border: Border.all(color: AppColors.divider),
             ),
@@ -1675,7 +1850,7 @@ class _EndConfirmSheet extends StatelessWidget {
                         '${RunningFormat.koreanDuration(session.elapsed)} · '
                         '${RunningFormat.kcal(session.calories)} kcal · '
                         '${today ? '오늘 ' : ''}${RunningFormat.time(startedAt)}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           color: AppColors.textSecondary,
                         ),
@@ -1705,7 +1880,7 @@ class _EndConfirmSheet extends StatelessWidget {
                 AppComponentMetrics.minimumTouchTarget,
               ),
             ),
-            child: const Text(
+            child: Text(
               '저장하지 않고 종료',
               style: TextStyle(
                 fontSize: 13,
@@ -1724,13 +1899,14 @@ class _EndConfirmSheet extends StatelessWidget {
 // 러닝·결과 화면 공통 조각
 // ═════════════════════════════════════════════════════
 
-const _labelStyle = TextStyle(fontSize: 12, color: AppColors.textSecondary);
+TextStyle get _labelStyle =>
+    TextStyle(fontSize: 12, color: AppColors.textSecondary);
 
 /// 러닝 숫자: Archivo 폭 75, 자릿수 고정.
 TextStyle runningNumberStyle(
   double size, {
   FontWeight weight = FontWeight.w700,
-  Color color = AppColors.textPrimary,
+  Color? color,
 }) => TextStyle(
   fontFamily: AppTextStyles.numberFontFamily,
   fontVariations: const [AppTextStyles.numberWidth],
@@ -1738,7 +1914,7 @@ TextStyle runningNumberStyle(
   fontSize: size,
   fontWeight: weight,
   height: 1,
-  color: color,
+  color: color ?? AppColors.textPrimary,
 );
 
 /// 실시간 큰 숫자: 작은 화면 56, 기준 64, Pro Max 72, Android 60.
@@ -1862,6 +2038,13 @@ class StatRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 숫자 줄 높이를 한 줄로 고정합니다. 멈춰 서서 페이스가 길어지면 글자는 줄여 한 줄로 보이지만,
+    // 고정하지 않으면 높이를 두 줄로 계산해 러닝 카드가 커졌다 작아졌다 합니다.
+    final numberHeight = (TextPainter(
+      text: TextSpan(text: '0', style: runningNumberStyle(22)),
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout()).height;
     return IntrinsicHeight(
       child: Row(
         children: [
@@ -1876,25 +2059,28 @@ class StatRow extends StatelessWidget {
                 children: [
                   Text(cell.label, style: _labelStyle),
                   const SizedBox(height: 6),
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text.rich(
-                      TextSpan(
-                        children: [
-                          TextSpan(
-                            text: cell.value,
-                            style: runningNumberStyle(22),
-                          ),
-                          if (cell.unit != null)
+                  SizedBox(
+                    height: numberHeight,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.bottomLeft,
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
                             TextSpan(
-                              text: ' ${cell.unit}',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: AppColors.textSecondary,
-                              ),
+                              text: cell.value,
+                              style: runningNumberStyle(22),
                             ),
-                        ],
+                            if (cell.unit != null)
+                              TextSpan(
+                                text: ' ${cell.unit}',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -1916,7 +2102,7 @@ class SheetHandle extends StatelessWidget {
     return Container(
       width: 36,
       height: 4,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.borderDefault,
         borderRadius: AppRadius.pillBorder,
       ),
@@ -1947,7 +2133,7 @@ class WhiteButton extends StatelessWidget {
         onPressed: onPressed,
         style: FilledButton.styleFrom(
           backgroundColor: AppColors.textPrimary,
-          foregroundColor: Colors.black,
+          foregroundColor: AppColors.onInverse,
           shape: const StadiumBorder(),
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4),
         ),
@@ -1977,7 +2163,7 @@ class OutlineButton extends StatelessWidget {
     required this.onPressed,
     this.leading,
     this.height = AppComponentMetrics.whiteButtonMediumHeight,
-    this.borderColor = AppColors.borderDefault,
+    this.borderColor,
     this.horizontalPadding = AppSpacing.space4,
   });
 
@@ -1985,7 +2171,7 @@ class OutlineButton extends StatelessWidget {
   final Widget? leading;
   final VoidCallback? onPressed;
   final double height;
-  final Color borderColor;
+  final Color? borderColor;
   final double horizontalPadding;
 
   @override
@@ -1996,7 +2182,7 @@ class OutlineButton extends StatelessWidget {
         onPressed: onPressed,
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.textPrimary,
-          side: BorderSide(color: borderColor),
+          side: BorderSide(color: borderColor ?? AppColors.borderDefault),
           shape: const StadiumBorder(),
           padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
         ),
@@ -2025,69 +2211,6 @@ class OutlineButton extends StatelessWidget {
   }
 }
 
-/// 러닝 종료: 흰 테두리 + 정지 사각형, 폭 120.
-class EndRunButton extends StatelessWidget {
-  const EndRunButton({super.key, required this.onPressed});
-
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: AppComponentMetrics.runningEndButtonWidth,
-      child: OutlineButton(
-        label: '러닝 종료',
-        height: AppComponentMetrics.runningCardButtonHeight,
-        borderColor: AppColors.textPrimary,
-        horizontalPadding: AppSpacing.space3,
-        leading: Container(width: 10, height: 10, color: AppColors.textPrimary),
-        onPressed: onPressed,
-      ),
-    );
-  }
-}
-
-class _OrangeButton extends StatelessWidget {
-  const _OrangeButton({required this.label, required this.onPressed});
-
-  final String label;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: AppComponentMetrics.runningCardButtonHeight,
-      child: FilledButton(
-        onPressed: onPressed,
-        style: ButtonStyle(
-          shape: const WidgetStatePropertyAll(StadiumBorder()),
-          backgroundColor: WidgetStateProperty.resolveWith(
-            (states) => states.contains(WidgetState.pressed)
-                ? AppColors.primaryPressed
-                : AppColors.primary,
-          ),
-          foregroundColor: const WidgetStatePropertyAll(Colors.black),
-          overlayColor: const WidgetStatePropertyAll(Colors.transparent),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.play_arrow_rounded,
-              size: AppComponentMetrics.buttonIconSize,
-            ),
-            const SizedBox(width: AppSpacing.buttonIconGap),
-            Text(
-              label,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 enum _RouteMarkerKind { start, finish, pause }
 
 /// 출발(재생)·도착(정지)·일시정지 마커: 흰 원 + 검정 기호.
@@ -2104,7 +2227,7 @@ class RouteMarker extends StatelessWidget {
       width: AppComponentMetrics.startMarkerLarge,
       height: AppComponentMetrics.startMarkerLarge,
       decoration: BoxDecoration(
-        color: AppColors.textPrimary,
+        color: Colors.white,
         shape: BoxShape.circle,
         border: Border.all(color: Colors.black, width: 1.5),
       ),
@@ -2173,7 +2296,7 @@ class RouteThumbnailPainter extends CustomPainter {
             ..strokeWidth = 5
             ..strokeCap = StrokeCap.round
             ..strokeJoin = StrokeJoin.round
-            ..color = Colors.black,
+            ..color = AppColors.pick(Colors.black, Colors.white),
         )
         ..drawPath(
           path,

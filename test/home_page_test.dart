@@ -9,6 +9,8 @@ import 'package:runnery_new/login/auth_ui/auth_ui.dart';
 import 'package:runnery_new/login/login.dart';
 import 'package:runnery_new/record/data/running_record_store.dart';
 
+import 'support/fake_account_backend.dart';
+
 void main() {
   final now = DateTime(2026, 9, 28, 20);
   Future<void> pumpV2(
@@ -112,6 +114,7 @@ void main() {
       final store = AccountStore(
         directory: () async => dir,
         records: RunningRecordStore(directory: () async => dir),
+        backend: FakeAccountBackend(),
       );
       if (withAccount) {
         await store.register(
@@ -133,11 +136,11 @@ void main() {
 
   Future<void> submitLogin(
     WidgetTester tester,
-    String id,
+    String email,
     String password,
     Finder until,
   ) async {
-    await tester.enterText(find.byType(TextFormField).at(0), id);
+    await tester.enterText(find.byType(TextFormField).at(0), email);
     await tester.enterText(find.byType(TextFormField).at(1), password);
     await tester.ensureVisible(find.text('로그인'));
     await tester.tap(find.text('로그인'));
@@ -155,7 +158,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: LoginPageV2(store: store)));
     await submitLogin(
       tester,
-      'minji_run',
+      'minji@example.com',
       'runner123',
       find.byType(HomePageV2),
     );
@@ -171,11 +174,11 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: LoginPageV2(store: store)));
     await submitLogin(
       tester,
-      'minji_run',
+      'minji@example.com',
       'wrong-password',
-      find.text('아이디 또는 비밀번호가 맞지 않아요'),
+      find.text('이메일 또는 비밀번호가 맞지 않아요'),
     );
-    expect(find.text('아이디 또는 비밀번호가 맞지 않아요'), findsOneWidget);
+    expect(find.text('이메일 또는 비밀번호가 맞지 않아요'), findsOneWidget);
     expect(find.byType(HomePageV2), findsNothing);
     expect(find.byType(LoginPageV2), findsOneWidget);
     expect(store.isLoggedIn, isFalse);

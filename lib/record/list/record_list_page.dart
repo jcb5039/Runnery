@@ -1,9 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+
+import '../../design_system/app_colors.dart';
+
 import 'package:flutter/services.dart';
 
 import '../../home/home_page.dart';
 import '../../profile/profile_main_page.dart';
 import '../record_calendar_page.dart';
+import '../record_stats_page.dart';
 import 'detail/record_detail_page.dart';
 import '../data/record_places.dart';
 import '../data/running_record_store.dart';
@@ -32,8 +38,13 @@ class RecordListPageV2 extends StatefulWidget {
   State<RecordListPageV2> createState() => _RecordListPageV2State();
 }
 
+/// 기록 탭 맨 위에서 고르는 화면.
+enum _RecordView { list, calendar, stats }
+
 class _RecordListPageV2State extends State<RecordListPageV2> {
-  late bool calendar = widget.initialCalendar;
+  late var _view = widget.initialCalendar
+      ? _RecordView.calendar
+      : _RecordView.list;
   late DateTime month = widget.initialMonth ?? DateTime.now();
   DateTime? selectedDay;
   late final _store = widget.store ?? RunningRecordStore.instance;
@@ -89,6 +100,14 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
     super.initState();
     _store.addListener(_reload);
     _reload();
+    // 다른 폰에서 올린 새 기록이 있는지 서버를 확인합니다(30초 안에 한 번 했으면 건너뜁니다).
+    if (widget.records == null) {
+      unawaited(
+        _store
+            .syncNow(minAge: const Duration(seconds: 30))
+            .catchError((Object _) {}),
+      );
+    }
   }
 
   Future<void> _reload() async {
@@ -168,10 +187,14 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
 
   @override
   Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
-    value: SystemUiOverlayStyle.light.copyWith(
-      statusBarColor: Colors.transparent,
-      systemNavigationBarColor: recordBackground,
-    ),
+    value:
+        (AppColors.isDark
+                ? SystemUiOverlayStyle.light
+                : SystemUiOverlayStyle.dark)
+            .copyWith(
+              statusBarColor: Colors.transparent,
+              systemNavigationBarColor: recordBackground,
+            ),
     child: Scaffold(
       backgroundColor: recordBackground,
       bottomNavigationBar: _selecting
@@ -186,7 +209,7 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 480),
             child: SingleChildScrollView(
-              key: PageStorageKey(calendar ? 'record-calendar' : 'record-list'),
+              key: PageStorageKey('record-${_view.name}'),
               padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -199,11 +222,11 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
                           style: recordText(26, weight: FontWeight.w800),
                         ),
                       ),
-                      if (!calendar && records.isNotEmpty)
+                      if (_view == _RecordView.list && records.isNotEmpty)
                         TextButton(
                           onPressed: () => _setSelecting(!_selecting),
                           style: TextButton.styleFrom(
-                            foregroundColor: Colors.white,
+                            foregroundColor: AppColors.textPrimary,
                           ),
                           child: Text(_selecting ? '취소' : '선택'),
                         ),
@@ -214,42 +237,60 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
                     height: 40,
                     padding: const EdgeInsets.all(3),
                     decoration: BoxDecoration(
-                      border: Border.all(color: const Color(0xFF343D43)),
+                      border: Border.all(
+                        color: AppColors.pick(
+                          const Color(0xFF343D43),
+                          AppColors.borderDefault,
+                        ),
+                      ),
                       borderRadius: BorderRadius.circular(24),
                     ),
                     child: Row(
-                      children: [_toggle('목록', false), _toggle('달력', true)],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    child: Row(
                       children: [
-                        IconButton(
-                          tooltip: '이전 달',
-                          onPressed: () => _changeMonth(-1),
-                          icon: const Icon(Icons.chevron_left, size: 20),
-                        ),
-                        Expanded(
-                          child: Text(
-                            '${month.year}년 ${month.month}월',
-                            textAlign: TextAlign.center,
-                            style: recordText(18, weight: FontWeight.w800),
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: '다음 달',
-                          onPressed: () => _changeMonth(1),
-                          icon: const Icon(
-                            Icons.chevron_right,
-                            size: 20,
-                            color: recordMuted,
-                          ),
-                        ),
+                        _toggle('목록', _RecordView.list),
+                        _toggle('달력', _RecordView.calendar),
+                        _toggle('통계', _RecordView.stats),
                       ],
                     ),
                   ),
-                  const Divider(height: 1, color: Color(0xFF343D43)),
+                  // 통계는 주간·월간을 따로 넘기므로 달 이동 줄을 숨깁니다.
+                  if (_view != _RecordView.stats) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            tooltip: '이전 달',
+                            onPressed: () => _changeMonth(-1),
+                            icon: const Icon(Icons.chevron_left, size: 20),
+                          ),
+                          Expanded(
+                            child: Text(
+                              '${month.year}년 ${month.month}월',
+                              textAlign: TextAlign.center,
+                              style: recordText(18, weight: FontWeight.w800),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: '다음 달',
+                            onPressed: () => _changeMonth(1),
+                            icon: Icon(
+                              Icons.chevron_right,
+                              size: 20,
+                              color: recordMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Divider(
+                      height: 1,
+                      color: AppColors.pick(
+                        const Color(0xFF343D43),
+                        AppColors.divider,
+                      ),
+                    ),
+                  ],
                   if (_loading)
                     const Padding(
                       padding: EdgeInsets.all(40),
@@ -268,7 +309,9 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
                         ],
                       ),
                     )
-                  else if (calendar)
+                  else if (_view == _RecordView.stats)
+                    RecordStatsView(records: records)
+                  else if (_view == _RecordView.calendar)
                     RecordCalendarPage(
                       embedded: true,
                       records: records,
@@ -288,17 +331,17 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
     ),
   );
 
-  Widget _toggle(String label, bool value) => Expanded(
+  Widget _toggle(String label, _RecordView value) => Expanded(
     child: Semantics(
-      selected: calendar == value,
+      selected: _view == value,
       button: true,
       child: Material(
-        color: calendar == value ? Colors.white : Colors.transparent,
+        color: _view == value ? AppColors.textPrimary : Colors.transparent,
         borderRadius: BorderRadius.circular(24),
         child: InkWell(
           borderRadius: BorderRadius.circular(24),
           onTap: () => setState(() {
-            calendar = value;
+            _view = value;
             _selecting = false;
             _selected.clear();
           }),
@@ -307,7 +350,7 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
               label,
               style: recordText(
                 14,
-                color: calendar == value ? recordBackground : recordSecondary,
+                color: _view == value ? recordBackground : recordSecondary,
                 weight: FontWeight.w700,
               ),
             ),
@@ -398,7 +441,7 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
           ],
         ),
       ),
-      const Divider(height: 1, color: recordLine),
+      Divider(height: 1, color: recordLine),
       if (runs.isEmpty)
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 64),
@@ -445,7 +488,7 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
             ],
           ),
         ),
-        const Divider(height: 1, color: recordLine),
+        Divider(height: 1, color: recordLine),
         for (final r in group.value) _recordTile(r),
       ],
     ];
@@ -477,10 +520,10 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
             alignment: Alignment.centerRight,
             padding: const EdgeInsets.only(right: 20),
             color: recordDelete,
-            child: const Column(
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.delete_outline, color: Colors.white),
+                Icon(Icons.delete_outline, color: AppColors.textPrimary),
                 SizedBox(height: 4),
                 Text(
                   '삭제',
@@ -511,7 +554,7 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
     onTap: () => _selecting ? _toggleSelected(r) : _openRecord(r),
     child: Container(
       padding: const EdgeInsets.symmetric(vertical: 16),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: recordLine)),
       ),
       child: Row(
@@ -532,7 +575,7 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
                       _selected.contains(r.id)
                           ? Icons.check_circle
                           : Icons.radio_button_unchecked,
-                      color: Colors.white,
+                      color: AppColors.textPrimary,
                       size: 24,
                       semanticLabel: _selected.contains(r.id)
                           ? '선택됨'
@@ -586,7 +629,7 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
           ),
           const SizedBox(width: 8),
           if (!_selecting)
-            const Icon(Icons.chevron_right, size: 17, color: recordMuted),
+            Icon(Icons.chevron_right, size: 17, color: recordMuted),
         ],
       ),
     ),
@@ -597,7 +640,7 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
     final ids = monthly.map((r) => r.id).toSet();
     final all = ids.isNotEmpty && _selected.containsAll(ids);
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: recordBackground,
         border: Border(top: BorderSide(color: recordLine)),
       ),
@@ -614,7 +657,9 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
                   _selected.addAll(ids);
                 }
               }),
-              style: TextButton.styleFrom(foregroundColor: Colors.white),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.textPrimary,
+              ),
               child: Text(all ? '전체 해제' : '이번 달 전체 선택'),
             ),
             const SizedBox(width: 12),
@@ -625,8 +670,11 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
                   onPressed: _selected.isEmpty ? null : _deleteSelected,
                   style: FilledButton.styleFrom(
                     backgroundColor: recordDelete,
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: const Color(0xFF2A2C2E),
+                    foregroundColor: AppColors.textPrimary,
+                    disabledBackgroundColor: AppColors.pick(
+                      const Color(0xFF2A2C2E),
+                      AppColors.divider,
+                    ),
                     shape: const StadiumBorder(),
                   ),
                   icon: const Icon(Icons.delete_outline, size: 18),
@@ -643,7 +691,7 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
   }
 
   Widget _navigation() => Container(
-    decoration: const BoxDecoration(
+    decoration: BoxDecoration(
       border: Border(top: BorderSide(color: recordLine)),
     ),
     child: SafeArea(
@@ -672,20 +720,20 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
                 Container(
                   height: 3,
                   width: 28,
-                  color: selected ? Colors.white : Colors.transparent,
+                  color: selected ? AppColors.textPrimary : Colors.transparent,
                 ),
                 const SizedBox(height: 8),
                 Icon(
                   icon,
                   size: 22,
-                  color: selected ? Colors.white : recordMuted,
+                  color: selected ? AppColors.textPrimary : recordMuted,
                 ),
                 const SizedBox(height: 4),
                 Text(
                   label,
                   style: recordText(
                     11,
-                    color: selected ? Colors.white : recordMuted,
+                    color: selected ? AppColors.textPrimary : recordMuted,
                     weight: selected ? FontWeight.w700 : FontWeight.w500,
                   ),
                 ),

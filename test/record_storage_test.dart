@@ -257,11 +257,18 @@ void main() {
     expect(session.autoPaused, isTrue);
     expect(session.distanceMeters, closeTo(10, .5));
 
-    // 움직임이 3초 이어지면 다시 잽니다.
+    // 서 있는 동안 GPS가 10m 넘게 흔들려도 속도가 0이면 움직인 걸로 보지 않습니다.
     clock = clock.add(const Duration(seconds: 40));
     session.addPosition(at(25, speed: 0));
     expect(session.autoPaused, isTrue);
+
+    // 걷는 속도가 5초 이어지면 다시 잽니다.
+    clock = clock.add(const Duration(seconds: 1));
+    session.addPosition(at(26, speed: 1.4));
     clock = clock.add(const Duration(seconds: 3));
+    session.addPosition(at(28, speed: 1.4));
+    expect(session.autoPaused, isTrue);
+    clock = clock.add(const Duration(seconds: 2));
     session.addPosition(at(29, speed: 1.4));
     expect(session.autoPaused, isFalse);
     expect(session.distanceMeters, closeTo(29, .5));
@@ -309,6 +316,89 @@ void main() {
     clock = clock.add(const Duration(seconds: 6));
     session.checkAutoPause();
     expect(session.autoPaused, isFalse);
+    session.dispose();
+  });
+
+  test('walking slowly does not auto pause while speed says moving', () {
+    var clock = DateTime(2026, 10, 12, 8);
+    final session = gps.RunningSession(
+      weightKg: 65,
+      autoPause: true,
+      now: () => clock,
+    );
+    Position at(double north, double speed) => Position(
+      latitude: 37.5 + north / 111000,
+      longitude: 127,
+      timestamp: clock,
+      accuracy: 5,
+      altitude: 0,
+      altitudeAccuracy: 0,
+      heading: 0,
+      headingAccuracy: 0,
+      speed: speed,
+      speedAccuracy: 0,
+    );
+    session.startWithoutGps();
+    // 위치는 1초에 0.25m씩만 바뀌고(굼뜬 위치) 속도는 걷는 속도와 '모름'(-1)이 번갈아 와도
+    // 15초 동안 멈추지 않습니다.
+    for (var i = 0; i <= 15; i++) {
+      session.addPosition(at(i * 0.25, i.isEven ? 1.2 : -1));
+      session.checkAutoPause();
+      clock = clock.add(const Duration(seconds: 1));
+    }
+    expect(session.autoPaused, isFalse);
+    session.dispose();
+  });
+
+  test('one GPS jump does not inflate max speed', () {
+    final start = DateTime(2026, 10, 16, 16);
+    var meters = 0.0;
+    // 1초마다 1.5m(시속 5.4km)로 걷다가 30초째에 한 번 40m 튐.
+    final points = [
+      for (var i = 0; i <= 60; i++)
+        gps.TrackPoint(
+          latLng: const LatLng(37.5, 127),
+          time: start.add(Duration(seconds: i)),
+          moving: Duration(seconds: i),
+          meters: meters += i == 0 ? 0 : (i == 30 ? 40 : 1.5),
+          accuracy: 14,
+        ),
+    ];
+    final run = gps.RunningRecord(
+      startedAt: start,
+      endedAt: start.add(const Duration(seconds: 60)),
+      distanceMeters: meters,
+      movingDuration: const Duration(seconds: 60),
+      weightKg: 65,
+      segments: [points],
+      pausePoints: const [],
+    );
+    expect(run.maxSpeedKmh, lessThan(8));
+  });
+
+  test('GPS jitter within the error radius does not zigzag the route', () {
+    final session = gps.RunningSession(weightKg: 65);
+    var clock = DateTime(2026, 10, 16, 16);
+    Position at(double east) => Position(
+      latitude: 37.5,
+      longitude: 127 + east / 88000,
+      timestamp: clock,
+      accuracy: 14,
+      altitude: 0,
+      altitudeAccuracy: 0,
+      heading: 0,
+      headingAccuracy: 0,
+      speed: 0,
+      speedAccuracy: 0,
+    );
+    session.startWithoutGps();
+    // 오차 ±14m에서 4~6m 흔들림은 점으로 찍지 않습니다(오차의 절반 7m 미만).
+    for (final east in [0.0, 5.0, -1.0, 4.0, 0.0, 6.0]) {
+      clock = clock.add(const Duration(seconds: 1));
+      session.addPosition(at(east));
+    }
+    expect(session.segments.single, hasLength(1));
+    expect(session.distanceMeters, 0);
     session.dispose();
   });
 
