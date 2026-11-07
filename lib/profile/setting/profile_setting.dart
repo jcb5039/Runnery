@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../design_system/app_colors.dart';
 import '../../friends/share/record_visibility_page.dart';
+import '../../home/running/calorie_quest.dart';
 
 /// 러닝 설정. 기기에 저장되어 앱을 다시 켜도 유지되고, 러닝 시작 화면의 기본값으로 쓰입니다.
 class ProfileSettings extends ChangeNotifier {
@@ -23,6 +24,9 @@ class ProfileSettings extends ChangeNotifier {
   bool voice = true;
   bool autoPause = true;
   bool calorieQuest = true;
+
+  /// 칼로리 퀘스트를 다시 시작하는 주기. 처음에는 일간입니다.
+  CalorieQuestPeriod calorieQuestPeriod = CalorieQuestPeriod.daily;
   String countdown = '3초';
 
   /// 화면 모드. 처음에는 라이트이고, '시스템 설정'이면 아이폰 설정을 따릅니다.
@@ -56,6 +60,9 @@ class ProfileSettings extends ChangeNotifier {
       voice = json['voice'] as bool? ?? voice;
       autoPause = json['autoPause'] as bool? ?? autoPause;
       calorieQuest = json['calorieQuest'] as bool? ?? calorieQuest;
+      calorieQuestPeriod = CalorieQuestPeriod.fromLabel(
+        json['calorieQuestPeriod'] as String?,
+      );
       final saved = json['countdown'] as String?;
       if (countdownOptions.contains(saved)) countdown = saved!;
       final mode = json['themeMode'] as String?;
@@ -81,6 +88,7 @@ class ProfileSettings extends ChangeNotifier {
           'voice': voice,
           'autoPause': autoPause,
           'calorieQuest': calorieQuest,
+          'calorieQuestPeriod': calorieQuestPeriod.label,
           'countdown': countdown,
           'themeMode': themeMode,
         }),
@@ -204,6 +212,20 @@ class ProfileSettingPage extends StatelessWidget {
                   settings.calorieQuest,
                   (v) => settings.update(() => settings.calorieQuest = v),
                 ),
+                if (settings.calorieQuest)
+                  _row(
+                    '칼로리 퀘스트 주기',
+                    subtitle: '고른 기간마다 1단계부터 다시 시작해요',
+                    value: settings.calorieQuestPeriod.label,
+                    onTap: () => _choose(
+                      context,
+                      '칼로리 퀘스트 주기',
+                      settings.calorieQuestPeriod.label,
+                      [for (final p in CalorieQuestPeriod.values) p.label],
+                      (v) => settings.calorieQuestPeriod =
+                          CalorieQuestPeriod.fromLabel(v),
+                    ),
+                  ),
                 _row(
                   '카운트다운',
                   value: settings.countdown,

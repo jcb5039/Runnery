@@ -181,12 +181,14 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
                     voiceGuide: settings.voice,
                     autoPause: settings.autoPause,
                     calorieQuest: settings.calorieQuest,
+                    calorieQuestPeriod: settings.calorieQuestPeriod,
                   )
                 : RunningStartOptions(
                     mode: RunningMode.distanceGoal,
                     voiceGuide: settings.voice,
                     autoPause: settings.autoPause,
                     calorieQuest: settings.calorieQuest,
+                    calorieQuestPeriod: settings.calorieQuestPeriod,
                     goalKm: t.goalKm.toDouble(),
                   ),
           ),
