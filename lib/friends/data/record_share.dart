@@ -129,5 +129,10 @@ FeedPost postFor(String uid, RunningRecord record, ShareFields fields) {
     shape: routeShape([
       for (final p in record.route) (p.latitude, p.longitude),
     ]),
+    route: fields.route
+        ? privateRoute([
+            for (final p in record.route) (p.latitude, p.longitude),
+          ])
+        : const [],
   );
 }

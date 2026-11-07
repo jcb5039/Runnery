@@ -39,7 +39,7 @@ service cloud.firestore {
     // 친구에게 공유한 러닝 요약의 모양. 정확한 좌표는 없고 0~1000으로 줄인 경로 모양만 있습니다.
     function validPost(d) {
       return d.keys().hasOnly(['startedAt', 'distanceKm', 'movingSeconds', 'paceSeconds',
-          'kcal', 'hetbahn', 'area', 'startPlace', 'endPlace', 'shape', 'sharedAt'])
+          'kcal', 'hetbahn', 'area', 'startPlace', 'endPlace', 'shape', 'route', 'sharedAt'])
         && d.keys().hasAll(['startedAt', 'distanceKm', 'shape', 'sharedAt'])
         && d.startedAt is timestamp
         && d.distanceKm is number && d.distanceKm >= 0 && d.distanceKm <= 1000
@@ -51,17 +51,20 @@ service cloud.firestore {
         && optionalText(d, 'startPlace')
         && optionalText(d, 'endPlace')
         && d.shape is list && d.shape.size() <= 400
+        // 지도 경로: 경로 지도를 공개했을 때만, 출발·도착 근처를 자른 위도·경도 150쌍까지.
+        && (!('route' in d) || (d.route is list && d.route.size() <= 300))
         && d.sharedAt == request.time;
     }
 
     function validShareSettings(d) {
-      return d.keys().hasOnly(['autoShare', 'showTime', 'showPace', 'showKcal', 'showFood'])
+      return d.keys().hasOnly(['autoShare', 'showTime', 'showPace', 'showKcal', 'showFood', 'showRoute'])
         && d.keys().hasAll(['autoShare', 'showTime', 'showPace', 'showKcal', 'showFood'])
         && d.autoShare is bool
         && d.showTime is bool
         && d.showPace is bool
         && d.showKcal is bool
-        && d.showFood is bool;
+        && d.showFood is bool
+        && (!('showRoute' in d) || d.showRoute is bool);
     }
 
     function validGoal(d) {

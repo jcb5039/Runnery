@@ -703,6 +703,13 @@ class RunningSession extends ChangeNotifier {
     diagnostics.event('autoResume');
   }
 
+  /// 자동 일시정지 중에 재개 버튼을 누르면 움직임을 기다리지 않고 바로 다시 잽니다.
+  void resumeAutoPause() {
+    if (!_autoPaused) return;
+    _autoResume();
+    notifyListeners();
+  }
+
   void pause() {
     if (_status != RunningStatus.running) return;
     _autoPaused = false;
@@ -928,6 +935,10 @@ class _RunningStartPageState extends State<RunningStartPage>
   /// 달성을 알린 칼로리 퀘스트 단계 수.
   int _questShown = 0;
   bool _questSheetOpen = false;
+
+  /// 오늘(또는 이번 주) 이미 저장한 러닝의 칼로리. 퀘스트는 여기에 이번 러닝을 더해 셉니다.
+  double _questBase = 0;
+  double get _questKcal => _questBase + _session.calories;
   final _liveActivity = RunningLiveActivity();
 
   final _voice = RunningVoice();
@@ -968,6 +979,7 @@ class _RunningStartPageState extends State<RunningStartPage>
           : '러닝을 시작합니다. 목표는 $goal${widget.options.mode == RunningMode.distanceGoal ? '예요' : '이에요'}.',
     );
     _liveActivity.start(_liveActivityState());
+    _loadQuestBase();
     _lifecycle = AppLifecycleListener(
       onStateChange: (state) =>
           _session.diagnostics.event('app', {'state': state.name}),
@@ -1108,10 +1120,30 @@ class _RunningStartPageState extends State<RunningStartPage>
     );
   }
 
+  Future<void> _loadQuestBase() async {
+    if (!widget.options.calorieQuest) return;
+    final since = widget.options.calorieQuestPeriod.start(DateTime.now());
+    try {
+      final records = await RunningRecordStore.instance.load();
+      if (!mounted) return;
+      var base = 0.0;
+      for (final r in records) {
+        if (!r.startedAt.isBefore(since)) base += r.energyKcal;
+      }
+      setState(() {
+        _questBase = base;
+        // 이전 러닝에서 이미 넘은 단계는 다시 알리지 않습니다.
+        _questShown = math.max(_questShown, CalorieQuest.completed(base));
+      });
+    } catch (_) {
+      // 기록을 못 읽으면 이번 러닝 칼로리만으로 셉니다.
+    }
+  }
+
   /// 칼로리 퀘스트 단계를 새로 넘으면 진동·음성으로 알리고 달성 창을 띄웁니다. 기록은 계속됩니다.
   void _checkQuest() {
     if (!widget.options.calorieQuest) return;
-    final done = CalorieQuest.completed(_session.calories);
+    final done = CalorieQuest.completed(_questKcal);
     if (done <= _questShown) return;
     _questShown = done;
     final stage = CalorieQuest.stages[done - 1];
@@ -1128,7 +1160,7 @@ class _RunningStartPageState extends State<RunningStartPage>
       builder: (_) => CalorieQuestAchievedSheet(
         stageIndex: done - 1,
         listenable: _session,
-        calories: () => _session.calories,
+        calories: () => _questKcal,
         elapsed: () => _session.elapsed,
       ),
     ).whenComplete(() => _questSheetOpen = false);
@@ -1139,7 +1171,8 @@ class _RunningStartPageState extends State<RunningStartPage>
       MaterialPageRoute<void>(
         builder: (_) => CalorieQuestPage(
           listenable: _session,
-          calories: () => _session.calories,
+          calories: () => _questKcal,
+          period: widget.options.calorieQuestPeriod,
         ),
       ),
     );
@@ -1159,6 +1192,8 @@ class _RunningStartPageState extends State<RunningStartPage>
 
   void _resume() {
     HapticFeedback.mediumImpact();
+    // 자동 일시정지에서 다시 잴 때는 '다시 측정합니다' 안내가 따로 나옵니다.
+    if (_session.autoPaused) return _session.resumeAutoPause();
     _say('다시 시작합니다.');
     _session.resume();
   }
@@ -1373,6 +1408,7 @@ class _RunningStartPageState extends State<RunningStartPage>
                   _RunningCard(
                     session: _session,
                     options: widget.options,
+                    questKcal: _questKcal,
                     onExpand: () => _showPage(1),
                     onOpenQuest: _openQuestPage,
                   ),
@@ -1437,7 +1473,8 @@ class _RunningStartPageState extends State<RunningStartPage>
                             ],
                           ),
                           const SizedBox(width: AppSpacing.space6),
-                          paused
+                          // 자동 일시정지 중에도 재개 버튼을 보여 줍니다.
+                          paused || _session.autoPaused
                               ? _ControlButton(
                                   tooltip: '다시 시작',
                                   color: AppColors.primary,
@@ -1482,12 +1519,16 @@ class _RunningCard extends StatelessWidget {
   const _RunningCard({
     required this.session,
     required this.options,
+    required this.questKcal,
     required this.onExpand,
     required this.onOpenQuest,
   });
 
   final RunningSession session;
   final RunningStartOptions options;
+
+  /// 칼로리 퀘스트에 쓰는 오늘(또는 이번 주) 누적 칼로리.
+  final double questKcal;
   final VoidCallback onExpand;
   final VoidCallback onOpenQuest;
 
@@ -1582,10 +1623,7 @@ class _RunningCard extends StatelessWidget {
             const SizedBox(height: AppSpacing.space2),
             Padding(
               padding: const EdgeInsets.only(right: AppSpacing.space2),
-              child: CalorieQuestRow(
-                kcal: session.calories,
-                onTap: onOpenQuest,
-              ),
+              child: CalorieQuestRow(kcal: questKcal, onTap: onOpenQuest),
             ),
           ],
         ],
@@ -1626,12 +1664,12 @@ class _BigStatsPage extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              if (session.status == RunningStatus.paused)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: AppSpacing.space4),
+              if (session.status == RunningStatus.paused || session.autoPaused)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.space4),
                   child: Text(
-                    '일시정지됨',
-                    style: TextStyle(
+                    session.autoPaused ? '자동 일시정지' : '일시정지됨',
+                    style: const TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
                       color: ink,

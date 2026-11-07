@@ -167,6 +167,13 @@ class _ShareSheetState extends State<_ShareSheet> {
                 onChanged: (v) =>
                     setState(() => _fields = fields.copyWith(food: v)),
               ),
+              _FieldRow(
+                label: '경로 지도',
+                value: fields.route,
+                note: '출발·도착 200m는 빼요',
+                onChanged: (v) =>
+                    setState(() => _fields = fields.copyWith(route: v)),
+              ),
             ],
             const SizedBox(height: 8),
             Align(

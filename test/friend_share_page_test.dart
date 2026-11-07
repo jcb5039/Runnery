@@ -180,7 +180,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(server.shareSettings[minji.uid]!.autoShare, isTrue);
 
+    // 경로 지도 공개는 처음에 꺼져 있고 켜면 설정에 남습니다.
+    expect(server.shareSettings[minji.uid]!.fields.route, isFalse);
     await tester.tap(find.byType(Switch).at(1));
+    await tester.pumpAndSettle();
+    expect(server.shareSettings[minji.uid]!.fields.route, isTrue);
+
+    await tester.tap(find.byType(Switch).at(2));
     await tester.pumpAndSettle();
     expect(server.postsByOwner[minji.uid], isEmpty);
     expect(find.text('공개 0개 · 비공개 2개'), findsOneWidget);

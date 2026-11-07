@@ -24,6 +24,7 @@ import '../../design_system/app_radius.dart';
 import '../../design_system/app_spacing.dart';
 import '../../design_system/app_text_styles.dart';
 import '../../profile/setting/profile_setting.dart';
+import 'calorie_quest.dart';
 import 'running_start_page.dart';
 
 enum RunningMode { free, distanceGoal, timeGoal }
@@ -35,6 +36,7 @@ class RunningStartOptions {
     required this.voiceGuide,
     required this.autoPause,
     this.calorieQuest = true,
+    this.calorieQuestPeriod = CalorieQuestPeriod.daily,
     this.goalKm = RunningGoal.defaultKm,
     this.goalMinutes = RunningGoal.defaultMinutes,
   });
@@ -45,6 +47,9 @@ class RunningStartOptions {
 
   /// 러닝 카드에 칼로리 퀘스트 줄을 보여 주고 단계 달성 창을 띄웁니다.
   final bool calorieQuest;
+
+  /// 칼로리 퀘스트를 오늘 또는 이번 주 누적으로 셉니다.
+  final CalorieQuestPeriod calorieQuestPeriod;
 
   /// 거리 목표(km). [RunningMode.distanceGoal]일 때만 씁니다.
   final double goalKm;
@@ -300,6 +305,7 @@ class _RunningHomePageState extends State<RunningHomePage> {
       voiceGuide: _voiceGuide,
       autoPause: _autoPause,
       calorieQuest: _settings.calorieQuest,
+      calorieQuestPeriod: _settings.calorieQuestPeriod,
       goalKm: _goalKm,
       goalMinutes: _goalMinutes,
     );

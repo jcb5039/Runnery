@@ -9,8 +9,9 @@ import '../../design_system/app_spacing.dart';
 import 'running_start_page.dart';
 
 // ═════════════════════════════════════════════════════
-// 칼로리 퀘스트: 러닝 중 태운 칼로리를 간식 10단계로 보여 줍니다.
-// 러닝을 시작할 때마다 1단계부터 다시 시작하고, 기록 파일에는 저장하지 않습니다.
+// 칼로리 퀘스트: 오늘(또는 이번 주) 태운 칼로리를 간식 10단계로 보여 줍니다.
+// 설정에서 고른 기간마다 1단계부터 다시 시작합니다. 진행은 저장된 러닝 기록의 칼로리를
+// 더해 계산하므로 따로 저장하지 않습니다.
 // ═════════════════════════════════════════════════════
 
 /// 퀘스트 한 단계.
@@ -36,9 +37,34 @@ class CalorieQuestStage {
   /// 목록 설명. 예: 빙그레 · 1개 240 ml
   final String detail;
 
-  /// 이 칼로리를 넘기면 달성입니다(러닝 시작부터 누적).
+  /// 이 칼로리를 넘기면 달성입니다(오늘 또는 이번 주 누적).
   final int kcal;
   final IconData icon;
+}
+
+/// 퀘스트를 1단계부터 다시 시작하는 주기. 설정 > 러닝에서 고릅니다.
+/// 주간 퀘스트의 음식은 나중에 더 넣을 예정이고, 지금은 일간과 같은 단계를 씁니다.
+enum CalorieQuestPeriod {
+  daily('일간', '오늘 태운 칼로리', '퀘스트는 매일 0시에\n1단계부터 다시 시작해요.'),
+  weekly('주간', '이번 주 태운 칼로리', '퀘스트는 매주 월요일 0시에\n1단계부터 다시 시작해요.');
+
+  const CalorieQuestPeriod(this.label, this.title, this.resetNote);
+
+  /// 설정에 보이고 저장되는 이름.
+  final String label;
+
+  /// 퀘스트 목록 위 제목.
+  final String title;
+  final String resetNote;
+
+  static CalorieQuestPeriod fromLabel(String? label) =>
+      values.firstWhere((p) => p.label == label, orElse: () => daily);
+
+  /// 이번 기간이 시작된 시각. 주는 월요일에 시작합니다.
+  DateTime start(DateTime now) => switch (this) {
+    daily => DateTime(now.year, now.month, now.day),
+    weekly => DateTime(now.year, now.month, now.day - (now.weekday - 1)),
+  };
 }
 
 abstract final class CalorieQuest {
@@ -574,10 +600,12 @@ class CalorieQuestPage extends StatelessWidget {
     super.key,
     required this.listenable,
     required this.calories,
+    this.period = CalorieQuestPeriod.daily,
   });
 
   final Listenable listenable;
   final double Function() calories;
+  final CalorieQuestPeriod period;
 
   @override
   Widget build(BuildContext context) {
@@ -608,7 +636,7 @@ class CalorieQuestPage extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
               children: [
                 Text(
-                  '이번 러닝에서 태운 칼로리',
+                  period.title,
                   style: TextStyle(
                     fontSize: 13,
                     color: AppColors.textSecondary,
@@ -667,7 +695,7 @@ class CalorieQuestPage extends StatelessWidget {
                       SizedBox(width: AppSpacing.space3),
                       Expanded(
                         child: Text(
-                          '퀘스트는 러닝을 시작할 때마다\n1단계부터 다시 시작해요.',
+                          period.resetNote,
                           style: TextStyle(
                             fontSize: 13,
                             height: 1.4,

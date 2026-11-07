@@ -1,8 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../../design_system/app_colors.dart';
 import '../../design_system/app_radius.dart';
 import '../../home/running/running_start_page.dart' show runningNumberStyle;
+import '../../record/data/route_thumbnails.dart';
+import '../../record/list/detail/record_detail_page.dart' show RecordRouteMap;
 import '../../record/models/running_record.dart' show durationWords, paceText;
 import '../data/friend_models.dart';
 import '../widgets/friend_widgets.dart';
@@ -81,7 +85,7 @@ class FeedCard extends StatelessWidget {
             const SizedBox(height: 14),
             Row(
               children: [
-                RouteShapeThumbnail(shape: post.shape),
+                FeedRouteThumbnail(post: post),
                 const SizedBox(width: 16),
                 Expanded(child: PostStats(post: post)),
               ],
@@ -188,6 +192,64 @@ class PostStats extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// 경로 지도를 공개한 기록은 지도 사진, 아니면 경로 모양만 그린 그림.
+class FeedRouteThumbnail extends StatefulWidget {
+  const FeedRouteThumbnail({super.key, required this.post});
+
+  final FeedPost post;
+
+  @override
+  State<FeedRouteThumbnail> createState() => _FeedRouteThumbnailState();
+}
+
+class _FeedRouteThumbnailState extends State<FeedRouteThumbnail> {
+  Future<File?>? _photo;
+  Brightness? _loadedFor;
+  List<(double, double)>? _loadedRoute;
+
+  void _load() {
+    final post = widget.post;
+    _loadedFor = AppColors.current.brightness;
+    _loadedRoute = post.route;
+    // 위젯 테스트처럼 지도 엔진이 없으면 경로 모양만 그립니다.
+    _photo = RecordRouteMap.basemapEnabled && post.route.isNotEmpty
+        ? RouteThumbnails.instance.forRoute(
+            '${post.ownerUid}_${post.recordId}',
+            post.route,
+          )
+        : null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // 화면 모드가 바뀌거나 다시 올린 기록이면 사진을 다시 고릅니다.
+    if (_loadedFor != AppColors.current.brightness ||
+        !identical(_loadedRoute, widget.post.route)) {
+      _load();
+    }
+    return FutureBuilder<File?>(
+      future: _photo,
+      builder: (context, snapshot) {
+        final file = snapshot.data;
+        if (file == null) return RouteShapeThumbnail(shape: widget.post.shape);
+        return Semantics(
+          label: '경로 지도',
+          child: ClipRRect(
+            borderRadius: AppRadius.thumbnailBorder,
+            child: Image.file(
+              file,
+              width: RouteThumbnails.size,
+              height: RouteThumbnails.size,
+              fit: BoxFit.cover,
+              gaplessPlayback: true,
+            ),
+          ),
+        );
+      },
     );
   }
 }
