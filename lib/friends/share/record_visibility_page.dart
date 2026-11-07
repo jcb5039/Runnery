@@ -32,6 +32,7 @@ class _RecordVisibilityPageState extends State<RecordVisibilityPage> {
   String? _error;
   final Set<String> _busy = {};
   bool _savingAuto = false;
+  bool _savingRoute = false;
 
   /// 이번 주 월요일 0시.
   DateTime get _weekStart {
@@ -99,6 +100,29 @@ class _RecordVisibilityPageState extends State<RecordVisibilityPage> {
     }
   }
 
+  /// 경로 지도 공개는 다음에 공유하는 기록부터 적용됩니다.
+  Future<void> _toggleRoute(bool value) async {
+    final settings = _settings;
+    if (settings == null || _savingRoute) return;
+    final changed = settings.copyWith(
+      fields: settings.fields.copyWith(route: value),
+    );
+    setState(() {
+      _savingRoute = true;
+      _settings = changed;
+    });
+    try {
+      await _share.saveSettings(changed);
+    } on FriendException catch (e) {
+      if (mounted) {
+        setState(() => _settings = settings);
+        showFriendMessage(context, e.message);
+      }
+    } finally {
+      if (mounted) setState(() => _savingRoute = false);
+    }
+  }
+
   Future<void> _toggle(RunningRecord record, bool public) async {
     if (_busy.contains(record.id)) return;
     setState(() {
@@ -143,6 +167,15 @@ class _RecordVisibilityPageState extends State<RecordVisibilityPage> {
                 settings?.autoShare ?? false,
                 settings == null ? null : _toggleAuto,
                 '러닝이 끝나면 친구에게 공유',
+              ),
+            ),
+            _row(
+              title: '경로 지도 공개',
+              subtitle: '출발·도착 근처 200m는 빼고 보여줘요',
+              trailing: _switch(
+                settings?.fields.route ?? false,
+                settings == null ? null : _toggleRoute,
+                '경로 지도 공개',
               ),
             ),
             _row(

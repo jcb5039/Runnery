@@ -61,16 +61,26 @@ class ShareFields {
     this.pace = true,
     this.kcal = true,
     this.food = true,
+    this.route = false,
   });
   final bool time, pace, kcal, food;
 
-  ShareFields copyWith({bool? time, bool? pace, bool? kcal, bool? food}) =>
-      ShareFields(
-        time: time ?? this.time,
-        pace: pace ?? this.pace,
-        kcal: kcal ?? this.kcal,
-        food: food ?? this.food,
-      );
+  /// 지도 위 경로. 출발·도착 근처는 잘라서 보내고, 처음에는 꺼져 있습니다.
+  final bool route;
+
+  ShareFields copyWith({
+    bool? time,
+    bool? pace,
+    bool? kcal,
+    bool? food,
+    bool? route,
+  }) => ShareFields(
+    time: time ?? this.time,
+    pace: pace ?? this.pace,
+    kcal: kcal ?? this.kcal,
+    food: food ?? this.food,
+    route: route ?? this.route,
+  );
 
   @override
   bool operator ==(Object other) =>
@@ -78,10 +88,11 @@ class ShareFields {
       other.time == time &&
       other.pace == pace &&
       other.kcal == kcal &&
-      other.food == food;
+      other.food == food &&
+      other.route == route;
 
   @override
-  int get hashCode => Object.hash(time, pace, kcal, food);
+  int get hashCode => Object.hash(time, pace, kcal, food, route);
 }
 
 /// 기록 공유 설정. 자동 공유는 처음에 꺼져 있습니다.
@@ -111,7 +122,8 @@ class ShareSettings {
 }
 
 /// 친구에게 공유한 러닝 한 번. 고르지 않은 항목은 null이라 서버에도 올라가지 않습니다.
-/// 경로는 지도 좌표가 아닌 0~1 사이로 줄인 모양만 담아, 어디서 달렸는지 좌표로는 알 수 없습니다.
+/// [shape]는 지도 좌표가 아닌 0~1 사이로 줄인 모양입니다. 지도 위 경로 [route]는 경로 지도를 공개했을 때만
+/// 출발·도착 근처를 잘라 담습니다.
 @immutable
 class FeedPost {
   const FeedPost({
@@ -127,6 +139,7 @@ class FeedPost {
     this.startPlace,
     this.endPlace,
     this.shape = const [],
+    this.route = const [],
   });
   final String ownerUid, recordId;
   final DateTime startedAt;
@@ -135,6 +148,9 @@ class FeedPost {
   final double? hetbahn;
   final String? area, startPlace, endPlace;
   final List<(double, double)> shape;
+
+  /// 지도에 그릴 (위도, 경도). 공개하지 않았거나 잘라 내고 남은 길이 없으면 비어 있습니다.
+  final List<(double, double)> route;
 
   /// 피드 카드에 보이는 장소: 동네 이름, 없으면 출발지.
   String? get placeLabel => area ?? startPlace;
@@ -218,6 +234,48 @@ List<(double, double)> routeShape(
         round((points[i.round()].$2 - minY + (size - height) / 2) / size),
       ),
   ];
+}
+
+/// 친구에게 보여 줄 지도 경로. 집 위치가 드러나지 않도록 출발점에서 [trimMeters] 안의 앞부분과
+/// 도착점에서 [trimMeters] 안의 뒷부분을 잘라 내고, 점은 [maxPoints]개까지 고르게 남기며
+/// 좌표는 소수 다섯째 자리(약 1m)로 줄입니다. 남은 길이 짧으면 빈 목록입니다.
+List<(double, double)> privateRoute(
+  List<(double, double)> latLng, {
+  double trimMeters = 200,
+  int maxPoints = 150,
+}) {
+  if (latLng.length < 2) return const [];
+  final start = latLng.first, end = latLng.last;
+  var from = 0, to = latLng.length - 1;
+  while (from <= to && _meters(latLng[from], start) < trimMeters) {
+    from++;
+  }
+  while (to >= from && _meters(latLng[to], end) < trimMeters) {
+    to--;
+  }
+  if (to - from < 1) return const [];
+  final kept = latLng.sublist(from, to + 1);
+  final step = kept.length <= maxPoints
+      ? 1.0
+      : (kept.length - 1) / (maxPoints - 1);
+  double round(double v) => (v * 100000).roundToDouble() / 100000;
+  return [
+    for (var i = 0.0; i.round() < kept.length; i += step)
+      (round(kept[i.round()].$1), round(kept[i.round()].$2)),
+  ];
+}
+
+/// 두 (위도, 경도) 사이 거리(m).
+double _meters((double, double) a, (double, double) b) {
+  const earth = 6371000.0;
+  double rad(double d) => d * math.pi / 180;
+  final dLat = rad(b.$1 - a.$1), dLng = rad(b.$2 - a.$2);
+  final h =
+      math.pow(math.sin(dLat / 2), 2) +
+      math.cos(rad(a.$1)) *
+          math.cos(rad(b.$1)) *
+          math.pow(math.sin(dLng / 2), 2);
+  return 2 * earth * math.asin(math.min(1, math.sqrt(h)));
 }
 
 /// 피드 카드의 시각: 오늘 오전 7:12 / 어제 오후 9:03 / 10월 22일 오후 6:40.

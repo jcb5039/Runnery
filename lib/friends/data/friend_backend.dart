@@ -292,6 +292,7 @@ class FirebaseFriendBackend implements FriendBackend {
         pace: flag('showPace', true),
         kcal: flag('showKcal', true),
         food: flag('showFood', true),
+        route: flag('showRoute', false),
       ),
     );
   }, '공유 설정을 불러오지 못했어요');
@@ -304,6 +305,7 @@ class FirebaseFriendBackend implements FriendBackend {
       'showPace': settings.fields.pace,
       'showKcal': settings.fields.kcal,
       'showFood': settings.fields.food,
+      'showRoute': settings.fields.route,
     }),
     '공유 설정을 저장하지 못했어요',
   );
@@ -327,6 +329,11 @@ class FirebaseFriendBackend implements FriendBackend {
           (y * 1000).round(),
         ],
       ],
+      // 지도 경로(위도, 경도, 위도, 경도, …). 공개하지 않았으면 올리지 않습니다.
+      if (post.route.isNotEmpty)
+        'route': [
+          for (final (lat, lng) in post.route) ...[lat, lng],
+        ],
       'sharedAt': FieldValue.serverTimestamp(),
     }),
     '친구에게 공유하지 못했어요',
@@ -360,6 +367,9 @@ class FirebaseFriendBackend implements FriendBackend {
     final flat = [
       for (final v in d['shape'] as List? ?? const []) (v as num) / 1000,
     ];
+    final route = [
+      for (final v in d['route'] as List? ?? const []) (v as num).toDouble(),
+    ];
     return FeedPost(
       ownerUid: owner,
       recordId: id,
@@ -374,6 +384,9 @@ class FirebaseFriendBackend implements FriendBackend {
       endPlace: text('endPlace'),
       shape: [
         for (var i = 0; i + 1 < flat.length; i += 2) (flat[i], flat[i + 1]),
+      ],
+      route: [
+        for (var i = 0; i + 1 < route.length; i += 2) (route[i], route[i + 1]),
       ],
     );
   }

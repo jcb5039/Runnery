@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../design_system/app_colors.dart';
 import '../../home/running/running_home_page.dart' show runneryThumbnailStyle;
@@ -48,24 +49,46 @@ class RouteThumbnails {
     }
     // 다크·라이트 사진은 따로 만듭니다.
     final key = '${record.id}:${file.path}';
-    return _making[key] ??= _make(
-      record,
-      file,
-    ).whenComplete(() => _making.remove(key));
+    return _making[key] ??= _make(record.id, file, [
+      for (final (i, p) in record.route.indexed)
+        (p.latitude, p.longitude, i == 0 || p.startsSegment),
+    ]).whenComplete(() => _making.remove(key));
   }
 
-  Future<File?> _make(RunningRecord record, File file) {
+  /// 친구 피드 카드의 지도 사진. 폰의 임시 폴더에 두므로 저장 공간이 부족하면 iOS가 지울 수 있고,
+  /// 그때는 다시 만듭니다. [key]는 기록마다 다른 이름(친구 uid와 기록 번호)입니다.
+  Future<File?> forRoute(String key, List<(double, double)> route) async {
+    if (!_supported || route.length < 2) return null;
+    final folder = await Directory(
+      '${(await getTemporaryDirectory()).path}/friend_maps',
+    ).create(recursive: true);
+    final file = File(
+      '${folder.path}/$key.map${AppColors.isDark ? '' : '.light'}.png',
+    );
+    if (await file.exists()) return file;
+    final failedAt = _failedAt[key];
+    if (failedAt != null && DateTime.now().difference(failedAt) < _retryAfter) {
+      return null;
+    }
+    return _making[file.path] ??= _make(key, file, [
+      for (final (i, (lat, lng)) in route.indexed) (lat, lng, i == 0),
+    ]).whenComplete(() => _making.remove(file.path));
+  }
+
+  /// [points]는 (위도, 경도, 새 구간 시작 여부)입니다.
+  Future<File?> _make(
+    String id,
+    File file,
+    List<(double, double, bool)> points,
+  ) {
     final made = _queue.then((_) async {
       try {
         final ok = await _channel.invokeMethod<bool>('snapshot', {
           'style': runneryThumbnailStyle(),
           'light': !AppColors.isDark,
-          'lat': [for (final p in record.route) p.latitude],
-          'lng': [for (final p in record.route) p.longitude],
-          'starts': [
-            for (final (i, p) in record.route.indexed)
-              i == 0 || p.startsSegment,
-          ],
+          'lat': [for (final p in points) p.$1],
+          'lng': [for (final p in points) p.$2],
+          'starts': [for (final p in points) p.$3],
           'size': size,
           'output': file.path,
         });
@@ -73,7 +96,7 @@ class RouteThumbnails {
       } catch (_) {
         // 지도 엔진 오류는 경로 그림으로 대신 보여 줍니다.
       }
-      _failedAt[record.id] = DateTime.now();
+      _failedAt[id] = DateTime.now();
       return null;
     });
     _queue = made.then<void>((_) {});

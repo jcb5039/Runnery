@@ -47,6 +47,40 @@ void main() {
     expect(routeShape([(37.5, 127.0)]), isEmpty);
   });
 
+  test('private route drops 200 m around the start and the end', () {
+    // 북쪽으로 약 11m 간격 100점(약 1.1km).
+    final line = [for (var i = 0; i < 100; i++) (37.5 + i * 0.0001, 127.0)];
+    final route = privateRoute(line);
+    expect(route.first.$1, greaterThan(37.5 + 0.0017));
+    expect(route.last.$1, lessThan(37.5 + 99 * 0.0001 - 0.0017));
+    // 왕복 400m 미만이면 남는 길이 없습니다.
+    expect(privateRoute(line.sublist(0, 30)), isEmpty);
+    expect(
+      privateRoute([for (var i = 0; i < 2000; i++) (37.5 + i * 0.0001, 127.0)])
+          .length,
+      lessThanOrEqualTo(150),
+    );
+  });
+
+  test('post carries the map route only when chosen', () {
+    final line = RunningRecord(
+      id: 'r1',
+      startedAt: DateTime(2026, 11, 7, 7),
+      distanceKm: 1.1,
+      movingSeconds: 400,
+      calories: 70,
+      route: [
+        for (var i = 0; i < 100; i++)
+          RecordCoordinate(37.5 + i * 0.0001, 127.0),
+      ],
+    );
+    expect(postFor(minji.uid, line, const ShareFields()).route, isEmpty);
+    expect(
+      postFor(minji.uid, line, const ShareFields(route: true)).route,
+      isNotEmpty,
+    );
+  });
+
   test('post leaves out unchosen fields and unknown places', () {
     final post = postFor(
       minji.uid,
