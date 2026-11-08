@@ -1402,6 +1402,19 @@ class _RunningStartPageState extends State<RunningStartPage>
           : SystemUiOverlayStyle.light,
       child: Stack(
         children: [
+          // 카드·버튼보다 아래에 둬서 그 위의 누르기를 막지 않습니다.
+          // 지도는 끌어서 움직여야 하므로, 지도 위에서는 오른쪽 끝에서 밀 때만 크게 보기로 넘어갑니다.
+          Positioned(
+            top: 0,
+            right: 0,
+            bottom: 0,
+            width: AppComponentMetrics.runningEdgeSwipeWidth,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragUpdate: _dragPage,
+              onHorizontalDragEnd: _endPageDrag,
+            ),
+          ),
           Positioned(
             top: 0,
             left: 0,
