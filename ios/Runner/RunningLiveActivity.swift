@@ -6,6 +6,13 @@ import Foundation
 enum RunningLiveActivityChannel {
   static func register(with messenger: FlutterBinaryMessenger) {
     let channel = FlutterMethodChannel(name: "runnery/live_activity", binaryMessenger: messenger)
+    // 잠금 화면 버튼(PauseRunIntent·ResumeRunIntent)을 누르면 러닝 화면에 전합니다.
+    NotificationCenter.default.addObserver(
+      forName: .runneryRunControl, object: nil, queue: .main
+    ) { note in
+      guard let action = note.object as? String else { return }
+      channel.invokeMethod("control", arguments: action)
+    }
     channel.setMethodCallHandler { call, result in
       guard #available(iOS 16.2, *) else { return result(false) }
       let args = call.arguments as? [String: Any] ?? [:]

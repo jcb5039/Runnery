@@ -939,7 +939,9 @@ class _RunningStartPageState extends State<RunningStartPage>
   /// 오늘(또는 이번 주) 이미 저장한 러닝의 칼로리. 퀘스트는 여기에 이번 러닝을 더해 셉니다.
   double _questBase = 0;
   double get _questKcal => _questBase + _session.calories;
-  final _liveActivity = RunningLiveActivity();
+  late final _liveActivity = RunningLiveActivity(
+    onControl: _controlFromLockScreen,
+  );
 
   final _voice = RunningVoice();
 
@@ -1196,6 +1198,15 @@ class _RunningStartPageState extends State<RunningStartPage>
     if (_session.autoPaused) return _session.resumeAutoPause();
     _say('다시 시작합니다.');
     _session.resume();
+  }
+
+  /// 잠금 화면 버튼. 화면과 상태가 이미 같거나 종료 창이 열려 있으면 무시합니다.
+  void _controlFromLockScreen(String action) {
+    if (!mounted || _ending) return;
+    final stopped =
+        _session.status == RunningStatus.paused || _session.autoPaused;
+    if (action == 'pause' && !stopped) _pause();
+    if (action == 'resume' && stopped) _resume();
   }
 
   Future<void> _openEndSheet() async {
