@@ -2,6 +2,10 @@
 
 이 프로젝트의 중요한 결정을 남깁니다. 최근 항목이 위에 옵니다.
 
+## 2026-11-09
+
+- 러닝 중 지도를 만진 뒤 **손을 모두 떼고 5초** 지나면 다시 내 위치를 따라갑니다(`RunningConfig.followResumeAfter`). 만지는 동안은 기다립니다.
+
 ## 2026-11-08
 
 - 잠금 화면·다이내믹 아일랜드(펼친 모양)에 일시정지·재개 버튼을 넣었습니다. 앱과 같이 달리는 중엔 흰 일시정지, 멈춘 동안(자동 일시정지 포함)엔 주황 재개입니다. iOS 17부터만 보입니다(그 아래는 버튼 없이 예전 모양). 버튼은 앱 안에서 실행되는 `LiveActivityIntent`(`PauseRunIntent`·`ResumeRunIntent`, 위젯과 앱이 함께 쓰는 `RunningActivityAttributes.swift`에 둠, Xcode 프로젝트 파일을 고치지 않으려고)이고 `runnery/live_activity` 채널의 `control`로 러닝 화면에 전합니다. 종료 확인 창이 열려 있으면 무시합니다.

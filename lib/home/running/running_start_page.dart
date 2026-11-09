@@ -65,6 +65,9 @@ abstract final class RunningConfig {
   /// 속도 계산 구간. 몇 m씩 흔들리는 GPS 오차가 그래프·최고 속도·칼로리를 튀게 하지 않도록 묶습니다.
   static const speedWindow = Duration(seconds: 10);
 
+  /// 러닝 중 지도를 만진 뒤 손을 떼고 이만큼 지나면 다시 내 위치를 따라갑니다.
+  static const followResumeAfter = Duration(seconds: 5);
+
   /// 자동 일시정지: 이만큼 움직임이 없으면 운동 시간을 멈춥니다.
   static const autoPauseAfter = Duration(seconds: 10);
 
@@ -923,6 +926,10 @@ class _RunningStartPageState extends State<RunningStartPage>
   );
   final _map = RunneryMapController();
   bool _followUser = true;
+
+  /// 지도를 만진 뒤 손을 떼면 잠시 후 내 위치로 돌아가는 타이머.
+  Timer? _followTimer;
+  int _touches = 0;
   bool _ending = false;
   bool _goalReached = false;
 
@@ -994,6 +1001,7 @@ class _RunningStartPageState extends State<RunningStartPage>
     _live?.dispose();
     WakelockPlus.disable();
     _lifecycle.dispose();
+    _followTimer?.cancel();
     _liveActivity.end();
     _session.dispose();
     _map.dispose();
@@ -1181,6 +1189,7 @@ class _RunningStartPageState extends State<RunningStartPage>
   }
 
   void _recenter() {
+    _followTimer?.cancel();
     setState(() => _followUser = true);
     final p = _session.lastPosition;
     if (p != null) _map.moveTo(LatLng(p.latitude, p.longitude), zoom: _zoom);
@@ -1343,33 +1352,51 @@ class _RunningStartPageState extends State<RunningStartPage>
             ),
     ];
 
-    return RunneryMap(
-      controller: _map,
-      initialCenter:
-          point ?? widget.initialCenter ?? const LatLng(37.5665, 126.9780),
-      initialZoom: _zoom,
-      routeWidth: RouteWidth.running,
-      // 경로가 1초마다 늘어날 때마다 다시 그리면 지명·도로명이 깜빡여 5초마다 그립니다(기록은 그대로 1초마다).
-      routeUpdateInterval: const Duration(seconds: 5),
-      route: [
-        for (final segment in _session.segments)
-          [for (final p in segment) p.latLng],
-      ],
-      markers: [
-        if (firstPoint != null)
-          MapMarker(firstPoint.latLng, MapMarkerKind.start),
-        if (pausePoint != null)
-          MapMarker(pausePoint.latLng, MapMarkerKind.pause),
-      ],
-      // 일시정지 중에는 현재 위치 대신 일시정지 마커를 보여줍니다.
-      userLocation: point == null || pausePoint != null
-          ? null
-          : MapUserLocation(point, position!.accuracy.clamp(5, 60)),
-      friends: friends,
-      onUserGesture: () {
-        if (_followUser) setState(() => _followUser = false);
+    // 지도를 만지는 동안은 기다리고, 손을 떼고 잠시 가만히 있으면 내 위치로 돌아갑니다.
+    return Listener(
+      onPointerDown: (_) {
+        _touches++;
+        _followTimer?.cancel();
       },
+      onPointerUp: (_) => _touchEnded(),
+      onPointerCancel: (_) => _touchEnded(),
+      child: RunneryMap(
+        controller: _map,
+        initialCenter:
+            point ?? widget.initialCenter ?? const LatLng(37.5665, 126.9780),
+        initialZoom: _zoom,
+        routeWidth: RouteWidth.running,
+        // 경로가 1초마다 늘어날 때마다 다시 그리면 지명·도로명이 깜빡여 5초마다 그립니다(기록은 그대로 1초마다).
+        routeUpdateInterval: const Duration(seconds: 5),
+        route: [
+          for (final segment in _session.segments)
+            [for (final p in segment) p.latLng],
+        ],
+        markers: [
+          if (firstPoint != null)
+            MapMarker(firstPoint.latLng, MapMarkerKind.start),
+          if (pausePoint != null)
+            MapMarker(pausePoint.latLng, MapMarkerKind.pause),
+        ],
+        // 일시정지 중에는 현재 위치 대신 일시정지 마커를 보여줍니다.
+        userLocation: point == null || pausePoint != null
+            ? null
+            : MapUserLocation(point, position!.accuracy.clamp(5, 60)),
+        friends: friends,
+        onUserGesture: () {
+          if (_followUser) setState(() => _followUser = false);
+        },
+      ),
     );
+  }
+
+  void _touchEnded() {
+    _touches = math.max(0, _touches - 1);
+    _followTimer?.cancel();
+    if (_followUser || _touches > 0) return;
+    _followTimer = Timer(RunningConfig.followResumeAfter, () {
+      if (mounted && !_followUser) _recenter();
+    });
   }
 
   /// 옆으로 밀면 손가락을 따라 크게 보기 화면이 들어오고 나갑니다.
