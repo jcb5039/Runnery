@@ -65,10 +65,26 @@ class RouteThumbnails {
 
   /// 친구 피드 카드의 지도 사진. 폰의 임시 폴더에 두므로 저장 공간이 부족하면 iOS가 지울 수 있고,
   /// 그때는 다시 만듭니다. [key]는 기록마다 다른 이름(친구 uid와 기록 번호)입니다.
-  Future<File?> forRoute(String key, List<(double, double)> route) async {
-    if (!_supported || route.length < 2) return null;
+  Future<File?> forRoute(String key, List<(double, double)> route) =>
+      _temporary('friend_maps', key, [route]);
+
+  /// 아직 저장하지 않은 러닝(종료 확인 창)의 지도 사진. 일시정지로 끊긴 구간마다 따로 그립니다.
+  /// [key]는 러닝과 그때까지의 점 개수로, 계속 달리면 새로 만듭니다.
+  Future<File?> forSession(String key, List<List<(double, double)>> segments) =>
+      _temporary('running_maps', key, segments);
+
+  Future<File?> _temporary(
+    String folderName,
+    String key,
+    List<List<(double, double)>> segments,
+  ) async {
+    final drawn = [
+      for (final s in segments)
+        if (s.length >= 2) s,
+    ];
+    if (!_supported || drawn.isEmpty) return null;
     final folder = await Directory(
-      '${(await getTemporaryDirectory()).path}/friend_maps',
+      '${(await getTemporaryDirectory()).path}/$folderName',
     ).create(recursive: true);
     final file = File(
       '${folder.path}/$key.map${AppColors.isDark ? '' : '.light'}.png',
@@ -79,8 +95,9 @@ class RouteThumbnails {
       return null;
     }
     return _making[file.path] ??= _make(key, file, [
-      for (final (i, (lat, lng)) in smoothRoute(route).indexed)
-        (lat, lng, i == 0),
+      for (final segment in drawn)
+        for (final (i, (lat, lng)) in smoothRoute(segment).indexed)
+          (lat, lng, i == 0),
     ]).whenComplete(() => _making.remove(file.path));
   }
 

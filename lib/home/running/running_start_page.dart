@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -28,6 +29,7 @@ import '../../record/data/record_from_session.dart';
 import '../../record/data/record_places.dart';
 import '../../record/data/route_thumbnails.dart';
 import '../../record/data/running_record_store.dart';
+import '../../record/list/detail/record_detail_page.dart' show RecordRouteMap;
 
 // ═════════════════════════════════════════════════════
 // 기준값 · 계산 · 표기
@@ -1863,6 +1865,52 @@ class _PageDots extends StatelessWidget {
   }
 }
 
+/// 종료 확인 창의 작은 지도. 기록 목록과 같은 지도 사진을 만들고, 만드는 동안이나
+/// 만들 수 없으면(인터넷 없음, 위젯 테스트) 경로 선만 그립니다.
+class _SessionMapThumbnail extends StatefulWidget {
+  const _SessionMapThumbnail({required this.session});
+
+  final RunningSession session;
+
+  @override
+  State<_SessionMapThumbnail> createState() => _SessionMapThumbnailState();
+}
+
+class _SessionMapThumbnailState extends State<_SessionMapThumbnail> {
+  Future<File?>? _photo;
+
+  @override
+  void initState() {
+    super.initState();
+    final session = widget.session;
+    final segments = [
+      for (final s in session.segments)
+        [for (final p in s) (p.latLng.latitude, p.latLng.longitude)],
+    ];
+    final count = segments.fold(0, (n, s) => n + s.length);
+    final started =
+        (session.startedAt ?? DateTime.now()).millisecondsSinceEpoch;
+    _photo = RecordRouteMap.basemapEnabled
+        ? RouteThumbnails.instance.forSession('${started}_$count', segments)
+        : null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final line = CustomPaint(
+      painter: RouteThumbnailPainter(widget.session.segments),
+    );
+    return FutureBuilder<File?>(
+      future: _photo,
+      builder: (context, snapshot) {
+        final file = snapshot.data;
+        if (file == null) return line;
+        return Image.file(file, fit: BoxFit.cover, gaplessPlayback: true);
+      },
+    );
+  }
+}
+
 /// 08 종료 확인 바텀 시트.
 class _EndConfirmSheet extends StatelessWidget {
   const _EndConfirmSheet({required this.session});
@@ -1919,9 +1967,7 @@ class _EndConfirmSheet extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                   child: SizedBox.square(
                     dimension: 64,
-                    child: CustomPaint(
-                      painter: RouteThumbnailPainter(session.segments),
-                    ),
+                    child: _SessionMapThumbnail(session: session),
                   ),
                 ),
                 const SizedBox(width: AppSpacing.space4),
