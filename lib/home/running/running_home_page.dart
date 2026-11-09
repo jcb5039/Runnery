@@ -24,6 +24,7 @@ import '../../design_system/app_radius.dart';
 import '../../design_system/app_spacing.dart';
 import '../../design_system/app_text_styles.dart';
 import '../../profile/setting/profile_setting.dart';
+import '../../record/data/route_smoothing.dart';
 import 'calorie_quest.dart';
 import 'running_start_page.dart';
 
@@ -1980,7 +1981,13 @@ class _RunneryMapState extends State<RunneryMap> {
               if (segment.length >= 2)
                 _feature({
                   'type': 'LineString',
-                  'coordinates': [for (final p in segment) _coord(p)],
+                  // GPS 흔들림으로 삐뚤빼뚤하지 않게 그릴 때만 다듬습니다.
+                  'coordinates': [
+                    for (final (lat, lng) in smoothRoute([
+                      for (final p in segment) (p.latitude, p.longitude),
+                    ]))
+                      [lng, lat],
+                  ],
                 }),
           ]),
         );

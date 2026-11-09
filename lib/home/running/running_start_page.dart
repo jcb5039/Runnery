@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -28,6 +29,7 @@ import '../../record/data/record_from_session.dart';
 import '../../record/data/record_places.dart';
 import '../../record/data/route_thumbnails.dart';
 import '../../record/data/running_record_store.dart';
+import '../../record/list/detail/record_detail_page.dart' show RecordRouteMap;
 
 // ═════════════════════════════════════════════════════
 // 기준값 · 계산 · 표기
@@ -64,6 +66,9 @@ abstract final class RunningConfig {
 
   /// 속도 계산 구간. 몇 m씩 흔들리는 GPS 오차가 그래프·최고 속도·칼로리를 튀게 하지 않도록 묶습니다.
   static const speedWindow = Duration(seconds: 10);
+
+  /// 러닝 중 지도를 만진 뒤 손을 떼고 이만큼 지나면 다시 내 위치를 따라갑니다.
+  static const followResumeAfter = Duration(seconds: 5);
 
   /// 자동 일시정지: 이만큼 움직임이 없으면 운동 시간을 멈춥니다.
   static const autoPauseAfter = Duration(seconds: 10);
@@ -923,6 +928,10 @@ class _RunningStartPageState extends State<RunningStartPage>
   );
   final _map = RunneryMapController();
   bool _followUser = true;
+
+  /// 지도를 만진 뒤 손을 떼면 잠시 후 내 위치로 돌아가는 타이머.
+  Timer? _followTimer;
+  int _touches = 0;
   bool _ending = false;
   bool _goalReached = false;
 
@@ -939,7 +948,9 @@ class _RunningStartPageState extends State<RunningStartPage>
   /// 오늘(또는 이번 주) 이미 저장한 러닝의 칼로리. 퀘스트는 여기에 이번 러닝을 더해 셉니다.
   double _questBase = 0;
   double get _questKcal => _questBase + _session.calories;
-  final _liveActivity = RunningLiveActivity();
+  late final _liveActivity = RunningLiveActivity(
+    onControl: _controlFromLockScreen,
+  );
 
   final _voice = RunningVoice();
 
@@ -992,6 +1003,7 @@ class _RunningStartPageState extends State<RunningStartPage>
     _live?.dispose();
     WakelockPlus.disable();
     _lifecycle.dispose();
+    _followTimer?.cancel();
     _liveActivity.end();
     _session.dispose();
     _map.dispose();
@@ -1179,6 +1191,7 @@ class _RunningStartPageState extends State<RunningStartPage>
   }
 
   void _recenter() {
+    _followTimer?.cancel();
     setState(() => _followUser = true);
     final p = _session.lastPosition;
     if (p != null) _map.moveTo(LatLng(p.latitude, p.longitude), zoom: _zoom);
@@ -1196,6 +1209,15 @@ class _RunningStartPageState extends State<RunningStartPage>
     if (_session.autoPaused) return _session.resumeAutoPause();
     _say('다시 시작합니다.');
     _session.resume();
+  }
+
+  /// 잠금 화면 버튼. 화면과 상태가 이미 같거나 종료 창이 열려 있으면 무시합니다.
+  void _controlFromLockScreen(String action) {
+    if (!mounted || _ending) return;
+    final stopped =
+        _session.status == RunningStatus.paused || _session.autoPaused;
+    if (action == 'pause' && !stopped) _pause();
+    if (action == 'resume' && stopped) _resume();
   }
 
   Future<void> _openEndSheet() async {
@@ -1332,33 +1354,51 @@ class _RunningStartPageState extends State<RunningStartPage>
             ),
     ];
 
-    return RunneryMap(
-      controller: _map,
-      initialCenter:
-          point ?? widget.initialCenter ?? const LatLng(37.5665, 126.9780),
-      initialZoom: _zoom,
-      routeWidth: RouteWidth.running,
-      // 경로가 1초마다 늘어날 때마다 다시 그리면 지명·도로명이 깜빡여 5초마다 그립니다(기록은 그대로 1초마다).
-      routeUpdateInterval: const Duration(seconds: 5),
-      route: [
-        for (final segment in _session.segments)
-          [for (final p in segment) p.latLng],
-      ],
-      markers: [
-        if (firstPoint != null)
-          MapMarker(firstPoint.latLng, MapMarkerKind.start),
-        if (pausePoint != null)
-          MapMarker(pausePoint.latLng, MapMarkerKind.pause),
-      ],
-      // 일시정지 중에는 현재 위치 대신 일시정지 마커를 보여줍니다.
-      userLocation: point == null || pausePoint != null
-          ? null
-          : MapUserLocation(point, position!.accuracy.clamp(5, 60)),
-      friends: friends,
-      onUserGesture: () {
-        if (_followUser) setState(() => _followUser = false);
+    // 지도를 만지는 동안은 기다리고, 손을 떼고 잠시 가만히 있으면 내 위치로 돌아갑니다.
+    return Listener(
+      onPointerDown: (_) {
+        _touches++;
+        _followTimer?.cancel();
       },
+      onPointerUp: (_) => _touchEnded(),
+      onPointerCancel: (_) => _touchEnded(),
+      child: RunneryMap(
+        controller: _map,
+        initialCenter:
+            point ?? widget.initialCenter ?? const LatLng(37.5665, 126.9780),
+        initialZoom: _zoom,
+        routeWidth: RouteWidth.running,
+        // 경로가 1초마다 늘어날 때마다 다시 그리면 지명·도로명이 깜빡여 5초마다 그립니다(기록은 그대로 1초마다).
+        routeUpdateInterval: const Duration(seconds: 5),
+        route: [
+          for (final segment in _session.segments)
+            [for (final p in segment) p.latLng],
+        ],
+        markers: [
+          if (firstPoint != null)
+            MapMarker(firstPoint.latLng, MapMarkerKind.start),
+          if (pausePoint != null)
+            MapMarker(pausePoint.latLng, MapMarkerKind.pause),
+        ],
+        // 일시정지 중에는 현재 위치 대신 일시정지 마커를 보여줍니다.
+        userLocation: point == null || pausePoint != null
+            ? null
+            : MapUserLocation(point, position!.accuracy.clamp(5, 60)),
+        friends: friends,
+        onUserGesture: () {
+          if (_followUser) setState(() => _followUser = false);
+        },
+      ),
     );
+  }
+
+  void _touchEnded() {
+    _touches = math.max(0, _touches - 1);
+    _followTimer?.cancel();
+    if (_followUser || _touches > 0) return;
+    _followTimer = Timer(RunningConfig.followResumeAfter, () {
+      if (mounted && !_followUser) _recenter();
+    });
   }
 
   /// 옆으로 밀면 손가락을 따라 크게 보기 화면이 들어오고 나갑니다.
@@ -1391,6 +1431,19 @@ class _RunningStartPageState extends State<RunningStartPage>
           : SystemUiOverlayStyle.light,
       child: Stack(
         children: [
+          // 카드·버튼보다 아래에 둬서 그 위의 누르기를 막지 않습니다.
+          // 지도는 끌어서 움직여야 하므로, 지도 위에서는 오른쪽 끝에서 밀 때만 크게 보기로 넘어갑니다.
+          Positioned(
+            top: 0,
+            right: 0,
+            bottom: 0,
+            width: AppComponentMetrics.runningEdgeSwipeWidth,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragUpdate: _dragPage,
+              onHorizontalDragEnd: _endPageDrag,
+            ),
+          ),
           Positioned(
             top: 0,
             left: 0,
@@ -1812,6 +1865,52 @@ class _PageDots extends StatelessWidget {
   }
 }
 
+/// 종료 확인 창의 작은 지도. 기록 목록과 같은 지도 사진을 만들고, 만드는 동안이나
+/// 만들 수 없으면(인터넷 없음, 위젯 테스트) 경로 선만 그립니다.
+class _SessionMapThumbnail extends StatefulWidget {
+  const _SessionMapThumbnail({required this.session});
+
+  final RunningSession session;
+
+  @override
+  State<_SessionMapThumbnail> createState() => _SessionMapThumbnailState();
+}
+
+class _SessionMapThumbnailState extends State<_SessionMapThumbnail> {
+  Future<File?>? _photo;
+
+  @override
+  void initState() {
+    super.initState();
+    final session = widget.session;
+    final segments = [
+      for (final s in session.segments)
+        [for (final p in s) (p.latLng.latitude, p.latLng.longitude)],
+    ];
+    final count = segments.fold(0, (n, s) => n + s.length);
+    final started =
+        (session.startedAt ?? DateTime.now()).millisecondsSinceEpoch;
+    _photo = RecordRouteMap.basemapEnabled
+        ? RouteThumbnails.instance.forSession('${started}_$count', segments)
+        : null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final line = CustomPaint(
+      painter: RouteThumbnailPainter(widget.session.segments),
+    );
+    return FutureBuilder<File?>(
+      future: _photo,
+      builder: (context, snapshot) {
+        final file = snapshot.data;
+        if (file == null) return line;
+        return Image.file(file, fit: BoxFit.cover, gaplessPlayback: true);
+      },
+    );
+  }
+}
+
 /// 08 종료 확인 바텀 시트.
 class _EndConfirmSheet extends StatelessWidget {
   const _EndConfirmSheet({required this.session});
@@ -1868,9 +1967,7 @@ class _EndConfirmSheet extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                   child: SizedBox.square(
                     dimension: 64,
-                    child: CustomPaint(
-                      painter: RouteThumbnailPainter(session.segments),
-                    ),
+                    child: _SessionMapThumbnail(session: session),
                   ),
                 ),
                 const SizedBox(width: AppSpacing.space4),
