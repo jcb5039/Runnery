@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../design_system/app_colors.dart';
 import '../../home/running/running_home_page.dart' show runneryThumbnailStyle;
 import '../models/running_record.dart';
+import 'route_smoothing.dart';
 import 'running_record_store.dart';
 
 /// 기록 목록 썸네일 지도 사진. 기록마다 한 번 iOS 지도 엔진으로 사진을 만들어 저장하고 다시 씁니다.
@@ -49,9 +50,16 @@ class RouteThumbnails {
     }
     // 다크·라이트 사진은 따로 만듭니다.
     final key = '${record.id}:${file.path}';
+    // 일시정지로 끊긴 구간마다 따로 다듬습니다.
+    final segments = <List<(double, double)>>[];
+    for (final (i, p) in record.route.indexed) {
+      if (i == 0 || p.startsSegment) segments.add([]);
+      segments.last.add((p.latitude, p.longitude));
+    }
     return _making[key] ??= _make(record.id, file, [
-      for (final (i, p) in record.route.indexed)
-        (p.latitude, p.longitude, i == 0 || p.startsSegment),
+      for (final segment in segments)
+        for (final (i, (lat, lng)) in smoothRoute(segment).indexed)
+          (lat, lng, i == 0),
     ]).whenComplete(() => _making.remove(key));
   }
 
@@ -71,7 +79,8 @@ class RouteThumbnails {
       return null;
     }
     return _making[file.path] ??= _make(key, file, [
-      for (final (i, (lat, lng)) in route.indexed) (lat, lng, i == 0),
+      for (final (i, (lat, lng)) in smoothRoute(route).indexed)
+        (lat, lng, i == 0),
     ]).whenComplete(() => _making.remove(file.path));
   }
 
