@@ -1323,7 +1323,7 @@ class _RunningStartPageState extends State<RunningStartPage>
             ),
             // 넘기는 동안 매 프레임 다시 그리므로 지도와 따로 둡니다.
             ListenableBuilder(
-              listenable: Listenable.merge([_session, _page]),
+              listenable: Listenable.merge([_session, _page, ?_live]),
               builder: (context, _) => _buildControls(context),
             ),
           ],
@@ -1457,14 +1457,32 @@ class _RunningStartPageState extends State<RunningStartPage>
                   AppSpacing.mapCardHorizontal,
                   0,
                 ),
-                child: swipe(
-                  _RunningCard(
-                    session: _session,
-                    options: widget.options,
-                    questKcal: _questKcal,
-                    onExpand: () => _showPage(1),
-                    onOpenQuest: _openQuestPage,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    swipe(
+                      _RunningCard(
+                        session: _session,
+                        options: widget.options,
+                        questKcal: _questKcal,
+                        onExpand: () => _showPage(1),
+                        onOpenQuest: _openQuestPage,
+                      ),
+                    ),
+                    // 함께 달리는 친구: 이름, 거리·페이스(또는 상태), 멀리 있으면 떨어진 거리.
+                    for (final f in _live?.friends ?? const <LiveFriend>[]) ...[
+                      const SizedBox(height: AppSpacing.space2),
+                      // 이름이 길어 화면 폭을 넘으면 칩을 통째로 줄입니다.
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: _FriendLiveChip(
+                          friend: f,
+                          awayMeters: _awayMeters(f),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
@@ -1562,6 +1580,81 @@ class _RunningStartPageState extends State<RunningStartPage>
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 함께 달리는 친구 한 명: 흰 점(지도와 같은 표시), 이름, 거리·페이스 또는 상태.
+class _FriendLiveChip extends StatelessWidget {
+  const _FriendLiveChip({required this.friend, required this.awayMeters});
+
+  final LiveFriend friend;
+
+  /// 내 위치에서 친구까지 거리(m). 모르면 null.
+  final double? awayMeters;
+
+  @override
+  Widget build(BuildContext context) {
+    final f = friend;
+    final run = f.run;
+    final number = runningNumberStyle(13, color: AppColors.textPrimary);
+    final word = TextStyle(fontSize: 12, color: AppColors.textSecondary);
+    final away = awayMeters;
+    return StatusChip(
+      label: f.name,
+      leading: Container(
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(
+          color:
+              f.state == LiveFriendState.running ||
+                  f.state == LiveFriendState.paused
+              ? AppColors.textPrimary
+              : AppColors.textTertiary,
+          shape: BoxShape.circle,
+          border: Border.all(color: AppColors.background, width: 1.5),
+        ),
+      ),
+      trailing: Text.rich(
+        TextSpan(
+          children: [
+            ...switch (f.state) {
+              LiveFriendState.waiting => [
+                TextSpan(text: '출발 전이에요', style: word),
+              ],
+              LiveFriendState.lost => [TextSpan(text: '신호 없음', style: word)],
+              LiveFriendState.finished => [
+                TextSpan(text: '끝났어요  ', style: word),
+                TextSpan(
+                  text: '${f.result!.distanceKm.toStringAsFixed(2)} km',
+                  style: number,
+                ),
+              ],
+              LiveFriendState.running || LiveFriendState.paused => [
+                TextSpan(
+                  text: '${run!.distanceKm.toStringAsFixed(2)} km',
+                  style: number,
+                ),
+                f.state == LiveFriendState.paused
+                    ? TextSpan(text: '  멈춤', style: word)
+                    : TextSpan(
+                        text:
+                            '  ${RunningFormat.livePace(run.paceSeconds?.toDouble())}',
+                        style: number,
+                      ),
+              ],
+            },
+            if (away != null &&
+                away > RunningConfig.friendMapRadiusMeters &&
+                (f.state == LiveFriendState.running ||
+                    f.state == LiveFriendState.paused))
+              TextSpan(
+                text: '  ${(away / 1000).toStringAsFixed(1)} km 떨어져 있어요',
+                style: word,
+              ),
+          ],
+        ),
       ),
     );
   }
