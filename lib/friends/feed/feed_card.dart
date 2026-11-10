@@ -90,6 +90,18 @@ class FeedCard extends StatelessWidget {
                 Expanded(child: PostStats(post: post)),
               ],
             ),
+            // 내 피드에서만, 지도가 왜 안 나오는지 알려 줍니다.
+            if (onCheer == null && post.route.isEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                '지도는 \'경로 지도 공개\'를 켜고 공유한 기록 중 출발·도착 200m를 빼고 남는 길이 있을 때만 나와요.',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.textTertiary,
+                ),
+              ),
+            ],
             const SizedBox(height: 14),
             Wrap(
               spacing: 8,
@@ -235,7 +247,12 @@ class _FeedRouteThumbnailState extends State<FeedRouteThumbnail> {
       future: _photo,
       builder: (context, snapshot) {
         final file = snapshot.data;
-        if (file == null) return RouteShapeThumbnail(shape: widget.post.shape);
+        if (file == null) {
+          return RouteShapeThumbnail(
+            shape: widget.post.shape,
+            caption: widget.post.route.isEmpty ? '경로 없음' : null,
+          );
+        }
         return Semantics(
           label: '경로 지도',
           child: ClipRRect(
@@ -256,10 +273,18 @@ class _FeedRouteThumbnailState extends State<FeedRouteThumbnail> {
 
 /// 지도 없이 경로 모양만 그린 작은 그림.
 class RouteShapeThumbnail extends StatelessWidget {
-  const RouteShapeThumbnail({super.key, required this.shape, this.size = 88});
+  const RouteShapeThumbnail({
+    super.key,
+    required this.shape,
+    this.size = 88,
+    this.caption,
+  });
 
   final List<(double, double)> shape;
   final double size;
+
+  /// 그림 아래쪽에 붙이는 작은 글자(지도 없이 모양만 보낸 기록이면 '경로 없음').
+  final String? caption;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -270,9 +295,33 @@ class RouteShapeThumbnail extends StatelessWidget {
       borderRadius: AppRadius.thumbnailBorder,
       border: Border.all(color: AppColors.divider),
     ),
-    child: shape.length < 2
-        ? Icon(Icons.directions_run, color: AppColors.textTertiary, size: 28)
-        : CustomPaint(painter: _ShapePainter(shape)),
+    child: Stack(
+      fit: StackFit.expand,
+      children: [
+        shape.length < 2
+            ? Icon(
+                Icons.directions_run,
+                color: AppColors.textTertiary,
+                size: 28,
+              )
+            : CustomPaint(painter: _ShapePainter(shape)),
+        if (caption case final text?)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 4,
+            child: Text(
+              text,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textTertiary,
+              ),
+            ),
+          ),
+      ],
+    ),
   );
 }
 

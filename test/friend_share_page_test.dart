@@ -66,6 +66,8 @@ void main() {
     expect(find.textContaining('여의나루역'), findsOneWidget);
     expect(find.text('5.24'), findsOneWidget);
     expect(find.textContaining('kcal'), findsNothing);
+    // 친구 피드에는 내 설정 안내를 띄우지 않습니다.
+    expect(find.textContaining('경로 지도 공개'), findsNothing);
 
     await tester.tap(find.text('👏'));
     await tester.pumpAndSettle();
@@ -102,6 +104,9 @@ void main() {
     expect(find.bySemanticsLabel('받은 박수 응원 1개'), findsOneWidget);
     expect(find.bySemanticsLabel('받은 불꽃 응원 1개'), findsOneWidget);
     expect(find.text('박하은 님이 응원했어요'), findsOneWidget);
+    // 경로 지도 없이 공유한 기록은 왜 지도가 없는지 알려 줍니다.
+    expect(find.text('경로 없음'), findsOneWidget);
+    expect(find.textContaining('경로 지도 공개'), findsOneWidget);
 
     // 내 기록에는 응원을 누를 수 없습니다.
     await tester.tap(find.text('💪'));
