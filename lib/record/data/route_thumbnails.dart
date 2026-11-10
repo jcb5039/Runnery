@@ -56,11 +56,15 @@ class RouteThumbnails {
       if (i == 0 || p.startsSegment) segments.add([]);
       segments.last.add((p.latitude, p.longitude));
     }
-    return _making[key] ??= _make(record.id, file, [
-      for (final segment in segments)
-        for (final (i, (lat, lng)) in smoothRoute(segment).indexed)
-          (lat, lng, i == 0),
-    ]).whenComplete(() => _making.remove(key));
+    return _making[key] ??=
+        _make(record.id, file, [
+          for (final segment in segments)
+            for (final (i, (lat, lng)) in smoothRoute(segment).indexed)
+              (lat, lng, i == 0),
+        ]).whenComplete(() {
+          // 중괄호로 감싸 지운 값(이 Future 자신)을 돌려주지 않습니다. 돌려주면 자기 자신을 기다려 끝나지 않습니다.
+          _making.remove(key);
+        });
   }
 
   /// 친구 피드 카드의 지도 사진. 폰의 임시 폴더에 두므로 저장 공간이 부족하면 iOS가 지울 수 있고,
@@ -94,11 +98,14 @@ class RouteThumbnails {
     if (failedAt != null && DateTime.now().difference(failedAt) < _retryAfter) {
       return null;
     }
-    return _making[file.path] ??= _make(key, file, [
-      for (final segment in drawn)
-        for (final (i, (lat, lng)) in smoothRoute(segment).indexed)
-          (lat, lng, i == 0),
-    ]).whenComplete(() => _making.remove(file.path));
+    return _making[file.path] ??=
+        _make(key, file, [
+          for (final segment in drawn)
+            for (final (i, (lat, lng)) in smoothRoute(segment).indexed)
+              (lat, lng, i == 0),
+        ]).whenComplete(() {
+          _making.remove(file.path);
+        });
   }
 
   /// [points]는 (위도, 경도, 새 구간 시작 여부)입니다.
