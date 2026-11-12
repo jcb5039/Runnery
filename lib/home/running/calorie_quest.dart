@@ -43,7 +43,7 @@ class CalorieQuestStage {
 }
 
 /// 퀘스트를 1단계부터 다시 시작하는 주기. 설정 > 러닝에서 고릅니다.
-/// 주간 퀘스트의 음식은 나중에 더 넣을 예정이고, 지금은 일간과 같은 단계를 씁니다.
+/// 주간은 일간 10단계 뒤에 한 주 동안 모을 만한 음식 단계를 더 붙입니다.
 enum CalorieQuestPeriod {
   daily('일간', '오늘 태운 칼로리', '퀘스트는 매일 0시에\n1단계부터 다시 시작해요.'),
   weekly('주간', '이번 주 태운 칼로리', '퀘스트는 매주 월요일 0시에\n1단계부터 다시 시작해요.');
@@ -59,6 +59,12 @@ enum CalorieQuestPeriod {
 
   static CalorieQuestPeriod fromLabel(String? label) =>
       values.firstWhere((p) => p.label == label, orElse: () => daily);
+
+  /// 이 주기의 단계 목록.
+  List<CalorieQuestStage> get stages => switch (this) {
+    daily => CalorieQuest.stages,
+    weekly => CalorieQuest.weeklyStages,
+  };
 
   /// 이번 기간이 시작된 시각. 주는 월요일에 시작합니다.
   DateTime start(DateTime now) => switch (this) {
@@ -135,28 +141,71 @@ abstract final class CalorieQuest {
       icon: Icons.ramen_dining_outlined,
     ),
     CalorieQuestStage(
-      name: '신라면 2개',
-      item: '신라면 2개',
-      fullName: '농심 신라면 2개',
-      detail: '농심 · 봉지면 2개 240 g',
-      kcal: 1000,
-      icon: Icons.ramen_dining_outlined,
+      name: '몬스터와퍼',
+      item: '몬스터와퍼 1개',
+      fullName: '버거킹 몬스터와퍼 1개',
+      detail: '버거킹 · 단품 1개',
+      kcal: 1055,
+      icon: Icons.lunch_dining_outlined,
     ),
     CalorieQuestStage(
-      name: '신라면 2개 + 바나나맛우유',
-      item: '신라면 2개 + 바나나맛우유',
-      fullName: '신라면 2개와 바나나맛우유',
-      detail: '마지막 단계',
-      kcal: 1208,
-      icon: Icons.ramen_dining_outlined,
+      name: '포테이토 피자 M',
+      item: '포테이토 피자 M 1판',
+      fullName: '도미노피자 포테이토 미디엄 1판',
+      detail: '도미노피자 · 오리지널 M 1판',
+      kcal: 1672,
+      icon: Icons.local_pizza_outlined,
     ),
   ];
 
-  /// 달성한 단계 수(0~10). 화면에 보이는 반올림한 칼로리로 판단해 숫자와 어긋나지 않게 합니다.
-  static int completed(double kcal) {
+  /// 주간 퀘스트: 일간 10단계 뒤에 붙는 단계. 모두 대중적인 단일 상품 1개입니다.
+  /// 도미노피자는 도미노피자 영양성분표의 조각당 열량 × 한 판 조각 수, 교촌 허니콤보는 교촌 메뉴 페이지의
+  /// 100 g당 320 kcal × 조리 전 중량 880 g로 계산한 대략값입니다.
+  static const weeklyExtra = [
+    CalorieQuestStage(
+      name: '치즈 피자 L',
+      item: '치즈 피자 L 1판',
+      fullName: '도미노피자 치즈 라지 1판',
+      detail: '도미노피자 · 오리지널 L 1판',
+      kcal: 2284,
+      icon: Icons.local_pizza_outlined,
+    ),
+    CalorieQuestStage(
+      name: '페퍼로니 피자 L',
+      item: '페퍼로니 피자 L 1판',
+      fullName: '도미노피자 페퍼로니 라지 1판',
+      detail: '도미노피자 · 오리지널 L 1판',
+      kcal: 2623,
+      icon: Icons.local_pizza_outlined,
+    ),
+    CalorieQuestStage(
+      name: '허니콤보',
+      item: '허니콤보 1마리',
+      fullName: '교촌치킨 허니콤보 1마리',
+      detail: '교촌치킨 · 1마리 약 880 g',
+      kcal: 2816,
+      icon: Icons.set_meal_outlined,
+    ),
+    CalorieQuestStage(
+      name: '포테이토 피자 L',
+      item: '포테이토 피자 L 1판',
+      fullName: '도미노피자 포테이토 라지 1판',
+      detail: '도미노피자 · 오리지널 L 1판',
+      kcal: 3108,
+      icon: Icons.local_pizza_outlined,
+    ),
+  ];
+
+  static const weeklyStages = [...stages, ...weeklyExtra];
+
+  /// 달성한 단계 수(일간 0~10, 주간 0~14). 화면에 보이는 반올림한 칼로리로 판단해 숫자와 어긋나지 않게 합니다.
+  static int completed(
+    double kcal, {
+    CalorieQuestPeriod period = CalorieQuestPeriod.daily,
+  }) {
     final shown = kcal.round();
     var count = 0;
-    for (final stage in stages) {
+    for (final stage in period.stages) {
       if (shown < stage.kcal) break;
       count++;
     }
@@ -164,18 +213,27 @@ abstract final class CalorieQuest {
   }
 
   /// 진행 중인 단계. 모두 달성했으면 null.
-  static CalorieQuestStage? current(double kcal) =>
-      stages.elementAtOrNull(completed(kcal));
+  static CalorieQuestStage? current(
+    double kcal, {
+    CalorieQuestPeriod period = CalorieQuestPeriod.daily,
+  }) => period.stages.elementAtOrNull(completed(kcal, period: period));
 
   /// 진행 중인 단계까지 남은 칼로리.
-  static int remaining(double kcal) {
-    final stage = current(kcal);
+  static int remaining(
+    double kcal, {
+    CalorieQuestPeriod period = CalorieQuestPeriod.daily,
+  }) {
+    final stage = current(kcal, period: period);
     return stage == null ? 0 : stage.kcal - kcal.round();
   }
 
   /// 진행 중인 단계 안에서의 진행률(0~1). 이전 단계 칼로리부터 셉니다.
-  static double stageProgress(double kcal) {
-    final done = completed(kcal);
+  static double stageProgress(
+    double kcal, {
+    CalorieQuestPeriod period = CalorieQuestPeriod.daily,
+  }) {
+    final stages = period.stages;
+    final done = completed(kcal, period: period);
     if (done >= stages.length) return 1;
     final from = done == 0 ? 0 : stages[done - 1].kcal;
     final to = stages[done].kcal;
@@ -183,24 +241,34 @@ abstract final class CalorieQuest {
   }
 
   /// 단계 번호(1부터)와 함께 쓴 이름. 예: 4단계 · 바나나맛우유
-  static String numbered(CalorieQuestStage stage) =>
-      '${stages.indexOf(stage) + 1}단계 · ${stage.name}';
+  static String numbered(
+    CalorieQuestStage stage, {
+    CalorieQuestPeriod period = CalorieQuestPeriod.daily,
+  }) => '${period.stages.indexOf(stage) + 1}단계 · ${stage.name}';
 }
 
-/// 10칸 진행 막대. 달성한 칸은 채우고 진행 중인 칸은 진행률만큼 채웁니다.
+/// 단계 수만큼 칸이 있는 진행 막대(일간 10칸, 주간 14칸). 달성한 칸은 채우고 진행 중인 칸은 진행률만큼 채웁니다.
 class CalorieQuestBar extends StatelessWidget {
-  const CalorieQuestBar({super.key, required this.kcal, this.height = 4});
+  const CalorieQuestBar({
+    super.key,
+    required this.kcal,
+    this.height = 4,
+    this.period = CalorieQuestPeriod.daily,
+  });
 
   final double kcal;
   final double height;
 
+  /// 일간·주간 중 어느 단계 목록을 쓸지.
+  final CalorieQuestPeriod period;
+
   @override
   Widget build(BuildContext context) {
-    final done = CalorieQuest.completed(kcal);
-    final partial = CalorieQuest.stageProgress(kcal);
+    final done = CalorieQuest.completed(kcal, period: period);
+    final partial = CalorieQuest.stageProgress(kcal, period: period);
     return Row(
       children: [
-        for (var i = 0; i < CalorieQuest.stages.length; i++) ...[
+        for (var i = 0; i < period.stages.length; i++) ...[
           if (i > 0) const SizedBox(width: 4),
           Expanded(
             child: ClipRRect(
@@ -253,16 +321,24 @@ class CalorieQuestIcon extends StatelessWidget {
 
 /// 20 러닝 카드 안의 퀘스트 줄. 누르면 퀘스트 목록을 엽니다.
 class CalorieQuestRow extends StatelessWidget {
-  const CalorieQuestRow({super.key, required this.kcal, required this.onTap});
+  const CalorieQuestRow({
+    super.key,
+    required this.kcal,
+    required this.onTap,
+    this.period = CalorieQuestPeriod.daily,
+  });
 
   final double kcal;
   final VoidCallback onTap;
 
+  /// 일간·주간 중 어느 단계 목록을 쓸지.
+  final CalorieQuestPeriod period;
+
   @override
   Widget build(BuildContext context) {
-    final done = CalorieQuest.completed(kcal);
-    final stage = CalorieQuest.current(kcal);
-    final next = CalorieQuest.stages.elementAtOrNull(done + 1);
+    final done = CalorieQuest.completed(kcal, period: period);
+    final stage = CalorieQuest.current(kcal, period: period);
+    final next = period.stages.elementAtOrNull(done + 1);
     return InkWell(
       onTap: onTap,
       borderRadius: AppRadius.thumbnailBorder,
@@ -273,7 +349,7 @@ class CalorieQuestRow extends StatelessWidget {
             Row(
               children: [
                 CalorieQuestIcon(
-                  icon: (stage ?? CalorieQuest.stages.last).icon,
+                  icon: (stage ?? period.stages.last).icon,
                   size: 36,
                 ),
                 const SizedBox(width: AppSpacing.space3),
@@ -331,7 +407,8 @@ class CalorieQuestRow extends StatelessWidget {
                         TextSpan(
                           children: [
                             TextSpan(
-                              text: '${CalorieQuest.remaining(kcal)} kcal',
+                              text:
+                                  '${CalorieQuest.remaining(kcal, period: period)} kcal',
                               style: TextStyle(color: AppColors.primaryText),
                             ),
                             const TextSpan(text: ' 남음'),
@@ -348,7 +425,7 @@ class CalorieQuestRow extends StatelessWidget {
               ],
             ),
             const SizedBox(height: AppSpacing.space3),
-            CalorieQuestBar(kcal: kcal),
+            CalorieQuestBar(kcal: kcal, period: period),
           ],
         ),
       ),
@@ -364,10 +441,14 @@ class CalorieQuestAchievedSheet extends StatefulWidget {
     required this.listenable,
     required this.calories,
     required this.elapsed,
+    this.period = CalorieQuestPeriod.daily,
   });
 
   /// 달성한 단계 번호(0부터).
   final int stageIndex;
+
+  /// 일간·주간 중 어느 단계 목록을 쓸지.
+  final CalorieQuestPeriod period;
 
   /// 칼로리·시간이 바뀔 때 다시 그립니다.
   final Listenable listenable;
@@ -403,8 +484,8 @@ class _CalorieQuestAchievedSheetState extends State<CalorieQuestAchievedSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final stage = CalorieQuest.stages[widget.stageIndex];
-    final next = CalorieQuest.stages.elementAtOrNull(widget.stageIndex + 1);
+    final stage = widget.period.stages[widget.stageIndex];
+    final next = widget.period.stages.elementAtOrNull(widget.stageIndex + 1);
     return Container(
       decoration: BoxDecoration(
         color: AppColors.sheet,
@@ -492,7 +573,7 @@ class _CalorieQuestAchievedSheetState extends State<CalorieQuestAchievedSheet> {
                     ),
                   ),
                   const SizedBox(height: AppSpacing.space6),
-                  CalorieQuestBar(kcal: kcal, height: 5),
+                  CalorieQuestBar(kcal: kcal, height: 5, period: widget.period),
                   const SizedBox(height: AppSpacing.space4),
                   const Divider(height: 1),
                   Padding(
@@ -630,8 +711,8 @@ class CalorieQuestPage extends StatelessWidget {
           listenable: listenable,
           builder: (context, _) {
             final kcal = calories();
-            final done = CalorieQuest.completed(kcal);
-            final total = CalorieQuest.stages.length;
+            final done = CalorieQuest.completed(kcal, period: period);
+            final total = period.stages.length;
             return ListView(
               padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
               children: [
@@ -677,7 +758,7 @@ class CalorieQuestPage extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: AppSpacing.space3),
-                CalorieQuestBar(kcal: kcal, height: 5),
+                CalorieQuestBar(kcal: kcal, height: 5, period: period),
                 const SizedBox(height: AppSpacing.space5),
                 Container(
                   padding: const EdgeInsets.all(AppSpacing.space4),
@@ -736,6 +817,7 @@ class CalorieQuestPage extends StatelessWidget {
                     kcal: kcal,
                     done: done,
                     last: i == total - 1,
+                    period: period,
                   ),
                 const SizedBox(height: AppSpacing.space5),
                 Text(
@@ -757,16 +839,18 @@ class _QuestStageRow extends StatelessWidget {
     required this.kcal,
     required this.done,
     required this.last,
+    required this.period,
   });
 
   final int index;
   final double kcal;
   final int done;
   final bool last;
+  final CalorieQuestPeriod period;
 
   @override
   Widget build(BuildContext context) {
-    final stage = CalorieQuest.stages[index];
+    final stage = period.stages[index];
     final achieved = index < done;
     final current = index == done;
     final locked = index > done;
@@ -849,7 +933,7 @@ class _QuestStageRow extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            CalorieQuest.numbered(stage),
+                            CalorieQuest.numbered(stage, period: period),
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w700,
@@ -860,7 +944,8 @@ class _QuestStageRow extends StatelessWidget {
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            stage.detail,
+                            // 주간은 일간 10단계 뒤에 단계가 더 있어, 목록의 마지막에만 붙입니다.
+                            last ? '마지막 단계' : stage.detail,
                             style: TextStyle(
                               fontSize: 12,
                               color: AppColors.textTertiary,
@@ -871,7 +956,10 @@ class _QuestStageRow extends StatelessWidget {
                             ClipRRect(
                               borderRadius: AppRadius.pillBorder,
                               child: LinearProgressIndicator(
-                                value: CalorieQuest.stageProgress(kcal),
+                                value: CalorieQuest.stageProgress(
+                                  kcal,
+                                  period: period,
+                                ),
                                 minHeight: 3,
                                 color: AppColors.primary,
                                 backgroundColor: AppColors.divider,
@@ -949,7 +1037,7 @@ class _QuestStageRow extends StatelessWidget {
                           )
                         else if (current)
                           Text(
-                            '${CalorieQuest.remaining(kcal)} kcal 남음',
+                            '${CalorieQuest.remaining(kcal, period: period)} kcal 남음',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,

@@ -1145,7 +1145,13 @@ class _RunningStartPageState extends State<RunningStartPage>
       setState(() {
         _questBase = base;
         // 이전 러닝에서 이미 넘은 단계는 다시 알리지 않습니다.
-        _questShown = math.max(_questShown, CalorieQuest.completed(base));
+        _questShown = math.max(
+          _questShown,
+          CalorieQuest.completed(
+            base,
+            period: widget.options.calorieQuestPeriod,
+          ),
+        );
       });
     } catch (_) {
       // 기록을 못 읽으면 이번 러닝 칼로리만으로 셉니다.
@@ -1155,10 +1161,13 @@ class _RunningStartPageState extends State<RunningStartPage>
   /// 칼로리 퀘스트 단계를 새로 넘으면 진동·음성으로 알리고 달성 창을 띄웁니다. 기록은 계속됩니다.
   void _checkQuest() {
     if (!widget.options.calorieQuest) return;
-    final done = CalorieQuest.completed(_questKcal);
+    final done = CalorieQuest.completed(
+      _questKcal,
+      period: widget.options.calorieQuestPeriod,
+    );
     if (done <= _questShown) return;
     _questShown = done;
-    final stage = CalorieQuest.stages[done - 1];
+    final stage = widget.options.calorieQuestPeriod.stages[done - 1];
     HapticFeedback.heavyImpact();
     _say('칼로리 퀘스트 $done단계 달성. ${stage.fullName}만큼 태웠어요.');
     // 이미 창이 떠 있거나 종료 확인 중이면 창은 띄우지 않습니다(카드의 퀘스트 줄은 바뀝니다).
@@ -1171,6 +1180,7 @@ class _RunningStartPageState extends State<RunningStartPage>
       isScrollControlled: true,
       builder: (_) => CalorieQuestAchievedSheet(
         stageIndex: done - 1,
+        period: widget.options.calorieQuestPeriod,
         listenable: _session,
         calories: () => _questKcal,
         elapsed: () => _session.elapsed,
@@ -1769,7 +1779,11 @@ class _RunningCard extends StatelessWidget {
             const SizedBox(height: AppSpacing.space2),
             Padding(
               padding: const EdgeInsets.only(right: AppSpacing.space2),
-              child: CalorieQuestRow(kcal: questKcal, onTap: onOpenQuest),
+              child: CalorieQuestRow(
+                kcal: questKcal,
+                onTap: onOpenQuest,
+                period: options.calorieQuestPeriod,
+              ),
             ),
           ],
         ],

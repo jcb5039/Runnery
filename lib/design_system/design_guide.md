@@ -96,7 +96,7 @@ HEX는 Dart의 불투명 Color(0xFFRRGGBB)로 저장한다. 원본 rgba의 16%�
 
 폭 75·125는 글자 크기가 아니다. 코드는 FontVariation('wdth', 값)으로 저장했다. 실제 폰트 파일이 해당 축을 지원해야 한다. ExtraBold는 FontWeight.w800으로 옮겼다. 자간 14% × 11px은 Flutter letterSpacing 1.54다. 로고·워드마크는 글자 크기가 없어서 비율만 보관한다. 모든 행간과 미명시 굵기는 지정하지 않았다.
 
-필요한 폰트: Pretendard, Archivo. 원본에 폰트 파일이 없고 현재 pubspec.yaml에도 등록되어 있지 않다. 추후 사용자가 실제 파일을 준비하고 flutter/fonts에 등록해야 한다. 구체적 asset 경로는 아직 정하지 않았다. 폰트 패키지는 필수가 아니며 이번 작업에서는 추가하지 않았다.
+필요한 폰트: Pretendard, Archivo. 2026-11-12에 `assets/fonts/`에 넣고 pubspec.yaml `flutter/fonts`에 등록했다. Pretendard는 1.3.9 굵기별 OTF(400~900), Archivo는 Google Fonts의 가변 글꼴(굵기·폭 wdth 축) 하나다. 둘 다 OFL이며 사용 허락 문서를 같은 폴더에 둔다. 폰트 패키지는 쓰지 않는다.
 
 ## 간격·모서리·선 (S02L)
 

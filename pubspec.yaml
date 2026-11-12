@@ -67,6 +67,27 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # 디자인 가이드 글꼴(OFL 공개 글꼴, 사용 허락은 assets/fonts/*-OFL.txt).
+  # Pretendard는 굵기별 파일, Archivo는 굵기·폭(wdth)을 바꿀 수 있는 가변 글꼴 하나입니다.
+  fonts:
+    - family: Pretendard
+      fonts:
+        - asset: assets/fonts/Pretendard-Regular.otf
+          weight: 400
+        - asset: assets/fonts/Pretendard-Medium.otf
+          weight: 500
+        - asset: assets/fonts/Pretendard-SemiBold.otf
+          weight: 600
+        - asset: assets/fonts/Pretendard-Bold.otf
+          weight: 700
+        - asset: assets/fonts/Pretendard-ExtraBold.otf
+          weight: 800
+        - asset: assets/fonts/Pretendard-Black.otf
+          weight: 900
+    - family: Archivo
+      fonts:
+        - asset: assets/fonts/Archivo-Variable.ttf
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg
