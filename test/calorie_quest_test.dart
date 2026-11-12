@@ -38,6 +38,31 @@ void main() {
     });
   });
 
+  group('주간 단계', () {
+    const weekly = CalorieQuestPeriod.weekly;
+
+    test('일간 10단계 그대로 뒤에 6단계가 붙고 칼로리가 점점 커져요', () {
+      final stages = weekly.stages;
+      expect(stages, hasLength(16));
+      expect(stages.take(10), CalorieQuest.stages);
+      for (var i = 1; i < stages.length; i++) {
+        expect(stages[i].kcal, greaterThan(stages[i - 1].kcal));
+      }
+      expect(stages.last.kcal, 3540);
+    });
+
+    test('1,208 kcal을 넘겨도 주간은 다음 단계가 남아요', () {
+      expect(CalorieQuest.completed(1300), 10);
+      expect(CalorieQuest.completed(1300, period: weekly), 10);
+      expect(
+        CalorieQuest.current(1300, period: weekly)!.name,
+        '포테이토 피자 반 판',
+      );
+      expect(CalorieQuest.remaining(1300, period: weekly), 254);
+      expect(CalorieQuest.completed(3540, period: weekly), 16);
+    });
+  });
+
   Widget app(Widget child) => MaterialApp(
     theme: AppTheme.dark,
     home: Scaffold(body: child),
@@ -54,6 +79,20 @@ void main() {
     expect(find.textContaining('22 kcal'), findsOneWidget);
     await tester.tap(find.text('바나나맛우유 1개'));
     expect(tapped, isTrue);
+  });
+
+  testWidgets('주간이면 일간 마지막 단계 뒤에도 다음 음식을 보여 줘요', (tester) async {
+    await tester.pumpWidget(
+      app(
+        CalorieQuestRow(
+          kcal: 1250,
+          onTap: () {},
+          period: CalorieQuestPeriod.weekly,
+        ),
+      ),
+    );
+    expect(find.text('칼로리 퀘스트 · 11단계'), findsOneWidget);
+    expect(find.text('포테이토 피자 반 판'), findsOneWidget);
   });
 
   testWidgets('모두 달성하면 퀘스트 줄이 완료로 바뀌어요', (tester) async {
