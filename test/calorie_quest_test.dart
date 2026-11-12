@@ -31,35 +31,39 @@ void main() {
     });
 
     test('마지막 단계를 넘기면 모두 달성이에요', () {
-      expect(CalorieQuest.completed(1208), 10);
-      expect(CalorieQuest.current(1300), isNull);
-      expect(CalorieQuest.remaining(1300), 0);
-      expect(CalorieQuest.stageProgress(1300), 1);
+      expect(CalorieQuest.completed(1672), 10);
+      expect(CalorieQuest.current(1700), isNull);
+      expect(CalorieQuest.remaining(1700), 0);
+      expect(CalorieQuest.stageProgress(1700), 1);
     });
+  });
+
+  test('모든 단계는 단일 상품 1개예요(여러 개·묶음 없음)', () {
+    for (final stage in CalorieQuestPeriod.weekly.stages) {
+      expect(stage.name, isNot(contains('+')));
+      expect(stage.item, matches(RegExp(r'1(개|캔|병|봉지|갑|판|마리)$')));
+    }
   });
 
   group('주간 단계', () {
     const weekly = CalorieQuestPeriod.weekly;
 
-    test('일간 10단계 그대로 뒤에 6단계가 붙고 칼로리가 점점 커져요', () {
+    test('일간 10단계 그대로 뒤에 4단계가 붙고 칼로리가 점점 커져요', () {
       final stages = weekly.stages;
-      expect(stages, hasLength(16));
+      expect(stages, hasLength(14));
       expect(stages.take(10), CalorieQuest.stages);
       for (var i = 1; i < stages.length; i++) {
         expect(stages[i].kcal, greaterThan(stages[i - 1].kcal));
       }
-      expect(stages.last.kcal, 3540);
+      expect(stages.last.kcal, 3108);
     });
 
-    test('1,208 kcal을 넘겨도 주간은 다음 단계가 남아요', () {
-      expect(CalorieQuest.completed(1300), 10);
-      expect(CalorieQuest.completed(1300, period: weekly), 10);
-      expect(
-        CalorieQuest.current(1300, period: weekly)!.name,
-        '포테이토 피자 반 판',
-      );
-      expect(CalorieQuest.remaining(1300, period: weekly), 254);
-      expect(CalorieQuest.completed(3540, period: weekly), 16);
+    test('일간을 모두 달성해도 주간은 다음 단계가 남아요', () {
+      expect(CalorieQuest.completed(1700), 10);
+      expect(CalorieQuest.completed(1700, period: weekly), 10);
+      expect(CalorieQuest.current(1700, period: weekly)!.name, '치즈 피자 L');
+      expect(CalorieQuest.remaining(1700, period: weekly), 584);
+      expect(CalorieQuest.completed(3108, period: weekly), 14);
     });
   });
 
@@ -85,25 +89,23 @@ void main() {
     await tester.pumpWidget(
       app(
         CalorieQuestRow(
-          kcal: 1250,
+          kcal: 1700,
           onTap: () {},
           period: CalorieQuestPeriod.weekly,
         ),
       ),
     );
     expect(find.text('칼로리 퀘스트 · 11단계'), findsOneWidget);
-    expect(find.text('포테이토 피자 반 판'), findsOneWidget);
+    expect(find.text('치즈 피자 L 1판'), findsOneWidget);
   });
 
   testWidgets('모두 달성하면 퀘스트 줄이 완료로 바뀌어요', (tester) async {
-    await tester.pumpWidget(app(CalorieQuestRow(kcal: 1250, onTap: () {})));
+    await tester.pumpWidget(app(CalorieQuestRow(kcal: 1700, onTap: () {})));
     expect(find.text('칼로리 퀘스트 · 완료'), findsOneWidget);
     expect(find.text('10단계 모두 달성'), findsOneWidget);
   });
 
-  testWidgets('퀘스트 목록: 달성 3개, 진행 중 단계, 칼로리가 오르면 바로 바뀌어요', (
-    tester,
-  ) async {
+  testWidgets('퀘스트 목록: 달성 3개, 진행 중 단계, 칼로리가 오르면 바로 바뀌어요', (tester) async {
     final kcal = ValueNotifier<double>(186);
     await tester.pumpWidget(
       MaterialApp(

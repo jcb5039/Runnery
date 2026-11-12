@@ -141,50 +141,41 @@ abstract final class CalorieQuest {
       icon: Icons.ramen_dining_outlined,
     ),
     CalorieQuestStage(
-      name: '신라면 2개',
-      item: '신라면 2개',
-      fullName: '농심 신라면 2개',
-      detail: '농심 · 봉지면 2개 240 g',
-      kcal: 1000,
-      icon: Icons.ramen_dining_outlined,
+      name: '몬스터와퍼',
+      item: '몬스터와퍼 1개',
+      fullName: '버거킹 몬스터와퍼 1개',
+      detail: '버거킹 · 단품 1개',
+      kcal: 1055,
+      icon: Icons.lunch_dining_outlined,
     ),
     CalorieQuestStage(
-      name: '신라면 2개 + 바나나맛우유',
-      item: '신라면 2개 + 바나나맛우유',
-      fullName: '신라면 2개와 바나나맛우유',
-      detail: '신라면 2개 · 바나나맛우유 1개',
-      kcal: 1208,
-      icon: Icons.ramen_dining_outlined,
+      name: '포테이토 피자 M',
+      item: '포테이토 피자 M 1판',
+      fullName: '도미노피자 포테이토 미디엄 1판',
+      detail: '도미노피자 · 오리지널 M 1판',
+      kcal: 1672,
+      icon: Icons.local_pizza_outlined,
     ),
   ];
 
-  /// 주간 퀘스트: 일간 10단계 뒤에 붙는 단계.
-  /// 도미노피자 포테이토(오리지널, L)는 도미노피자 영양성분표의 1조각 388.5 kcal(8조각 1,200 g),
-  /// 교촌 허니콤보는 교촌 메뉴 페이지의 100 g당 320 kcal × 조리 전 중량 880 g로 계산한 대략값입니다.
-  /// 신라면·코카콜라는 위 일간 단계 값을 씁니다.
+  /// 주간 퀘스트: 일간 10단계 뒤에 붙는 단계. 모두 대중적인 단일 상품 1개입니다.
+  /// 도미노피자는 도미노피자 영양성분표의 조각당 열량 × 한 판 조각 수, 교촌 허니콤보는 교촌 메뉴 페이지의
+  /// 100 g당 320 kcal × 조리 전 중량 880 g로 계산한 대략값입니다.
   static const weeklyExtra = [
     CalorieQuestStage(
-      name: '포테이토 피자 반 판',
-      item: '포테이토 피자 반 판',
-      fullName: '도미노피자 포테이토 라지 반 판',
-      detail: '도미노피자 · 오리지널 L 4조각',
-      kcal: 1554,
+      name: '치즈 피자 L',
+      item: '치즈 피자 L 1판',
+      fullName: '도미노피자 치즈 라지 1판',
+      detail: '도미노피자 · 오리지널 L 1판',
+      kcal: 2284,
       icon: Icons.local_pizza_outlined,
     ),
     CalorieQuestStage(
-      name: '신라면 4개',
-      item: '신라면 4개',
-      fullName: '농심 신라면 4개',
-      detail: '농심 · 봉지면 4개 480 g',
-      kcal: 2000,
-      icon: Icons.ramen_dining_outlined,
-    ),
-    CalorieQuestStage(
-      name: '신라면 2개 + 피자 반 판',
-      item: '신라면 2개 + 피자 반 판',
-      fullName: '신라면 2개와 포테이토 피자 반 판',
-      detail: '신라면 2개 · 포테이토 L 4조각',
-      kcal: 2554,
+      name: '페퍼로니 피자 L',
+      item: '페퍼로니 피자 L 1판',
+      fullName: '도미노피자 페퍼로니 라지 1판',
+      detail: '도미노피자 · 오리지널 L 1판',
+      kcal: 2623,
       icon: Icons.local_pizza_outlined,
     ),
     CalorieQuestStage(
@@ -196,26 +187,18 @@ abstract final class CalorieQuest {
       icon: Icons.set_meal_outlined,
     ),
     CalorieQuestStage(
-      name: '포테이토 피자 1판',
-      item: '포테이토 피자 1판',
+      name: '포테이토 피자 L',
+      item: '포테이토 피자 L 1판',
       fullName: '도미노피자 포테이토 라지 1판',
-      detail: '도미노피자 · 오리지널 L 8조각',
+      detail: '도미노피자 · 오리지널 L 1판',
       kcal: 3108,
-      icon: Icons.local_pizza_outlined,
-    ),
-    CalorieQuestStage(
-      name: '피자 1판 + 콜라 4캔',
-      item: '피자 1판 + 콜라 4캔',
-      fullName: '포테이토 피자 1판과 코카콜라 4캔',
-      detail: '포테이토 L 1판 · 코카콜라 4캔',
-      kcal: 3540,
       icon: Icons.local_pizza_outlined,
     ),
   ];
 
   static const weeklyStages = [...stages, ...weeklyExtra];
 
-  /// 달성한 단계 수(일간 0~10, 주간 0~16). 화면에 보이는 반올림한 칼로리로 판단해 숫자와 어긋나지 않게 합니다.
+  /// 달성한 단계 수(일간 0~10, 주간 0~14). 화면에 보이는 반올림한 칼로리로 판단해 숫자와 어긋나지 않게 합니다.
   static int completed(
     double kcal, {
     CalorieQuestPeriod period = CalorieQuestPeriod.daily,
@@ -264,7 +247,7 @@ abstract final class CalorieQuest {
   }) => '${period.stages.indexOf(stage) + 1}단계 · ${stage.name}';
 }
 
-/// 단계 수만큼 칸이 있는 진행 막대(일간 10칸, 주간 16칸). 달성한 칸은 채우고 진행 중인 칸은 진행률만큼 채웁니다.
+/// 단계 수만큼 칸이 있는 진행 막대(일간 10칸, 주간 14칸). 달성한 칸은 채우고 진행 중인 칸은 진행률만큼 채웁니다.
 class CalorieQuestBar extends StatelessWidget {
   const CalorieQuestBar({
     super.key,
