@@ -1,21 +1,21 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:maplibre_gl/maplibre_gl.dart';
 
 import '../account/account_store.dart';
 import '../design_system/app_colors.dart';
 import '../design_system/app_motion.dart';
+import '../design_system/app_radius.dart';
 import '../design_system/app_text_styles.dart';
 import '../profile/profile_mail_page.dart';
+import '../profile/setting/profile_setting.dart';
 import '../record/data/running_record_store.dart';
 import '../record/list/detail/record_detail_page.dart';
 import '../record/list/record_list_page.dart';
+import 'running/calorie_quest.dart';
 import 'running/running_home_page.dart';
 
 /// 저장된 러닝 기록(RunningRecordStore)을 읽는 홈. 기록 탭과 같은 데이터를 사용합니다.
+/// 위에는 칼로리 퀘스트(설정의 일간·주간 주기 동안 누적), 가운데에는 최근 러닝 경로 지도가 있습니다.
 class HomePageV2 extends StatefulWidget {
   const HomePageV2({
     super.key,
@@ -23,17 +23,14 @@ class HomePageV2 extends StatefulWidget {
     this.onRecords,
     this.onProfile,
     this.store,
+    this.settings,
     this.records,
     this.now,
-    this.liveMap,
     this.showNavigation = true,
   });
 
   /// 하단 탭을 이 화면이 직접 그릴지. 탭 묶음(MainTabs) 안에서는 false.
   final bool showNavigation;
-
-  /// 카드에 현재 GPS 위치 지도를 쓸지. 기본값은 records가 없을 때(실제 앱)만 true.
-  final bool? liveMap;
 
   final VoidCallback? onStartRun;
   final VoidCallback? onRecords;
@@ -41,6 +38,9 @@ class HomePageV2 extends StatefulWidget {
 
   /// 기본값은 기록 탭과 같은 RunningRecordStore.instance.
   final RunningRecordStore? store;
+
+  /// 칼로리 퀘스트 주기(일간·주간)를 읽을 설정. 기본값은 ProfileSettings.instance.
+  final ProfileSettings? settings;
 
   /// 테스트용 고정 기록. 지정하면 저장소를 읽지 않습니다.
   final List<RunningRecord>? records;
@@ -55,6 +55,8 @@ class HomePageV2 extends StatefulWidget {
 class _HomePageV2State extends State<HomePageV2> with WidgetsBindingObserver {
   late final RunningRecordStore _store =
       widget.store ?? RunningRecordStore.instance;
+  late final ProfileSettings _settings =
+      widget.settings ?? ProfileSettings.instance;
   List<RunningRecord> _records = const [];
   Object? _error;
 
@@ -65,6 +67,8 @@ class _HomePageV2State extends State<HomePageV2> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _store.addListener(_reload);
+    _settings.addListener(_settingsChanged);
+    _settings.load();
     _reload();
   }
 
@@ -72,7 +76,12 @@ class _HomePageV2State extends State<HomePageV2> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _store.removeListener(_reload);
+    _settings.removeListener(_settingsChanged);
     super.dispose();
+  }
+
+  void _settingsChanged() {
+    if (mounted) setState(() {});
   }
 
   /// 날짜가 바뀐 뒤 앱으로 돌아와도 오늘 기준으로 다시 계산합니다.
@@ -95,10 +104,16 @@ class _HomePageV2State extends State<HomePageV2> with WidgetsBindingObserver {
     }
   }
 
-  List<RunningRecord> get _today => [
-    for (final r in _records)
-      if (_sameDay(r.startedAt.toLocal(), _now)) r,
-  ];
+  /// 이번 퀘스트 기간(오늘 0시 또는 이번 주 월요일 0시부터)에 태운 칼로리.
+  /// 러닝 중 화면의 칼로리 퀘스트와 같은 방식으로 저장된 기록을 더합니다.
+  double _questKcal(CalorieQuestPeriod period) {
+    final since = period.start(_now);
+    var sum = 0.0;
+    for (final r in _records) {
+      if (!r.startedAt.toLocal().isBefore(since)) sum += r.energyKcal;
+    }
+    return sum;
+  }
 
   /// 가장 최근에 시작한 러닝 중 GPS 좌표가 있는 기록.
   RunningRecord? get _latestWithRoute {
@@ -109,9 +124,6 @@ class _HomePageV2State extends State<HomePageV2> with WidgetsBindingObserver {
     }
     return latest;
   }
-
-  static bool _sameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
 
   void _open(String label) {
     final action = switch (label) {
@@ -154,15 +166,9 @@ class _HomePageV2State extends State<HomePageV2> with WidgetsBindingObserver {
     }
   }
 
-  static String _dateLabel(DateTime d) =>
-      '${d.month}월 ${d.day}일 ${const ['월', '화', '수', '목', '금', '토', '일'][d.weekday - 1]}요일';
-
   @override
   Widget build(BuildContext context) {
-    final today = _today;
-    final distanceKm = today.fold<double>(0, (sum, r) => sum + r.distanceKm);
-    final movingSeconds = today.fold<int>(0, (sum, r) => sum + r.movingSeconds);
-    final kcal = today.fold<double>(0, (sum, r) => sum + r.energyKcal).round();
+    final period = _settings.calorieQuestPeriod;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value:
           (AppColors.isDark
@@ -181,96 +187,20 @@ class _HomePageV2State extends State<HomePageV2> with WidgetsBindingObserver {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 480),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(
-                      children: [
-                        const CustomPaint(
-                          size: Size(24, 24),
-                          painter: _LogoPainter(),
-                        ),
-                        const SizedBox(width: 9),
-                        const Text(
-                          '러너리',
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -1,
-                          ),
-                        ),
-                        const Spacer(),
-                        SizedBox(
-                          width: 36,
-                          height: 36,
-                          child: OutlinedButton(
-                            onPressed: () => _open('내 정보'),
-                            style: OutlinedButton.styleFrom(
-                              padding: EdgeInsets.zero,
-                              foregroundColor: AppColors.textPrimary,
-                              side: BorderSide(color: AppColors.borderControl),
-                              shape: const CircleBorder(),
-                            ),
-                            child: Text(
-                              AccountStore.instance.current?.initial ?? '러',
-                              style: TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                          ),
-                        ),
-                      ],
+                    _QuestSummary(
+                      kcal: _questKcal(period),
+                      period: period,
+                      onProfile: () => _open('내 정보'),
                     ),
-                    const SizedBox(height: 26),
-                    // 글자를 크게 키운 좁은 화면에서도 제목과 날짜가 한 줄에 들어오도록 배율을 제한합니다.
-                    MediaQuery.withClampedTextScaling(
-                      maxScaleFactor: 1.1,
-                      child: Row(
-                        children: [
-                          const Text(
-                            '오늘의 러닝',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Divider(color: AppColors.borderDefault),
-                          ),
-                          const SizedBox(width: 12),
-                          // '12월 31일 수요일'처럼 날짜가 길어도 넘치지 않게, 화면 폭의 40%를 넘으면 글자를 줄입니다.
-                          ConstrainedBox(
-                            constraints: BoxConstraints(
-                              maxWidth: MediaQuery.sizeOf(context).width * .4,
-                            ),
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                _dateLabel(_now),
-                                maxLines: 1,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: AppColors.textTertiary,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 22),
-                    _RunSummary(
-                      distanceKm: distanceKm,
-                      movingSeconds: movingSeconds,
-                      kcal: kcal,
-                    ),
-                    const SizedBox(height: 14),
                     // 지도는 남은 높이를 사용해 버튼까지 한 화면에 표시합니다.
                     Expanded(
                       child: _RouteCard(
                         record: _latestWithRoute,
                         error: _error != null,
-                        liveMap: widget.liveMap ?? widget.records == null,
                         onTap: _error != null ? _reload : () => _open('기록'),
                       ),
                     ),
@@ -381,130 +311,153 @@ class _HomePageV2State extends State<HomePageV2> with WidgetsBindingObserver {
   );
 }
 
-class _RunSummary extends StatelessWidget {
-  const _RunSummary({
-    required this.distanceKm,
-    required this.movingSeconds,
+/// 홈 맨 위 칼로리 퀘스트: 다음 단계까지 남은 칼로리, 단계 이름, 단계 안 진행률.
+/// 단계 목록과 계산은 러닝 중 화면과 같은 CalorieQuest를 씁니다.
+class _QuestSummary extends StatelessWidget {
+  const _QuestSummary({
     required this.kcal,
+    required this.period,
+    required this.onProfile,
   });
-  final double distanceKm;
-  final int movingSeconds;
-  final int kcal;
+
+  final double kcal;
+  final CalorieQuestPeriod period;
+  final VoidCallback onProfile;
 
   @override
   Widget build(BuildContext context) {
-    final hours = movingSeconds ~/ 3600;
-    final minutes = movingSeconds ~/ 60 % 60;
-    final seconds = movingSeconds % 60;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
+    final stage = CalorieQuest.current(kcal, period: period);
+    final progress = CalorieQuest.stageProgress(kcal, period: period);
+    final allDone = stage == null;
+    final number = allDone
+        ? kcal.round()
+        : CalorieQuest.remaining(kcal, period: period);
+    final title = allDone
+        ? (period == CalorieQuestPeriod.daily
+              ? '오늘 퀘스트를 모두 달성했어요'
+              : '이번 주 퀘스트를 모두 달성했어요')
+        : '${period.stages.indexOf(stage) + 1}단계 · ${stage.item}';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          flex: 3,
-          child: Padding(
-            padding: const EdgeInsets.only(right: 18),
-            child: FittedBox(
-              alignment: Alignment.bottomLeft,
-              fit: BoxFit.scaleDown,
-              child: Text.rich(
-                TextSpan(
-                  children: [
-                    TextSpan(
-                      text: distanceKm.toStringAsFixed(2),
-                      style: AppTextStyles.statHero.copyWith(
-                        fontSize: 88,
-                        height: 1,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -4,
-                      ),
-                    ),
-                    TextSpan(
-                      text: ' km',
-                      style: TextStyle(
-                        fontSize: 20,
-                        color: AppColors.textSecondary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
+        Row(
+          children: [
+            Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                shape: BoxShape.circle,
+              ),
+              // 주황 원 위 아이콘은 두 모드에서 같습니다.
+              child: const Icon(Icons.bolt, size: 15, color: Colors.black),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              allDone ? '오늘 태운 칼로리' : '다음 퀘스트까지',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const Spacer(),
+            SizedBox(
+              width: 36,
+              height: 36,
+              child: OutlinedButton(
+                onPressed: onProfile,
+                style: OutlinedButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  foregroundColor: AppColors.textPrimary,
+                  side: BorderSide(color: AppColors.borderControl),
+                  shape: const CircleBorder(),
+                ),
+                child: Text(
+                  AccountStore.instance.current?.initial ?? '러',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
             ),
-          ),
+          ],
         ),
-        Expanded(
-          flex: 2,
-          child: Container(
-            padding: const EdgeInsets.only(left: 16),
-            decoration: BoxDecoration(
-              border: Border(left: BorderSide(color: AppColors.divider)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        const SizedBox(height: 4),
+        FittedBox(
+          alignment: Alignment.centerLeft,
+          fit: BoxFit.scaleDown,
+          child: Text.rich(
+            TextSpan(
               children: [
-                Text(
-                  '운동 시간',
+                TextSpan(
+                  text: '$number',
+                  style: AppTextStyles.statHero.copyWith(
+                    fontSize: 64,
+                    height: 1.1,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -2,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                TextSpan(
+                  text: allDone ? ' kcal 태웠어요' : ' kcal 남았어요',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 18,
                     fontWeight: FontWeight.w600,
                     color: AppColors.textSecondary,
                   ),
                 ),
-                FittedBox(
-                  child: _value([
-                    if (hours > 0) ...[('$hours', '시간 ')],
-                    ('$minutes', '분 '),
-                    (seconds.toString().padLeft(2, '0'), '초'),
-                  ]),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '소모 칼로리',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                FittedBox(child: _value([('$kcal', ' kcal')])),
               ],
             ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${(progress * 100).floor()}%',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: AppRadius.pillBorder,
+          child: LinearProgressIndicator(
+            value: progress,
+            minHeight: 8,
+            color: AppColors.primary,
+            backgroundColor: AppColors.divider,
           ),
         ),
       ],
     );
   }
-
-  Widget _value(List<(String, String)> parts) => Text.rich(
-    TextSpan(
-      style: AppTextStyles.statValue.copyWith(
-        fontSize: 24,
-        height: 1.2,
-        fontWeight: FontWeight.w800,
-      ),
-      children: [
-        for (final (number, unit) in parts) ...[
-          TextSpan(text: number),
-          TextSpan(
-            text: unit,
-            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-          ),
-        ],
-      ],
-    ),
-  );
 }
 
+/// 최근 러닝 경로 지도. 위·아래 가장자리는 바탕색으로 흐려져 퀘스트·버튼과 이어집니다.
 class _RouteCard extends StatelessWidget {
   const _RouteCard({
     required this.record,
     required this.error,
     required this.onTap,
-    required this.liveMap,
   });
-
-  /// true면 배경에 현재 GPS 위치 지도를 보여줍니다.
-  final bool liveMap;
 
   /// 가장 최근 러닝. null이면 표시할 GPS 경로가 없습니다.
   final RunningRecord? record;
@@ -523,325 +476,149 @@ class _RouteCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final r = record;
+    final fade = AppColors.background;
     return Semantics(
       label: r == null ? '최근 러닝 경로 없음' : '최근 러닝 경로, ${_caption(r)}',
       button: true,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // 기록 탭과 같은 RecordRouteMap(342×200 비율)을 가운데에 둡니다.
-            if (liveMap)
-              const _LiveLocationMap()
-            else
-              ColoredBox(
-                color: r == null
-                    ? AppColors.mapLand
-                    : AppColors.pick(
-                        const Color(0xFF1E2633),
-                        AppColors.mapLand,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (r == null)
+            ColoredBox(
+              color: AppColors.background,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.route,
+                        size: 28,
+                        color: AppColors.textTertiary,
                       ),
-                child: r == null
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.route,
-                                size: 28,
-                                color: AppColors.textTertiary,
-                              ),
-                              const SizedBox(height: 10),
-                              Text(
-                                error ? '기록을 불러오지 못했어요' : '아직 러닝 기록이 없어요',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                error ? '눌러서 다시 시도해요' : '첫 러닝을 시작해 보세요',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: AppColors.textTertiary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                    : Center(
-                        child: AspectRatio(
-                          aspectRatio: 342 / 200,
-                          child: RecordRouteMap(record: r, borderRadius: 0),
+                      const SizedBox(height: 10),
+                      Text(
+                        error ? '기록을 불러오지 못했어요' : '아직 러닝 기록이 없어요',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textSecondary,
                         ),
                       ),
-              ),
-            // 지도 드래그를 막지 않도록 장식 레이어는 터치를 통과시킵니다.
-            IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    stops: [.65, 1],
-                    colors: [
-                      AppColors.background.withAlpha(0),
-                      AppColors.background.withAlpha(0xEE),
+                      const SizedBox(height: 4),
+                      Text(
+                        error ? '눌러서 다시 시도해요' : '첫 러닝을 시작해 보세요',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                child: SizedBox.expand(),
               ),
+            )
+          else
+            // 기록 상세와 같은 지도(베이스맵 + 경로)를 카드 전체에 채웁니다.
+            ColoredBox(
+              color: AppColors.mapLand,
+              child: RecordRouteMap(record: r, borderRadius: 0, basemap: true),
             ),
-            if (!liveMap)
-              Positioned(
-                top: 14,
-                left: 14,
-                child: IgnorePointer(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 7,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.mapButtonBase.withValues(alpha: .94),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          liveMap ? Icons.my_location : Icons.route,
-                          size: 14,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          liveMap ? '현재 위치' : '최근 러닝 경로',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            Positioned(
-              bottom: 8,
-              left: 16,
-              right: 8,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: IgnorePointer(
-                      child: Text(
-                        r == null ? '' : _caption(r),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: onTap,
-                    style: TextButton.styleFrom(
-                      foregroundColor: AppColors.textSecondary,
-                      padding: const EdgeInsets.fromLTRB(10, 8, 4, 8),
-                      minimumSize: const Size(48, 40),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('기록 보기', style: TextStyle(fontSize: 12)),
-                        Icon(Icons.chevron_right, size: 16),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // 실시간 지도는 직접 움직일 수 있으므로 카드 전체 탭은 쓰지 않습니다.
-            if (!liveMap)
-              Material(
-                color: Colors.transparent,
-                child: InkWell(onTap: onTap),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 현재 GPS 위치를 가운데에 둔 지도.
-class _LiveLocationMap extends StatefulWidget {
-  const _LiveLocationMap();
-
-  @override
-  State<_LiveLocationMap> createState() => _LiveLocationMapState();
-}
-
-class _LiveLocationMapState extends State<_LiveLocationMap> {
-  final _map = RunneryMapController();
-  StreamSubscription<Position>? _sub;
-  Position? _position;
-  bool _denied = false;
-  bool _follow = true;
-
-  @override
-  void initState() {
-    super.initState();
-    runningLocationActive.addListener(_onRunningChanged);
-    if (!runningLocationActive.value) _start();
-  }
-
-  @override
-  void dispose() {
-    runningLocationActive.removeListener(_onRunningChanged);
-    _sub?.cancel();
-    _map.dispose();
-    super.dispose();
-  }
-
-  /// 러닝 중에는 위치를 받지 않습니다([runningLocationActive] 참고). 러닝이 끝나면 다시 받습니다.
-  void _onRunningChanged() {
-    if (runningLocationActive.value) {
-      _sub?.cancel();
-      _sub = null;
-    } else if (_sub == null) {
-      _start();
-    }
-  }
-
-  Future<void> _start() async {
-    try {
-      if (!await Geolocator.isLocationServiceEnabled()) {
-        if (mounted) setState(() => _denied = true);
-        return;
-      }
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever ||
-          permission == LocationPermission.unableToDetermine) {
-        if (mounted) setState(() => _denied = true);
-        return;
-      }
-      final last = await Geolocator.getLastKnownPosition();
-      // 권한을 확인하는 사이 러닝이 시작됐으면 위치 통로를 열지 않습니다.
-      if (!mounted || runningLocationActive.value || _sub != null) return;
-      if (last != null) setState(() => _position = last);
-      _sub = Geolocator.getPositionStream(
-        locationSettings: runningLocationSettings(),
-      ).listen(_onPosition, onError: (_) {});
-    } catch (_) {
-      if (mounted) setState(() => _denied = true);
-    }
-  }
-
-  void _onPosition(Position p) {
-    final first = _position == null;
-    setState(() => _position = p);
-    if (!first && _follow) _map.follow(LatLng(p.latitude, p.longitude));
-  }
-
-  bool _locating = false;
-
-  /// 현재 GPS 위치를 다시 읽어 마커와 카메라를 그 위치로 옮깁니다.
-  Future<void> _recenter() async {
-    if (_locating) return;
-    _locating = true;
-    try {
-      final p = await Geolocator.getCurrentPosition(
-        locationSettings: runningLocationSettings(),
-      );
-      if (!mounted) return;
-      _follow = true;
-      setState(() => _position = p);
-      await _map.moveTo(LatLng(p.latitude, p.longitude), zoom: MapZoom.basic);
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('현재 위치를 가져오지 못했어요')));
-      }
-    } finally {
-      _locating = false;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final p = _position;
-    if (p == null) {
-      return ColoredBox(
-        color: AppColors.mapLand,
-        child: Center(
-          child: _denied
-              ? Text(
-                  '위치 권한을 허용하면 내 주변 지도가 보여요',
-                  style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
-                )
-              : Icon(
-                  Icons.location_searching,
-                  size: 24,
-                  color: AppColors.textTertiary,
-                ),
-        ),
-      );
-    }
-    final point = LatLng(p.latitude, p.longitude);
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        RunneryMap(
-          controller: _map,
-          initialCenter: point,
-          initialZoom: MapZoom.basic,
-          // 손으로 움직이면 내 위치 따라가기를 멈춥니다.
-          onUserGesture: () => _follow = false,
-          userLocation: MapUserLocation(point, p.accuracy.clamp(5, 60)),
-        ),
-        Positioned(
-          top: 14,
-          left: 14,
-          child: Material(
-            color: AppColors.mapButtonBase.withValues(alpha: .94),
-            borderRadius: BorderRadius.circular(20),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: _recenter,
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.my_location, size: 14),
-                    SizedBox(width: 6),
-                    Text(
-                      '현재 위치',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+          // 위·아래 가장자리 흐림. 지도 드래그를 막지 않도록 터치를 통과시킵니다.
+          IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  stops: const [0, .12, .78, 1],
+                  colors: [
+                    fade,
+                    fade.withAlpha(0),
+                    fade.withAlpha(0),
+                    fade.withAlpha(0xEE),
                   ],
                 ),
               ),
+              child: const SizedBox.expand(),
             ),
           ),
-        ),
-      ],
+          if (r != null)
+            Positioned(
+              top: 28,
+              left: 14,
+              child: IgnorePointer(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.mapButtonBase.withValues(alpha: .94),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppColors.mapButtonBorder),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.route, size: 14),
+                      SizedBox(width: 6),
+                      Text(
+                        '최근 러닝 경로',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          // 카드 아무 곳이나 누르면 기록으로 갑니다.
+          Material(
+            color: Colors.transparent,
+            child: InkWell(onTap: onTap),
+          ),
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: Row(
+              children: [
+                Expanded(
+                  child: IgnorePointer(
+                    child: Text(
+                      r == null ? '' : _caption(r),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: onTap,
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.textSecondary,
+                    padding: const EdgeInsets.fromLTRB(10, 8, 0, 8),
+                    minimumSize: const Size(48, 40),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('기록 보기', style: TextStyle(fontSize: 12)),
+                      Icon(Icons.chevron_right, size: 16),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -893,30 +670,4 @@ class _NavItem extends StatelessWidget {
       ),
     ),
   );
-}
-
-class _LogoPainter extends CustomPainter {
-  const _LogoPainter();
-  @override
-  void paint(Canvas canvas, Size size) {
-    final path = Path()
-      ..moveTo(4, 19)
-      ..lineTo(10, 16)
-      ..lineTo(14, 8)
-      ..lineTo(21, 5);
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = AppColors.primary
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.4,
-    );
-    for (final p in [const Offset(4, 19), const Offset(21, 5)]) {
-      canvas.drawCircle(p, 3, Paint()..color = AppColors.textPrimary);
-      canvas.drawCircle(p, 1.3, Paint()..color = AppColors.background);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _LogoPainter oldDelegate) => false;
 }
