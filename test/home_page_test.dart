@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:runnery_new/home/home_page.dart';
+import 'package:runnery_new/home/running/calorie_quest.dart';
+import 'package:runnery_new/profile/setting/profile_setting.dart';
 import 'package:runnery_new/record/list/detail/record_detail_page.dart';
 import 'package:runnery_new/account/account_store.dart';
 import 'package:runnery_new/login/auth_ui/auth_ui.dart';
@@ -43,29 +45,74 @@ void main() {
         ],
       );
 
-  testWidgets('HomeV2 shows zeros and empty route without records', (
+  testWidgets(
+    'HomeV2 shows first quest stage and empty route without records',
+    (tester) async {
+      await pumpV2(tester, const []);
+      expect(find.text('다음 퀘스트까지'), findsOneWidget);
+      expect(find.textContaining('50', findRichText: true), findsOneWidget);
+      expect(
+        find.textContaining('kcal 남았어요', findRichText: true),
+        findsOneWidget,
+      );
+      expect(find.text('1단계 · 박카스 F 1병'), findsOneWidget);
+      expect(find.text('0%'), findsOneWidget);
+      expect(find.text('아직 러닝 기록이 없어요'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('HomeV2 quest sums only today and shows latest route', (
     tester,
   ) async {
-    await pumpV2(tester, const []);
-    expect(find.textContaining('0.00 km', findRichText: true), findsOneWidget);
-    expect(find.textContaining('0분 00초', findRichText: true), findsOneWidget);
-    expect(find.textContaining('0 kcal', findRichText: true), findsOneWidget);
-    expect(find.text('아직 러닝 기록이 없어요'), findsOneWidget);
-    expect(find.text('9월 28일 월요일'), findsOneWidget);
+    await pumpV2(tester, [
+      run('a', DateTime(2026, 9, 28, 7), 2, 700, 120),
+      run('b', DateTime(2026, 9, 28, 18), 3.24, 1235, 100),
+      run('c', DateTime(2026, 9, 27, 18), 9, 3000, 500),
+    ]);
+    // 오늘 220 kcal: 바나나맛우유(208)까지 달성, 빼빼로(270)까지 50 남음, (220-208)/(270-208)=19%.
+    expect(find.textContaining('50', findRichText: true), findsOneWidget);
+    expect(find.text('5단계 · 빼빼로 1갑'), findsOneWidget);
+    expect(find.text('19%'), findsOneWidget);
+    expect(find.text('최근 러닝 경로'), findsOneWidget);
+    expect(find.byType(RecordRouteMap), findsOneWidget);
+    expect(find.text('아직 러닝 기록이 없어요'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('HomeV2 sums only today and shows latest route', (tester) async {
-    await pumpV2(tester, [
-      run('a', DateTime(2026, 9, 28, 7), 2, 700, 120),
-      run('b', DateTime(2026, 9, 28, 18), 3.24, 1235, 195),
-      run('c', DateTime(2026, 9, 27, 18), 9, 3000, 500),
-    ]);
-    expect(find.textContaining('5.24 km', findRichText: true), findsOneWidget);
-    expect(find.textContaining('32분 15초', findRichText: true), findsOneWidget);
-    expect(find.textContaining('315 kcal', findRichText: true), findsOneWidget);
-    expect(find.byType(RecordRouteMap), findsOneWidget);
-    expect(find.text('아직 러닝 기록이 없어요'), findsNothing);
+  testWidgets('HomeV2 quest follows weekly setting', (tester) async {
+    final settings = ProfileSettings(
+      directory: () async => Directory.systemTemp,
+    )..calorieQuestPeriod = CalorieQuestPeriod.weekly;
+    final wednesday = DateTime(2026, 9, 30, 20);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePageV2(
+          records: [
+            run('a', DateTime(2026, 9, 28, 7), 2, 700, 300),
+            run('b', DateTime(2026, 9, 30, 7), 1, 300, 100),
+            run('c', DateTime(2026, 9, 27, 18), 9, 3000, 500),
+          ],
+          settings: settings,
+          now: () => wednesday,
+        ),
+      ),
+    );
+    await tester.pump();
+    // 이번 주(월요일부터) 400 kcal: 햇반(315)까지 달성, 불고기버거(476)까지 76 남음.
+    expect(find.textContaining('76', findRichText: true), findsOneWidget);
+    expect(find.text('7단계 · 불고기버거 1개'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('HomeV2 shows all stages done', (tester) async {
+    await pumpV2(tester, [run('a', DateTime(2026, 9, 28, 7), 20, 7000, 1800)]);
+    expect(find.text('오늘 퀘스트를 모두 달성했어요'), findsOneWidget);
+    expect(
+      find.textContaining('kcal 태웠어요', findRichText: true),
+      findsOneWidget,
+    );
+    expect(find.text('100%'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
