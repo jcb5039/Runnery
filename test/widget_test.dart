@@ -10,6 +10,7 @@ import 'package:runnery_new/login/login.dart';
 import 'package:runnery_new/login/sign_up/basic_info.dart';
 import 'package:runnery_new/login/sign_up/account.dart';
 import 'package:runnery_new/login/sign_up/running_info.dart';
+import 'package:runnery_new/login/sign_up/sign_up_choice.dart';
 
 import 'support/fake_account_backend.dart';
 
@@ -37,6 +38,12 @@ void main() {
     expect(find.byType(AppStartPage), findsNothing);
     expect(tester.takeException(), isNull);
     await tester.tap(find.text('회원가입'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SignUpChoicePage), findsOneWidget);
+    await tester.tap(find.text('카카오로 시작하기'));
+    await tester.pump();
+    expect(find.text('카카오 로그인은 준비 중이에요'), findsOneWidget);
+    await tester.tap(find.text('이메일로 가입하기'));
     await tester.pumpAndSettle();
     expect(find.byType(BasicInfoPage), findsOneWidget);
     await tester.enterText(find.byType(TextFormField).at(0), '김민지');
