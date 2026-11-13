@@ -1,0 +1,5 @@
+// 이 파일을 복사해 이름을 Signing.local.xcconfig로 바꾸고 자기 값을 적어요.
+// 팀 아이디: Xcode > Settings > Accounts에서 계정을 고르면 보여요(10글자).
+// 앱 아이디: 다른 사람과 겹치지 않게 자기 이름을 넣어요.
+DEVELOPMENT_TEAM = ABCDE12345
+RUNNERY_BUNDLE_ID = com.yourname.runneryNew

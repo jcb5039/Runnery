@@ -29,7 +29,7 @@
 - API 키, 비밀번호, 인증 토큰 등의 민감한 정보를 코드에 직접 작성하지 않는다.
 - 민감한 인증 정보를 GitHub에 업로드하지 않는다.
 - Firebase 설정 파일(`firebase_options.dart`, `google-services.json`)은 공개용 키이므로 예외로 둔다. 관리자 키, 서명 키, 비밀번호, 토큰은 절대 올리지 않는다.
-- 아이폰 서명 설정(`ios/Runner.xcodeproj/project.pbxproj`의 `DEVELOPMENT_TEAM`, 개인 계정용으로 바꾼 `PRODUCT_BUNDLE_IDENTIFIER`)은 각자 맥에만 두고 GitHub에 올리지 않는다. 사람마다 Apple 계정이 달라 올리면 서로 설치가 꼬인다. 커밋할 때 이 변경이 섞이지 않았는지 확인한다.
+- 아이폰 서명 설정(팀 아이디 `DEVELOPMENT_TEAM`, 앱 아이디 `RUNNERY_BUNDLE_ID`)은 각자 맥의 `ios/Flutter/Signing.local.xcconfig`에만 두고 GitHub에 올리지 않는다(.gitignore에 있음, 예시는 `Signing.local.xcconfig.example`). 사람마다 Apple 계정이 달라 올리면 서로 설치가 꼬인다. `project.pbxproj`는 이제 커밋해도 되지만, 앱 아이디는 `$(RUNNERY_BUNDLE_ID)`로 두고 `DEVELOPMENT_TEAM` 값이 직접 들어가지 않았는지 커밋 전에 확인한다(Xcode 서명 탭을 만지면 다시 적힐 수 있다).
 - Firebase 보안 규칙을 임의로 완화하지 않는다.
 - 개인정보와 인증 서류는 권한이 없는 사용자가 접근하지 못하도록 설계한다.
 - 개인정보가 포함된 실제 데이터를 테스트에 사용하지 않는다.

@@ -1,0 +1,7 @@
+// 아이폰 서명 기본값입니다. 이 파일은 GitHub에 올라가요.
+// 각자 Apple 계정의 팀 아이디와 앱 아이디는 같은 폴더의 Signing.local.xcconfig에 적어요.
+// (Signing.local.xcconfig는 GitHub에 올리지 않습니다. 예시는 Signing.local.xcconfig.example)
+RUNNERY_BUNDLE_ID = com.example.runneryNew
+DEVELOPMENT_TEAM =
+
+#include? "Signing.local.xcconfig"

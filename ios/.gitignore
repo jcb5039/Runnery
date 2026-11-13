@@ -32,3 +32,6 @@ Runner/GeneratedPluginRegistrant.*
 !default.mode2v3
 !default.pbxuser
 !default.perspectivev3
+
+# 각자 맥의 아이폰 서명 설정(팀 아이디·앱 아이디)
+Flutter/Signing.local.xcconfig
