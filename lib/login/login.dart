@@ -4,7 +4,7 @@ import '../account/account_store.dart';
 import '../design_system/app_colors.dart';
 import '../home/main_tabs.dart';
 import 'auth_ui/auth_ui.dart';
-import 'sign_up/basic_info.dart';
+import 'sign_up/sign_up_choice.dart';
 import 'sign_up/verify_email.dart';
 
 final _emailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
@@ -69,7 +69,7 @@ class _LoginPageV2State extends State<LoginPageV2> {
   Future<void> register() async {
     final data = await Navigator.push<RegistrationData>(
       context,
-      MaterialPageRoute(builder: (_) => BasicInfoPage(store: _store)),
+      MaterialPageRoute(builder: (_) => SignUpChoicePage(store: _store)),
     );
     if (!mounted || data == null) return;
     setState(() => busy = true);
