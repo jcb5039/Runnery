@@ -1,6 +1,5 @@
 import MapKit
 import SwiftUI
-import WatchKit
 
 /// 달리는 중: 기본 화면에서 오른쪽으로 밀면 조작, 위아래로 넘기면 기본 → 페이스 → 지도.
 struct RunningPager: View {
@@ -231,7 +230,7 @@ struct ControlsPage: View {
             scale: scale
           ) {
             // 화면을 물에 닿아도 눌리지 않게 잠가요. 크라운을 돌리면 풀려요.
-            WKInterfaceDevice.current().enableWaterLock()
+            WorkoutManager.shared.lockScreen()
           }
           ControlButton(
             icon: model.voice ? "speaker.wave.2.fill" : "speaker.slash.fill",

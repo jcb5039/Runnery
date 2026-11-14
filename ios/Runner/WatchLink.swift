@@ -1,5 +1,6 @@
 import Flutter
 import Foundation
+import HealthKit
 import WatchConnectivity
 
 /// 러닝 화면(Flutter)과 애플워치 앱을 잇습니다.
@@ -9,12 +10,16 @@ import WatchConnectivity
 final class WatchLinkChannel: NSObject, WCSessionDelegate {
   private static let shared = WatchLinkChannel()
   private var channel: FlutterMethodChannel?
+  private let healthStore = HKHealthStore()
 
   static func register(with messenger: FlutterBinaryMessenger) {
     let channel = FlutterMethodChannel(name: "runnery/watch", binaryMessenger: messenger)
     shared.channel = channel
     channel.setMethodCallHandler { call, result in
       switch call.method {
+      case "launch":
+        shared.launchWatchApp()
+        result(nil)
       case "send":
         shared.send(call.arguments as? [String: Any] ?? [:], result: result)
       default:
@@ -25,6 +30,17 @@ final class WatchLinkChannel: NSObject, WCSessionDelegate {
       WCSession.default.delegate = shared
       WCSession.default.activate()
     }
+  }
+
+  /// 러닝을 시작하면 워치 앱을 깨워 '운동 중' 상태로 열어요(워치 앱이 설치돼 있을 때만).
+  private func launchWatchApp() {
+    guard HKHealthStore.isHealthDataAvailable(), WCSession.isSupported(),
+      WCSession.default.isPaired, WCSession.default.isWatchAppInstalled
+    else { return }
+    let config = HKWorkoutConfiguration()
+    config.activityType = .running
+    config.locationType = .outdoor
+    healthStore.startWatchApp(with: config) { _, _ in }
   }
 
   /// 결과: 워치가 받은 경로 점 개수(워치가 앱을 열어 두지 않았으면 nil).

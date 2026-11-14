@@ -36,6 +36,8 @@ struct IdleView: View {
         .foregroundStyle(WatchTheme.label)
     }
     .padding()
+    // 달리기 시작 전에 건강 권한을 미리 물어 둬요(운동 중 상태에 필요).
+    .task { _ = await WorkoutManager.shared.requestAuthorization() }
   }
 }
 

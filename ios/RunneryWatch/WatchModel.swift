@@ -69,7 +69,10 @@ final class WatchModel: NSObject, ObservableObject, WCSessionDelegate {
     switch state {
     case "running", "paused":
       phase = state == "running" ? .running : .paused
+      // 달리는 중에는 워치를 운동 중 상태로 둬서 시계 화면으로 돌아가지 않게 해요.
+      WorkoutManager.shared.start()
     case "ended":
+      WorkoutManager.shared.end()
       if phase != .idle { phase = .ended }
       route = []
       splits = []

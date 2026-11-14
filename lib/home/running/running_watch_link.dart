@@ -50,6 +50,8 @@ class RunningWatchLink {
         onControl?.call(call.arguments as String);
       }
     });
+    // 워치 앱을 깨워 손목에 바로 러닝 화면이 뜨게 해요.
+    _channel.invokeMethod<void>('launch').catchError((_) {});
   }
 
   /// 러닝 화면이 바뀔 때마다 부릅니다. 보내기는 1초에 한 번만 합니다([force]면 바로).
