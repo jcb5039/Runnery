@@ -21,6 +21,7 @@ import 'calorie_quest.dart';
 import 'running_home_page.dart';
 import 'running_live_activity.dart';
 import 'running_voice.dart';
+import 'running_watch_link.dart';
 import 'running_result_page.dart';
 import '../../friends/data/record_share.dart';
 import '../../friends/data/together_live.dart';
@@ -954,6 +955,12 @@ class _RunningStartPageState extends State<RunningStartPage>
 
   final _voice = RunningVoice();
 
+  /// 애플워치에 러닝 상태를 보내고 워치 버튼을 받습니다.
+  late final _watch = RunningWatchLink(onControl: _controlFromWatch);
+
+  /// 음성 안내. 시작 화면에서 고른 값으로 시작하고, 워치에서 끄고 켤 수 있어요.
+  late bool _voiceOn = widget.options.voiceGuide;
+
   /// 마지막으로 읽어 준 km. 1km를 넘을 때마다 한 번씩 안내합니다.
   int _spokenKm = 0;
 
@@ -975,6 +982,7 @@ class _RunningStartPageState extends State<RunningStartPage>
       ..addListener(_checkGoal)
       ..addListener(_checkQuest)
       ..addListener(_updateLiveActivity)
+      ..addListener(_updateWatch)
       ..addListener(_announceKm)
       ..addListener(_announceAutoPause)
       ..start();
@@ -990,6 +998,20 @@ class _RunningStartPageState extends State<RunningStartPage>
           : '러닝을 시작합니다. 목표는 $goal${widget.options.mode == RunningMode.distanceGoal ? '예요' : '이에요'}.',
     );
     _liveActivity.start(_liveActivityState());
+    _watch
+      ..start()
+      ..update(
+        paused: false,
+        autoPaused: false,
+        ending: false,
+        elapsed: Duration.zero,
+        meters: 0,
+        averagePace: null,
+        voice: _voiceOn,
+        routeCount: 0,
+        routeSlice: _routeSlice,
+        force: true,
+      );
     _loadQuestBase();
     _lifecycle = AppLifecycleListener(
       onStateChange: (state) =>
@@ -1005,6 +1027,7 @@ class _RunningStartPageState extends State<RunningStartPage>
     _lifecycle.dispose();
     _followTimer?.cancel();
     _liveActivity.end();
+    _watch.end();
     _session.dispose();
     _map.dispose();
     _page.dispose();
@@ -1065,9 +1088,57 @@ class _RunningStartPageState extends State<RunningStartPage>
 
   void _updateLiveActivity() => _liveActivity.update(_liveActivityState());
 
+  void _updateWatch({bool force = false}) => _watch.update(
+    paused: _session.status == RunningStatus.paused || _session.autoPaused,
+    autoPaused: _session.autoPaused,
+    ending: _ending,
+    elapsed: _session.elapsed,
+    meters: _session.distanceMeters,
+    averagePace: _session.paceSecondsPerKm,
+    voice: _voiceOn,
+    routeCount: _session.segments.fold(0, (n, s) => n + s.length),
+    routeSlice: _routeSlice,
+    force: force,
+  );
+
+  /// 지나온 길의 [from]번째 점부터 [count]개(여러 구간을 이어서 셉니다).
+  List<(double, double)> _routeSlice(int from, int count) {
+    final result = <(double, double)>[];
+    var index = 0;
+    for (final segment in _session.segments) {
+      if (result.length >= count) break;
+      if (index + segment.length <= from) {
+        index += segment.length;
+        continue;
+      }
+      for (var i = from > index ? from - index : 0; i < segment.length; i++) {
+        if (result.length >= count) break;
+        final p = segment[i].latLng;
+        result.add((p.latitude, p.longitude));
+      }
+      index += segment.length;
+    }
+    return result;
+  }
+
+  /// 워치 버튼. 종료는 폰에 종료 확인 창을 띄우고, 저장은 폰에서 합니다.
+  void _controlFromWatch(String action) {
+    if (!mounted) return;
+    switch (action) {
+      case 'end':
+        _openEndSheet();
+      case 'voice':
+        setState(() => _voiceOn = !_voiceOn);
+        _say('음성 안내를 켰어요.');
+      default:
+        _controlFromLockScreen(action);
+    }
+    _updateWatch(force: true);
+  }
+
   /// 음성 안내가 켜져 있을 때만 읽습니다.
   void _say(String text) {
-    if (widget.options.voiceGuide) _voice.speak(text);
+    if (_voiceOn) _voice.speak(text);
   }
 
   /// 읽기용 목표. 예: 5킬로미터, 30분. 자유 러닝이면 null.

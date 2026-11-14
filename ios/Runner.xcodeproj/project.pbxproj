@@ -15,19 +15,26 @@
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
 		3DAC9B89822427243B47F580 /* VoiceGuide.swift in Sources */ = {isa = PBXBuildFile; fileRef = 847B430CF6B4F3B1C322A1AC /* VoiceGuide.swift */; };
 		423E96B8D5BBC85C4A194302 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4922D320762B7A1D459C8A9E /* Foundation.framework */; };
+		497B899ECEF95B1735637B19 /* WatchModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 320A5586695828E123B54A7F /* WatchModel.swift */; };
 		580075FDF9BEEDD49D4A907B /* RunneryWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 8DE9DCEDA9252344A8030DF3 /* RunneryWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
 		7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */; };
 		78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */ = {isa = PBXBuildFile; productRef = 78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */; };
 		79022A66E51DC321515800EA /* RunneryLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0678C754AC22E62BCEB66601 /* RunneryLiveActivity.swift */; };
+		7E04034D2EF216AC054621CE /* Pretendard-Bold.otf in Resources */ = {isa = PBXBuildFile; fileRef = 0540829AAB5FA48274ACC484 /* Pretendard-Bold.otf */; };
+		7F175852ECD35DEF479FC4F4 /* RunningPages.swift in Sources */ = {isa = PBXBuildFile; fileRef = 454389AD96EC5BA330173DD4 /* RunningPages.swift */; };
 		8FBD686980F9D4662416C69C /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8A74E8E76088C5D03A9B3B0F /* Foundation.framework */; };
 		90CC38C7AB05B07C383DFD6B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 268D5757BCE740F43407731F /* Assets.xcassets */; };
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
+		AAB9CF5F3BE5CB0738C4A866 /* WatchTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22FBE1DF8E274E79CCDAD182 /* WatchTheme.swift */; };
+		BB2991D92FC3AA33495694D3 /* WatchLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54B002314F3179106E14CF31 /* WatchLink.swift */; };
 		BEF4BA0C766DFDF09C8A675A /* RunningLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3352C6BA1AFD83C211311949 /* RunningLiveActivity.swift */; };
 		C253C5C45BF0DA201BE1F651 /* RunningActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7E9C32D5217D35353B454F5 /* RunningActivityAttributes.swift */; };
 		D3BBE5BD78A3CB7C13582497 /* RunningActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7E9C32D5217D35353B454F5 /* RunningActivityAttributes.swift */; };
+		D609001DE7D0BF12E9073D44 /* Pretendard-SemiBold.otf in Resources */ = {isa = PBXBuildFile; fileRef = 43CD5943D2FB630548B987AA /* Pretendard-SemiBold.otf */; };
+		DACC70EECA0934640482B465 /* Archivo-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 5865E2CD0B9E182E6DFADABC /* Archivo-Variable.ttf */; };
 		F730F7F00E8CEDAA6D2BD66C /* RouteSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2246E1B0CEA5A9B2C0483F5F /* RouteSnapshot.swift */; };
 /* End PBXBuildFile section */
 
@@ -91,16 +98,23 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		0540829AAB5FA48274ACC484 /* Pretendard-Bold.otf */ = {isa = PBXFileReference; includeInIndex = 1; name = "Pretendard-Bold.otf"; path = "../../assets/fonts/Pretendard-Bold.otf"; sourceTree = "<group>"; };
 		0678C754AC22E62BCEB66601 /* RunneryLiveActivity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RunneryLiveActivity.swift; sourceTree = "<group>"; };
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
 		2246E1B0CEA5A9B2C0483F5F /* RouteSnapshot.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RouteSnapshot.swift; sourceTree = "<group>"; };
+		22FBE1DF8E274E79CCDAD182 /* WatchTheme.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchTheme.swift; sourceTree = "<group>"; };
 		268D5757BCE740F43407731F /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		320A5586695828E123B54A7F /* WatchModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchModel.swift; sourceTree = "<group>"; };
 		331C807B294A618700263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
 		331C8081294A63A400263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3352C6BA1AFD83C211311949 /* RunningLiveActivity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RunningLiveActivity.swift; sourceTree = "<group>"; };
 		3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = AppFrameworkInfo.plist; path = Flutter/AppFrameworkInfo.plist; sourceTree = "<group>"; };
+		43CD5943D2FB630548B987AA /* Pretendard-SemiBold.otf */ = {isa = PBXFileReference; includeInIndex = 1; name = "Pretendard-SemiBold.otf"; path = "../../assets/fonts/Pretendard-SemiBold.otf"; sourceTree = "<group>"; };
+		454389AD96EC5BA330173DD4 /* RunningPages.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RunningPages.swift; sourceTree = "<group>"; };
 		4922D320762B7A1D459C8A9E /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/WatchOS.platform/Developer/SDKs/WatchOS11.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		54B002314F3179106E14CF31 /* WatchLink.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchLink.swift; sourceTree = "<group>"; };
+		5865E2CD0B9E182E6DFADABC /* Archivo-Variable.ttf */ = {isa = PBXFileReference; includeInIndex = 1; name = "Archivo-Variable.ttf"; path = "../../assets/fonts/Archivo-Variable.ttf"; sourceTree = "<group>"; };
 		74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Runner-Bridging-Header.h"; sourceTree = "<group>"; };
 		74858FAE1ED2DC5600515810 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
@@ -183,6 +197,10 @@
 				C3CAB986002C9D4CF13D70D0 /* RunneryWatchApp.swift */,
 				86A2E9548E8E550B4B5B54B7 /* ContentView.swift */,
 				268D5757BCE740F43407731F /* Assets.xcassets */,
+				320A5586695828E123B54A7F /* WatchModel.swift */,
+				22FBE1DF8E274E79CCDAD182 /* WatchTheme.swift */,
+				454389AD96EC5BA330173DD4 /* RunningPages.swift */,
+				D8824192F1563701A53F24A9 /* Fonts */,
 			);
 			name = RunneryWatch;
 			path = RunneryWatch;
@@ -240,6 +258,7 @@
 				3352C6BA1AFD83C211311949 /* RunningLiveActivity.swift */,
 				2246E1B0CEA5A9B2C0483F5F /* RouteSnapshot.swift */,
 				847B430CF6B4F3B1C322A1AC /* VoiceGuide.swift */,
+				54B002314F3179106E14CF31 /* WatchLink.swift */,
 			);
 			path = Runner;
 			sourceTree = "<group>";
@@ -259,6 +278,16 @@
 				173C706DA4CC6645350C0A97 /* watchOS */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		D8824192F1563701A53F24A9 /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				5865E2CD0B9E182E6DFADABC /* Archivo-Variable.ttf */,
+				0540829AAB5FA48274ACC484 /* Pretendard-Bold.otf */,
+				43CD5943D2FB630548B987AA /* Pretendard-SemiBold.otf */,
+			);
+			name = Fonts;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -417,6 +446,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				90CC38C7AB05B07C383DFD6B /* Assets.xcassets in Resources */,
+				DACC70EECA0934640482B465 /* Archivo-Variable.ttf in Resources */,
+				7E04034D2EF216AC054621CE /* Pretendard-Bold.otf in Resources */,
+				D609001DE7D0BF12E9073D44 /* Pretendard-SemiBold.otf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -471,6 +503,9 @@
 			files = (
 				2776F1399B7AE30D0306DF38 /* RunneryWatchApp.swift in Sources */,
 				3156A87C8D720CAE3B29E9B8 /* ContentView.swift in Sources */,
+				497B899ECEF95B1735637B19 /* WatchModel.swift in Sources */,
+				AAB9CF5F3BE5CB0738C4A866 /* WatchTheme.swift in Sources */,
+				7F175852ECD35DEF479FC4F4 /* RunningPages.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -485,6 +520,7 @@
 				BEF4BA0C766DFDF09C8A675A /* RunningLiveActivity.swift in Sources */,
 				F730F7F00E8CEDAA6D2BD66C /* RouteSnapshot.swift in Sources */,
 				3DAC9B89822427243B47F580 /* VoiceGuide.swift in Sources */,
+				BB2991D92FC3AA33495694D3 /* WatchLink.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
