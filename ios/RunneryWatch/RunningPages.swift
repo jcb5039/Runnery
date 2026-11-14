@@ -8,7 +8,15 @@ struct RunningPager: View {
 
   var body: some View {
     TabView(selection: $tab) {
-      ControlsPage(scale: scale).tag(0)
+      ControlsPage(scale: scale) {
+        // 잠그기 전에 기록 화면으로 넘어가요. 잠겨 있는 동안 기록을 볼 수 있게요.
+        withAnimation { tab = 1 }
+        Task {
+          try? await Task.sleep(for: .milliseconds(450))
+          WorkoutManager.shared.lockScreen()
+        }
+      }
+      .tag(0)
       TabView {
         BasicPage(scale: scale)
         PacePage(scale: scale)
@@ -209,6 +217,8 @@ struct MapPage: View {
 struct ControlsPage: View {
   @ObservedObject var model = WatchModel.shared
   let scale: CGFloat
+  /// 화면 잠금. 기록 화면으로 넘긴 뒤 잠가요.
+  let onLock: () -> Void
   @State private var confirmEnd = false
 
   var body: some View {
@@ -228,10 +238,7 @@ struct ControlsPage: View {
           ControlButton(
             icon: "lock.fill", title: "화면 잠금", fill: WatchTheme.button, iconColor: .white,
             scale: scale
-          ) {
-            // 화면을 물에 닿아도 눌리지 않게 잠가요. 크라운을 돌리면 풀려요.
-            WorkoutManager.shared.lockScreen()
-          }
+          ) { onLock() }
           ControlButton(
             icon: model.voice ? "speaker.wave.2.fill" : "speaker.slash.fill",
             title: model.voice ? "음성 안내" : "음성 꺼짐", fill: WatchTheme.button,
