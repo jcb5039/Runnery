@@ -1,7 +1,7 @@
 import HealthKit
 import WatchKit
 
-/// 워치를 '운동 중' 상태로 둬요. 손목을 내려도 시계 화면으로 돌아가지 않고, 화면 잠금(물 잠금)도 쓸 수 있어요.
+/// 워치를 '운동 중' 상태로 둬요. 손목을 내려도 시계 화면으로 돌아가지 않아요.
 /// 기록은 폰이 하므로 건강 앱에 운동을 저장하지 않아요.
 final class WorkoutManager: NSObject, HKWorkoutSessionDelegate {
   static let shared = WorkoutManager()
@@ -55,12 +55,6 @@ final class WorkoutManager: NSObject, HKWorkoutSessionDelegate {
   func end() {
     guard let session, isActive else { return }
     session.end()
-  }
-
-  /// 화면을 잠가요(운동 중일 때만 돼요). 디지털 크라운을 돌리면 풀려요.
-  func lockScreen() {
-    if !isActive { start() }
-    WKInterfaceDevice.current().enableWaterLock()
   }
 
   // MARK: HKWorkoutSessionDelegate

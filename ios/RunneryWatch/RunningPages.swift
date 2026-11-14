@@ -1,31 +1,110 @@
 import MapKit
 import SwiftUI
+import WatchKit
 
 /// 달리는 중: 기본 화면에서 오른쪽으로 밀면 조작, 위아래로 넘기면 기본 → 페이스 → 지도.
 struct RunningPager: View {
+  @ObservedObject var model = WatchModel.shared
   let scale: CGFloat
   @State private var tab = 1
 
   var body: some View {
-    TabView(selection: $tab) {
-      ControlsPage(scale: scale) {
-        // 잠그기 전에 기록 화면으로 넘어가요. 잠겨 있는 동안 기록을 볼 수 있게요.
-        withAnimation { tab = 1 }
-        Task {
-          try? await Task.sleep(for: .milliseconds(450))
-          WorkoutManager.shared.lockScreen()
+    if model.locked {
+      // 잠겨 있으면 조작 화면 없이 기록만. 위아래 넘기기는 그대로 돼요.
+      MetricsPager(scale: scale).lockedOverlay(scale: scale)
+    } else {
+      TabView(selection: $tab) {
+        ControlsPage(scale: scale) {
+          // 기록 화면으로 넘기면서 잠가요. 잠겨 있는 동안 기록을 볼 수 있게요.
+          withAnimation { model.locked = true }
+          tab = 1
+        }
+        .tag(0)
+        MetricsPager(scale: scale).tag(1)
+      }
+      .tabViewStyle(.page(indexDisplayMode: .never))
+    }
+  }
+}
+
+/// 기본 → 페이스 → 지도(위아래로 넘기기, 디지털 크라운).
+struct MetricsPager: View {
+  let scale: CGFloat
+
+  var body: some View {
+    TabView {
+      BasicPage(scale: scale)
+      PacePage(scale: scale)
+      MapPage(scale: scale)
+    }
+    .tabViewStyle(.verticalPage)
+  }
+}
+
+// MARK: 화면 잠금
+
+extension View {
+  /// 잠겨 있을 때: 위에 자물쇠를 띄우고, 짧게 누르면 안내, 1초 길게 누르면 풀려요.
+  func lockedOverlay(scale: CGFloat) -> some View {
+    modifier(LockedOverlay(scale: scale))
+  }
+}
+
+struct LockedOverlay: ViewModifier {
+  @ObservedObject var model = WatchModel.shared
+  let scale: CGFloat
+  @State private var pressing = false
+  @State private var hint = false
+  @State private var hintTask: Task<Void, Never>?
+
+  static let holdSeconds = 1.0
+
+  func body(content: Content) -> some View {
+    content
+      .overlay(alignment: .top) {
+        ZStack {
+          Circle().fill(Color.black.opacity(0.75))
+          Circle()
+            .trim(from: 0, to: pressing ? 1 : 0)
+            .stroke(WatchTheme.orange, style: .init(lineWidth: 2.5 * scale, lineCap: .round))
+            .rotationEffect(.degrees(-90))
+            .animation(
+              pressing ? .linear(duration: Self.holdSeconds) : .easeOut(duration: 0.15),
+              value: pressing)
+          Image(systemName: "lock.fill")
+            .font(.system(size: 11 * scale, weight: .semibold))
+            .foregroundStyle(.white)
+        }
+        .frame(width: 26 * scale, height: 26 * scale)
+        .allowsHitTesting(false)
+      }
+      .overlay {
+        if hint {
+          Text("길게 눌러 잠금 풀기")
+            .font(WatchTheme.label(13 * scale))
+            .padding(.horizontal, 12 * scale)
+            .padding(.vertical, 8 * scale)
+            .background(Capsule().fill(Color.black.opacity(0.85)))
+            .transition(.opacity)
+            .allowsHitTesting(false)
         }
       }
-      .tag(0)
-      TabView {
-        BasicPage(scale: scale)
-        PacePage(scale: scale)
-        MapPage(scale: scale)
-      }
-      .tabViewStyle(.verticalPage)
-      .tag(1)
+      .onTapGesture { showHint() }
+      .onLongPressGesture(minimumDuration: Self.holdSeconds) {
+        WKInterfaceDevice.current().play(.click)
+        withAnimation { model.locked = false }
+      } onPressingChanged: { pressing = $0 }
+  }
+
+  private func showHint() {
+    WKInterfaceDevice.current().play(.failure)
+    withAnimation { hint = true }
+    hintTask?.cancel()
+    hintTask = Task { @MainActor in
+      try? await Task.sleep(for: .seconds(1.5))
+      guard !Task.isCancelled else { return }
+      withAnimation { hint = false }
     }
-    .tabViewStyle(.page(indexDisplayMode: .never))
   }
 }
 
@@ -280,7 +359,13 @@ struct PausedView: View {
       NumberWithUnit(
         value: WatchFormat.km(model.meters), unit: "km", size: 20 * scale, unitSize: 11 * scale)
       Spacer(minLength: 4)
-      if model.ending {
+      if model.locked {
+        Text("길게 눌러 잠금 풀기")
+          .font(WatchTheme.label(12 * scale))
+          .foregroundStyle(WatchTheme.label)
+          .frame(maxWidth: .infinity)
+          .padding(.bottom, 8 * scale)
+      } else if model.ending {
         Text("폰에서 저장을 마쳐 주세요")
           .font(WatchTheme.label(13 * scale))
           .foregroundStyle(.white)
@@ -303,12 +388,23 @@ struct PausedView: View {
     }
     .padding(.horizontal, 4)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    .modifier(LockIfNeeded(scale: scale))
     .confirmationDialog("러닝을 끝낼까요?", isPresented: $confirmEnd) {
       Button("끝내기", role: .destructive) { model.send("end") }
       Button("취소", role: .cancel) {}
     } message: {
       Text("저장은 폰에서 해요")
     }
+  }
+}
+
+/// 잠겨 있을 때만 잠금 표시를 붙여요.
+struct LockIfNeeded: ViewModifier {
+  @ObservedObject var model = WatchModel.shared
+  let scale: CGFloat
+
+  func body(content: Content) -> some View {
+    if model.locked { content.lockedOverlay(scale: scale) } else { content }
   }
 }
 

@@ -21,6 +21,8 @@ final class WatchModel: NSObject, ObservableObject, WCSessionDelegate {
   @Published private(set) var splits: [Int] = []
   @Published private(set) var voice = true
   @Published private(set) var route: [CLLocationCoordinate2D] = []
+  /// 러너리 자체 화면 잠금. 버튼이 눌리지 않고, 길게 눌러야 풀려요.
+  @Published var locked = false
 
   /// 폰이 마지막으로 보낸 운동 시간과 그 시각. 달리는 중이면 워치가 이어서 흐르게 해요.
   private var elapsed: TimeInterval = 0
@@ -73,6 +75,7 @@ final class WatchModel: NSObject, ObservableObject, WCSessionDelegate {
       WorkoutManager.shared.start()
     case "ended":
       WorkoutManager.shared.end()
+      locked = false
       if phase != .idle { phase = .ended }
       route = []
       splits = []
