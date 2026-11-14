@@ -35,3 +35,6 @@ Runner/GeneratedPluginRegistrant.*
 
 # 각자 맥의 아이폰 서명 설정(팀 아이디·앱 아이디)
 Flutter/Signing.local.xcconfig
+
+# Xcode로 직접 빌드할 때 생기는 임시 파일
+build/
