@@ -254,10 +254,18 @@ class CalorieQuestBar extends StatelessWidget {
     required this.kcal,
     this.height = 4,
     this.period = CalorieQuestPeriod.daily,
+    this.backgroundColor,
+    this.color,
   });
 
   final double kcal;
   final double height;
+
+  /// 채워진 막대 색. null이면 주황입니다.
+  final Color? color;
+
+  /// 채워지지 않은 막대 색. null이면 구분선 색입니다.
+  final Color? backgroundColor;
 
   /// 일간·주간 중 어느 단계 목록을 쓸지.
   final CalorieQuestPeriod period;
@@ -276,8 +284,8 @@ class CalorieQuestBar extends StatelessWidget {
               child: LinearProgressIndicator(
                 value: i < done ? 1 : (i == done ? partial : 0),
                 minHeight: height,
-                color: AppColors.primary,
-                backgroundColor: AppColors.divider,
+                color: color ?? AppColors.primary,
+                backgroundColor: backgroundColor ?? AppColors.divider,
               ),
             ),
           ),
@@ -294,11 +302,15 @@ class CalorieQuestIcon extends StatelessWidget {
     required this.icon,
     this.size = 40,
     this.dimmed = false,
+    this.highlighted = false,
   });
 
   final IconData icon;
   final double size;
   final bool dimmed;
+
+  /// 주황 원에 검정 아이콘. 지도 위(집중 화면)에서 눈에 띄게 할 때 씁니다.
+  final bool highlighted;
 
   @override
   Widget build(BuildContext context) {
@@ -307,13 +319,17 @@ class CalorieQuestIcon extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.borderDefault),
+        color: highlighted ? AppColors.primary : AppColors.surface,
+        border: highlighted ? null : Border.all(color: AppColors.borderDefault),
       ),
       child: Icon(
         icon,
         size: size * 0.48,
-        color: dimmed ? AppColors.textTertiary : AppColors.textPrimary,
+        color: highlighted
+            ? Colors.black
+            : dimmed
+            ? AppColors.textTertiary
+            : AppColors.textPrimary,
       ),
     );
   }
@@ -326,6 +342,7 @@ class CalorieQuestRow extends StatelessWidget {
     required this.kcal,
     required this.onTap,
     this.period = CalorieQuestPeriod.daily,
+    this.emphasized = false,
   });
 
   final double kcal;
@@ -334,11 +351,15 @@ class CalorieQuestRow extends StatelessWidget {
   /// 일간·주간 중 어느 단계 목록을 쓸지.
   final CalorieQuestPeriod period;
 
+  /// 바탕 없이 지도 위에 놓일 때(러닝 집중 화면) 글자를 진하고 크게, 아이콘을 주황으로 보여 줍니다.
+  final bool emphasized;
+
   @override
   Widget build(BuildContext context) {
     final done = CalorieQuest.completed(kcal, period: period);
     final stage = CalorieQuest.current(kcal, period: period);
     final next = period.stages.elementAtOrNull(done + 1);
+    final e = emphasized;
     return InkWell(
       onTap: onTap,
       borderRadius: AppRadius.thumbnailBorder,
@@ -351,6 +372,7 @@ class CalorieQuestRow extends StatelessWidget {
                 CalorieQuestIcon(
                   icon: (stage ?? period.stages.last).icon,
                   size: 36,
+                  highlighted: e,
                 ),
                 const SizedBox(width: AppSpacing.space3),
                 Expanded(
@@ -363,7 +385,10 @@ class CalorieQuestRow extends StatelessWidget {
                             : '칼로리 퀘스트 · ${done + 1}단계',
                         style: TextStyle(
                           fontSize: 12,
-                          color: AppColors.textSecondary,
+                          fontWeight: e ? FontWeight.w600 : null,
+                          color: e
+                              ? AppColors.textPrimary
+                              : AppColors.textSecondary,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -372,7 +397,7 @@ class CalorieQuestRow extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 15,
+                          fontSize: e ? 17 : 15,
                           fontWeight: FontWeight.w700,
                           color: AppColors.textPrimary,
                         ),
@@ -391,13 +416,18 @@ class CalorieQuestRow extends StatelessWidget {
                           next == null ? '전체 보기' : '다음 ${next.name}',
                           style: TextStyle(
                             fontSize: 12,
-                            color: AppColors.textTertiary,
+                            fontWeight: e ? FontWeight.w600 : null,
+                            color: e
+                                ? AppColors.textPrimary
+                                : AppColors.textTertiary,
                           ),
                         ),
                         Icon(
                           Icons.chevron_right,
                           size: 16,
-                          color: AppColors.textTertiary,
+                          color: e
+                              ? AppColors.textPrimary
+                              : AppColors.textTertiary,
                         ),
                       ],
                     ),
@@ -415,9 +445,11 @@ class CalorieQuestRow extends StatelessWidget {
                           ],
                         ),
                         style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textSecondary,
+                          fontSize: e ? 15 : 13,
+                          fontWeight: e ? FontWeight.w800 : FontWeight.w600,
+                          color: e
+                              ? AppColors.textPrimary
+                              : AppColors.textSecondary,
                         ),
                       ),
                   ],
@@ -425,7 +457,13 @@ class CalorieQuestRow extends StatelessWidget {
               ],
             ),
             const SizedBox(height: AppSpacing.space3),
-            CalorieQuestBar(kcal: kcal, period: period),
+            CalorieQuestBar(
+              kcal: kcal,
+              period: period,
+              backgroundColor: e ? AppColors.textTertiary : null,
+              // 집중 화면 막대는 노란색입니다.
+              color: e ? AppColors.questBar : null,
+            ),
           ],
         ),
       ),

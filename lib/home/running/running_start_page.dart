@@ -94,6 +94,10 @@ abstract final class RunningConfig {
   /// 이 속도(분속 134m ≈ 시속 8km) 미만은 걷기, 이상은 달리기 공식으로 칼로리를 계산합니다.
   static const walkRunThresholdMetersPerMinute = 134.0;
 
+  /// 집중 화면: 최근 [speedWindow] 동안 [walkRunThresholdMetersPerMinute] 이상으로 달리면 숫자를 크게 보여 줍니다.
+  /// 그보다 느린 상태가 이만큼 이어져야 원래 화면으로 돌아갑니다(시속 8km 근처에서 깜빡이지 않게).
+  static const focusExitAfter = Duration(seconds: 5);
+
   /// 함께 달리기: 친구가 이 거리 안에 있을 때만 지도에 점·지나간 길을 그립니다. 그보다 멀면
   /// 러닝 중 지도(확대 고정)에서는 어차피 화면 밖이라, 친구 칩에 떨어진 거리만 적습니다.
   static const friendMapRadiusMeters = 1000.0;
@@ -607,6 +611,11 @@ class RunningSession extends ChangeNotifier {
   DateTime? _movingLastAt;
   double? _lastGoodSpeed;
 
+  /// 집중 화면 판정용: 0.5초마다 남기는 (시각, 누적 거리). 최근 [RunningConfig.speedWindow]만 둡니다.
+  final List<(DateTime, double)> _distanceSamples = [];
+  bool _runningFast = false;
+  DateTime? _slowSince;
+
   /// 경로 문제 원인을 가리기 위한 진단 기록(기록 파일에만 저장).
   final diagnostics = RunningDiagnostics();
 
@@ -614,6 +623,11 @@ class RunningSession extends ChangeNotifier {
 
   /// 자동 일시정지 중인지. 이때 [status]는 running 그대로이고 운동 시간만 멈춰 있습니다.
   bool get autoPaused => _autoPaused;
+
+  /// 달리기 속도(시속 약 8km 이상)로 달리는 중인지. 러닝 화면이 집중 화면으로 바뀝니다.
+  /// 일시정지·자동 일시정지 중에는 항상 false입니다.
+  bool get runningFast =>
+      _runningFast && _status == RunningStatus.running && !_autoPaused;
   DateTime? get startedAt => _startedAt;
 
   /// 정확도와 무관한 최신 좌표. 지도·GPS 칩용.
@@ -655,6 +669,7 @@ class RunningSession extends ChangeNotifier {
     // 초 단위 표시가 건너뛰지 않도록 1초보다 짧게 갱신합니다.
     _ticker = Timer.periodic(const Duration(milliseconds: 500), (_) {
       _checkAutoPause();
+      _checkRunningFast();
       notifyListeners();
     });
     _status = RunningStatus.running;
@@ -674,6 +689,44 @@ class RunningSession extends ChangeNotifier {
 
   @visibleForTesting
   void checkAutoPause() => _checkAutoPause();
+
+  @visibleForTesting
+  void checkRunningFast() => _checkRunningFast();
+
+  /// 최근 [RunningConfig.speedWindow] 동안 늘어난 거리로 달리기 속도인지 판단합니다.
+  /// 좌표가 안 들어와도(멈춰 서면 거리가 안 늘어남) 시간은 흐르므로 속도가 자연스럽게 떨어집니다.
+  void _checkRunningFast() {
+    final now = _now();
+    if (_status != RunningStatus.running || _autoPaused) {
+      _distanceSamples.clear();
+      _runningFast = false;
+      _slowSince = null;
+      return;
+    }
+    _distanceSamples.add((now, _meters));
+    // 창 시작보다 앞선 표본은 하나만 남깁니다(창 전체 길이를 재기 위해).
+    while (_distanceSamples.length > 2 &&
+        now.difference(_distanceSamples[1].$1) >= RunningConfig.speedWindow) {
+      _distanceSamples.removeAt(0);
+    }
+    final (since, meters) = _distanceSamples.first;
+    final span = now.difference(since);
+    // 시작하거나 다시 시작한 지 얼마 안 돼 창이 덜 찼으면 판단하지 않습니다.
+    if (span < RunningConfig.speedWindow) return;
+    final metersPerMinute =
+        (_meters - meters) /
+        (span.inMilliseconds / Duration.millisecondsPerMinute);
+    if (metersPerMinute >= RunningConfig.walkRunThresholdMetersPerMinute) {
+      _runningFast = true;
+      _slowSince = null;
+    } else if (_runningFast) {
+      final slowSince = _slowSince ??= now;
+      if (now.difference(slowSince) >= RunningConfig.focusExitAfter) {
+        _runningFast = false;
+        _slowSince = null;
+      }
+    }
+  }
 
   /// 움직임 없이 [RunningConfig.autoPauseAfter]가 지나면 운동 시간을 멈춥니다.
   /// 위치가 아예 안 들어오는 동안(터널 등)도 멈췄다가, 다시 움직임이 잡히면 이어서 잽니다.
@@ -918,7 +971,7 @@ class RunningStartPage extends StatefulWidget {
 }
 
 class _RunningStartPageState extends State<RunningStartPage>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   static const _zoom = MapZoom.running;
 
   late final _session = RunningSession(
@@ -941,6 +994,13 @@ class _RunningStartPageState extends State<RunningStartPage>
     vsync: this,
     duration: AppMotion.pauseTransition,
   );
+
+  /// 0이면 원래 화면, 1이면 집중 화면(달리기 속도일 때 숫자를 크게, 지도는 흐리게).
+  late final _focus = AnimationController(
+    vsync: this,
+    duration: AppMotion.runningTransition,
+  );
+  bool _focused = false;
 
   /// 달성을 알린 칼로리 퀘스트 단계 수.
   int _questShown = 0;
@@ -985,6 +1045,7 @@ class _RunningStartPageState extends State<RunningStartPage>
       ..addListener(_updateWatch)
       ..addListener(_announceKm)
       ..addListener(_announceAutoPause)
+      ..addListener(_checkFocus)
       ..start();
     if (widget.togetherId case final id?) {
       _live = TogetherLive(id)..start();
@@ -1031,6 +1092,7 @@ class _RunningStartPageState extends State<RunningStartPage>
     _session.dispose();
     _map.dispose();
     _page.dispose();
+    _focus.dispose();
     super.dispose();
   }
 
@@ -1271,6 +1333,21 @@ class _RunningStartPageState extends State<RunningStartPage>
     );
   }
 
+  /// 달리기 속도가 되면 집중 화면으로, 걷거나 멈추면 원래 화면으로 바꿉니다.
+  void _checkFocus() {
+    final fast = _session.runningFast;
+    if (fast == _focused) return;
+    _focused = fast;
+    if (fast) {
+      _focus.forward();
+      // 크게 보기(주황)를 보고 있었으면 닫고, 지도는 다시 내 위치를 따라가게 합니다.
+      _showPage(0);
+      if (!_followUser) _recenter();
+    } else {
+      _focus.reverse();
+    }
+  }
+
   void _recenter() {
     _followTimer?.cancel();
     setState(() => _followUser = true);
@@ -1402,9 +1479,15 @@ class _RunningStartPageState extends State<RunningStartPage>
               listenable: Listenable.merge([_session, ?_live]),
               builder: (context, _) => _buildMap(context),
             ),
+            Positioned.fill(
+              child: AnimatedBuilder(
+                animation: _focus,
+                builder: (context, _) => _FocusMapBlur(value: _focus.value),
+              ),
+            ),
             // 넘기는 동안 매 프레임 다시 그리므로 지도와 따로 둡니다.
             ListenableBuilder(
-              listenable: Listenable.merge([_session, _page, ?_live]),
+              listenable: Listenable.merge([_session, _page, _focus, ?_live]),
               builder: (context, _) => _buildControls(context),
             ),
           ],
@@ -1484,10 +1567,13 @@ class _RunningStartPageState extends State<RunningStartPage>
 
   /// 옆으로 밀면 손가락을 따라 크게 보기 화면이 들어오고 나갑니다.
   void _dragPage(DragUpdateDetails details) {
+    // 집중 화면은 달리는 동안 고정이라 넘기지 않습니다.
+    if (_focused) return;
     _page.value -= details.primaryDelta! / MediaQuery.sizeOf(context).width;
   }
 
   void _endPageDrag(DragEndDetails details) {
+    if (_focused) return;
     final v = details.primaryVelocity ?? 0;
     final toBig = v.abs() > 300 ? v < 0 : _page.value > 0.5;
     _showPage(toBig ? 1 : 0);
@@ -1501,6 +1587,7 @@ class _RunningStartPageState extends State<RunningStartPage>
   Widget _buildControls(BuildContext context) {
     final paused = _session.status == RunningStatus.paused;
     final page = _page.value;
+    final focus = _focus.value;
     Widget swipe(Widget child) => GestureDetector(
       onHorizontalDragUpdate: _dragPage,
       onHorizontalDragEnd: _endPageDrag,
@@ -1525,49 +1612,76 @@ class _RunningStartPageState extends State<RunningStartPage>
               onHorizontalDragEnd: _endPageDrag,
             ),
           ),
+          // 집중 화면이 되면 위 카드는 사라지고, 같은 숫자가 가운데로 크게 내려옵니다.
           Positioned(
             top: 0,
             left: 0,
             right: 0,
-            child: SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.mapCardHorizontal,
-                  AppSpacing.space2,
-                  AppSpacing.mapCardHorizontal,
-                  0,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    swipe(
-                      _RunningCard(
-                        session: _session,
-                        options: widget.options,
-                        questKcal: _questKcal,
-                        onExpand: () => _showPage(1),
-                        onOpenQuest: _openQuestPage,
-                      ),
+            child: IgnorePointer(
+              ignoring: focus > 0,
+              child: Opacity(
+                opacity: 1 - focus,
+                child: SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.mapCardHorizontal,
+                      AppSpacing.space2,
+                      AppSpacing.mapCardHorizontal,
+                      0,
                     ),
-                    // 함께 달리는 친구: 이름, 거리·페이스(또는 상태), 멀리 있으면 떨어진 거리.
-                    for (final f in _live?.friends ?? const <LiveFriend>[]) ...[
-                      const SizedBox(height: AppSpacing.space2),
-                      // 이름이 길어 화면 폭을 넘으면 칩을 통째로 줄입니다.
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: _FriendLiveChip(
-                          friend: f,
-                          awayMeters: _awayMeters(f),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        swipe(
+                          _RunningCard(
+                            session: _session,
+                            options: widget.options,
+                            questKcal: _questKcal,
+                            onExpand: () => _showPage(1),
+                            onOpenQuest: _openQuestPage,
+                          ),
                         ),
-                      ),
-                    ],
-                  ],
+                        // 함께 달리는 친구: 이름, 거리·페이스(또는 상태), 멀리 있으면 떨어진 거리.
+                        for (final f
+                            in _live?.friends ?? const <LiveFriend>[]) ...[
+                          const SizedBox(height: AppSpacing.space2),
+                          // 이름이 길어 화면 폭을 넘으면 칩을 통째로 줄입니다.
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: _FriendLiveChip(
+                              friend: f,
+                              awayMeters: _awayMeters(f),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
+          if (focus > 0)
+            Positioned.fill(
+              child: IgnorePointer(
+                ignoring: focus < 1,
+                child: Opacity(
+                  opacity: focus,
+                  child: Transform.translate(
+                    // 위에서 아래로 내려오며 나타납니다.
+                    offset: Offset(0, -AppSpacing.space10 * (1 - focus)),
+                    child: _FocusStats(
+                      session: _session,
+                      options: widget.options,
+                      questKcal: _questKcal,
+                      onOpenQuest: _openQuestPage,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           // 06-8 크게 보기: 화면 전체를 주황으로 덮습니다.
           if (page > 0)
             Positioned.fill(
@@ -1594,11 +1708,11 @@ class _RunningStartPageState extends State<RunningStartPage>
                         children: [
                           Column(
                             children: [
-                              // 크게 보기에서는 지도가 가려져 현재 위치 버튼을 숨깁니다.
+                              // 크게 보기·집중 화면에서는 현재 위치 버튼을 숨깁니다.
                               IgnorePointer(
-                                ignoring: page > 0,
+                                ignoring: page > 0 || focus > 0,
                                 child: Opacity(
-                                  opacity: 1 - page,
+                                  opacity: (1 - page) * (1 - focus),
                                   child: MapCircleButton(
                                     icon: _followUser
                                         ? Icons.my_location
@@ -1650,9 +1764,15 @@ class _RunningStartPageState extends State<RunningStartPage>
                         ],
                       ),
                       const SizedBox(height: AppSpacing.space4),
-                      _PageDots(
-                        page: page,
-                        onTap: () => _showPage(page > 0.5 ? 0 : 1),
+                      IgnorePointer(
+                        ignoring: focus > 0,
+                        child: Opacity(
+                          opacity: 1 - focus,
+                          child: _PageDots(
+                            page: page,
+                            onTap: () => _showPage(page > 0.5 ? 0 : 1),
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -1858,6 +1978,144 @@ class _RunningCard extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// 집중 화면에서 지도 위에 바탕색을 옅게 덮는 막. 지도를 만져도 움직이지 않게 누르기도 막습니다.
+/// 번지게 하지는 않아서 길·경로·길 이름이 그대로 보이고 색만 옅어집니다.
+class _FocusMapBlur extends StatelessWidget {
+  const _FocusMapBlur({required this.value});
+
+  /// 0이면 덮개 없음, 1이면 집중 화면.
+  final double value;
+
+  /// 덮개 진하기(0~1). 0.5면 지도가 50% 보입니다.
+  /// 폰에서 보고 더 흐리게·선명하게 하려면 이 값만 바꾸면 됩니다.
+  static const strength = 0.5;
+
+  @override
+  Widget build(BuildContext context) {
+    if (value == 0) return const SizedBox.shrink();
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      child: ColoredBox(
+        color: AppColors.background.withValues(alpha: value * strength),
+      ),
+    );
+  }
+}
+
+/// 집중 화면: 달리기 속도일 때 거리·시간·페이스·칼로리를 크게, 그 아래 칼로리 퀘스트.
+class _FocusStats extends StatelessWidget {
+  const _FocusStats({
+    required this.session,
+    required this.options,
+    required this.questKcal,
+    required this.onOpenQuest,
+  });
+
+  final RunningSession session;
+  final RunningStartOptions options;
+  final double questKcal;
+  final VoidCallback onOpenQuest;
+
+  @override
+  Widget build(BuildContext context) {
+    // 지도가 비쳐 보여도 숫자가 묻히지 않게 바탕색으로 옅은 그림자를 둡니다.
+    final shadows = [
+      Shadow(
+        color: AppColors.background.withValues(alpha: 0.8),
+        blurRadius: 16,
+      ),
+    ];
+    final label = TextStyle(
+      fontSize: 15,
+      fontWeight: FontWeight.w600,
+      color: AppColors.textSecondary,
+      shadows: shadows,
+    );
+    final unit = TextStyle(
+      fontSize: 17,
+      fontWeight: FontWeight.w600,
+      color: AppColors.textSecondary,
+      shadows: shadows,
+    );
+    final number = runningNumberStyle(
+      84,
+      weight: FontWeight.w800,
+    ).copyWith(shadows: shadows);
+    Widget row(String name, String value, [String? unitText]) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.space1),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: [
+          SizedBox(
+            width: AppSpacing.space10,
+            child: Text(name, style: label),
+          ),
+          Text(value, style: number),
+          if (unitText != null) ...[
+            const SizedBox(width: AppSpacing.space1),
+            Text(unitText, style: unit),
+          ],
+        ],
+      ),
+    );
+    return SafeArea(
+      child: Padding(
+        // 아래 정지·일시정지 버튼 자리를 비웁니다.
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.screenHorizontal,
+          AppSpacing.space4,
+          AppSpacing.screenHorizontal,
+          AppComponentMetrics.runningControlButtonSize * 2,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                // 숫자가 바뀌어도 묶음이 좌우로 흔들리지 않게 왼쪽에 붙입니다.
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: AppSpacing.space8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      row('거리', RunningFormat.km(session.distanceMeters), 'km'),
+                      row('시간', RunningFormat.clock(session.elapsed)),
+                      row(
+                        '페이스',
+                        RunningFormat.livePace(session.paceSecondsPerKm),
+                        '/km',
+                      ),
+                      row('칼로리', RunningFormat.kcal(session.calories), 'kcal'),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            if (options.calorieQuest) ...[
+              const SizedBox(height: AppSpacing.space6),
+              // 숫자와 같은 옅은 그림자를 퀘스트 글자에도 넣어 지도 글씨에 묻히지 않게 합니다.
+              DefaultTextStyle.merge(
+                style: TextStyle(shadows: shadows),
+                child: CalorieQuestRow(
+                  kcal: questKcal,
+                  onTap: onOpenQuest,
+                  period: options.calorieQuestPeriod,
+                  emphasized: true,
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

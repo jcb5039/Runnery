@@ -161,6 +161,9 @@ abstract final class AppColors {
   /// 바텀 시트·대화창 바탕. 다크는 #151515, 라이트는 흰색입니다.
   static Color get sheet => isDark ? current.card : current.background;
 
+  /// 러닝 집중 화면의 칼로리 퀘스트 진행 막대(노랑). 두 모드에서 같습니다.
+  static const questBar = Color(0xFFFFC400);
+
   /// 시트 뒤를 어둡게 덮는 색.
   static Color get scrim => current.scrim;
   static Color get mapLand => current.mapLand;
