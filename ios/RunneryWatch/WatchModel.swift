@@ -29,6 +29,9 @@ final class WatchModel: NSObject, ObservableObject, WCSessionDelegate {
   private var sentAt = Date()
   private var endedTask: Task<Void, Never>?
 
+  /// 폰이 보낸 지 이만큼(초) 지난 러닝 상태는 지난 러닝으로 봐요.
+  private static let staleAfter: TimeInterval = 180
+
   func activate() {
     guard WCSession.isSupported() else { return }
     WCSession.default.delegate = self
@@ -66,7 +69,15 @@ final class WatchModel: NSObject, ObservableObject, WCSessionDelegate {
   /// 폰 상태를 반영하고, 지금 가진 경로 점 수를 돌려줘요.
   @discardableResult
   private func apply(_ message: [String: Any]) -> Int {
-    let state = message["state"] as? String ?? "idle"
+    var state = message["state"] as? String ?? "idle"
+    // 달리는 중에는 폰이 1초마다 보내요. 오래된 '달리는 중'은 지난 러닝이 남은 것이라 무시해요
+    // (폰 앱이 러닝 중에 꺼져 '끝남'을 못 보낸 경우).
+    if state == "running" || state == "paused",
+      let sent = message["sentAt"] as? Double,
+      Date().timeIntervalSince1970 - sent > Self.staleAfter
+    {
+      state = "idle"
+    }
     endedTask?.cancel()
     switch state {
     case "running", "paused":

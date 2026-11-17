@@ -49,6 +49,13 @@ final class WatchLinkChannel: NSObject, WCSessionDelegate {
     let session = WCSession.default
     guard session.activationState == .activated, session.isPaired, session.isWatchAppInstalled
     else { return result(nil) }
+    // 러닝이 끝나면 워치가 켜져 있어도 맡겨 둔 상태를 '끝남'으로 바꿔요.
+    // 안 그러면 손목을 내렸을 때 맡겨 둔 '달리는 중'이 남아, 다음에 워치 앱을 켤 때 지난 기록이 보여요.
+    if state["state"] as? String == "ended" {
+      var context = state
+      context["sentAt"] = Date().timeIntervalSince1970
+      try? session.updateApplicationContext(context)
+    }
     if session.isReachable {
       session.sendMessage(
         state,
