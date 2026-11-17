@@ -140,6 +140,38 @@ final class WatchModel: NSObject, ObservableObject, WCSessionDelegate {
     // from이 더 크면 중간이 빠진 거라 버려요. 답장으로 받은 개수를 알려 주면 폰이 다시 보내요.
   }
 
+  // MARK: 진단 기록
+
+  /// 폰에 아직 못 보낸 진단 기록. 연결되면 보내요.
+  private var pendingLogs: [[String: Any]] = []
+
+  /// 워치 쪽 사건을 폰 러닝 진단 기록에 남겨요(워치 화면이 안 켜질 때 원인 찾기용).
+  func log(_ event: String, _ info: [String: Any] = [:]) {
+    var entry = info
+    entry["event"] = event
+    entry["at"] = Date().timeIntervalSince1970
+    DispatchQueue.main.async { [self] in
+      pendingLogs.append(entry)
+      flushLogs()
+    }
+  }
+
+  private func flushLogs() {
+    guard WCSession.isSupported(), WCSession.default.activationState == .activated else { return }
+    let session = WCSession.default
+    let logs = pendingLogs
+    pendingLogs = []
+    for entry in logs {
+      let message: [String: Any] = ["log": entry]
+      if session.isReachable {
+        // 바로 못 보내면 맡겨 뒀다가 폰 앱이 받을 수 있을 때 보내요.
+        session.sendMessage(message, replyHandler: nil) { _ in session.transferUserInfo(message) }
+      } else {
+        session.transferUserInfo(message)
+      }
+    }
+  }
+
   // MARK: WCSessionDelegate
 
   func session(
@@ -147,8 +179,10 @@ final class WatchModel: NSObject, ObservableObject, WCSessionDelegate {
     error: Error?
   ) {
     let context = session.receivedApplicationContext
-    guard !context.isEmpty else { return }
-    DispatchQueue.main.async { self.apply(context) }
+    DispatchQueue.main.async {
+      self.flushLogs()
+      if !context.isEmpty { self.apply(context) }
+    }
   }
 
   func session(

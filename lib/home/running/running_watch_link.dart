@@ -8,16 +8,22 @@ import 'package:flutter/services.dart';
 class RunningWatchLink {
   RunningWatchLink({
     this.onControl,
+    this.onEvent,
     @visibleForTesting MethodChannel? channel,
     @visibleForTesting DateTime Function()? now,
     @visibleForTesting bool? supported,
   }) : _channel = channel ?? const MethodChannel('runnery/watch'),
        _now = now ?? DateTime.now,
        _supported =
-           supported ?? (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS);
+           supported ??
+           (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS);
 
   /// 'pause', 'resume', 'end', 'voice'.
   final void Function(String action)? onControl;
+
+  /// 워치 진단 사건. 'watchLaunch'(폰이 워치 앱을 깨운 결과)와 'watch'(워치에서 온 운동 모드 기록).
+  /// 러닝 진단 기록에 남겨, 워치 화면이 안 켜질 때 원인을 찾습니다.
+  final void Function(String type, Map<String, Object?> extra)? onEvent;
   final MethodChannel _channel;
   final DateTime Function() _now;
   final bool _supported;
@@ -46,12 +52,25 @@ class RunningWatchLink {
   void start() {
     if (!_supported) return;
     _channel.setMethodCallHandler((call) async {
-      if (call.method == 'control' && call.arguments is String) {
-        onControl?.call(call.arguments as String);
+      switch (call.method) {
+        case 'control' when call.arguments is String:
+          onControl?.call(call.arguments as String);
+        case 'log' when call.arguments is Map:
+          onEvent?.call('watch', {
+            for (final e in (call.arguments as Map).entries)
+              '${e.key}': e.value,
+          });
       }
     });
-    // 워치 앱을 깨워 손목에 바로 러닝 화면이 뜨게 해요.
-    _channel.invokeMethod<void>('launch').catchError((_) {});
+    // 워치 앱을 깨워 손목에 바로 러닝 화면이 뜨게 해요. 결과는 진단 기록에 남깁니다.
+    _channel
+        .invokeMethod<String>('launch')
+        .then(
+          (result) =>
+              onEvent?.call('watchLaunch', {'result': result ?? 'none'}),
+          onError: (Object e) =>
+              onEvent?.call('watchLaunch', {'result': 'error $e'}),
+        );
   }
 
   /// 러닝 화면이 바뀔 때마다 부릅니다. 보내기는 1초에 한 번만 합니다([force]면 바로).
@@ -152,7 +171,9 @@ class RunningWatchLink {
       'splits': List<int>.of(splits),
       'voice': voice,
       'routeFrom': routeFrom,
-      'route': [for (final p in route) ...[p.$1, p.$2]],
+      'route': [
+        for (final p in route) ...[p.$1, p.$2],
+      ],
     };
   }
 

@@ -1016,7 +1016,10 @@ class _RunningStartPageState extends State<RunningStartPage>
   final _voice = RunningVoice();
 
   /// 애플워치에 러닝 상태를 보내고 워치 버튼을 받습니다.
-  late final _watch = RunningWatchLink(onControl: _controlFromWatch);
+  late final _watch = RunningWatchLink(
+    onControl: _controlFromWatch,
+    onEvent: _session.diagnostics.event,
+  );
 
   /// 음성 안내. 시작 화면에서 고른 값으로 시작하고, 워치에서 끄고 켤 수 있어요.
   late bool _voiceOn = widget.options.voiceGuide;
