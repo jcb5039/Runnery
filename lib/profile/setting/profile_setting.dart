@@ -242,18 +242,15 @@ class ProfileSettingPage extends StatelessWidget {
                 // 시안의 '지도'(1 km 구간 표시·GPS 정확도)는 기능을 만들 때 넣습니다.
                 const SizedBox(height: 26),
                 _section('화면'),
-                _row(
-                  '화면 모드',
-                  subtitle: '처음 설치하면 라이트 모드로 시작해요',
-                  value: settings.themeMode,
-                  divider: false,
-                  onTap: () => _choose(
-                    context,
-                    '화면 모드',
-                    settings.themeMode,
-                    ProfileSettings.themeModeOptions,
-                    (v) => settings.themeMode = v,
+                // 켜면 다크, 끄면 라이트. 예전에 '시스템 설정'으로 저장했으면 지금 보이는 색을 따릅니다.
+                _toggle(
+                  '다크 모드',
+                  '어두운 화면으로 봐요',
+                  AppColors.isDark,
+                  (v) => settings.update(
+                    () => settings.themeMode = v ? '다크' : '라이트',
                   ),
+                  divider: false,
                 ),
                 const SizedBox(height: 26),
                 _section('계정'),
@@ -318,10 +315,12 @@ class ProfileSettingPage extends StatelessWidget {
     String title,
     String subtitle,
     bool value,
-    ValueChanged<bool> onChanged,
-  ) => _row(
+    ValueChanged<bool> onChanged, {
+    bool divider = true,
+  }) => _row(
     title,
     subtitle: subtitle,
+    divider: divider,
     trailing: Switch(
       value: value,
       onChanged: onChanged,
