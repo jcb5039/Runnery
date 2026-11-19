@@ -111,7 +111,8 @@ class FirebaseAccountBackend implements AccountBackend {
       'deadline-exceeded' => '인터넷 연결을 확인해주세요',
       'permission-denied' => '권한이 없어요. 잠시 후 다시 시도해주세요',
       'requires-recent-login' => '다시 로그인한 뒤 시도해주세요',
-      _ => fallback,
+      // 처음 보는 오류는 원인을 찾을 수 있게 오류 이름을 붙여요.
+      _ => '$fallback (${code.isNotEmpty ? code : e.runtimeType})',
     });
   }
 
