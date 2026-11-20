@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 
 import '../account/account_store.dart';
 import '../design_system/app_colors.dart';
-import '../design_system/app_motion.dart';
 import '../design_system/app_radius.dart';
 import '../design_system/app_text_styles.dart';
 import '../profile/profile_mail_page.dart';
@@ -12,7 +11,7 @@ import '../record/data/running_record_store.dart';
 import '../record/list/detail/record_detail_page.dart';
 import '../record/list/record_list_page.dart';
 import 'running/calorie_quest.dart';
-import 'running/running_home_page.dart';
+import 'running/stretch/stretch_pages.dart';
 
 /// 저장된 러닝 기록(RunningRecordStore)을 읽는 홈. 기록 탭과 같은 데이터를 사용합니다.
 /// 위에는 칼로리 퀘스트(설정의 일간·주간 주기 동안 누적), 가운데에는 최근 러닝 경로 지도가 있습니다.
@@ -145,24 +144,8 @@ class _HomePageV2State extends State<HomePageV2> with WidgetsBindingObserver {
         MaterialPageRoute(builder: (_) => const RecordListPageV2()),
       );
     } else if (label == '러닝') {
-      // 홈→러닝 시작: 애니메이션 없이 바로 전환.
-      Navigator.of(context).push<void>(
-        PageRouteBuilder(
-          transitionDuration: Duration.zero,
-          reverseTransitionDuration: Duration.zero,
-          pageBuilder: (_, _, _) => const RunningHomePage(),
-          transitionsBuilder: (_, animation, _, child) => SlideTransition(
-            position: Tween(begin: const Offset(0, 1), end: Offset.zero)
-                .animate(
-                  CurvedAnimation(
-                    parent: animation,
-                    curve: AppMotion.pushSlideCurve,
-                  ),
-                ),
-            child: child,
-          ),
-        ),
-      );
+      // 홈→러닝 시작: 먼저 스트레칭 안내(30-1)를 보여 주고, 건너뛰거나 마치면 목표 설정으로 갑니다.
+      Navigator.of(context).push<void>(stretchIntroRoute());
     }
   }
 
