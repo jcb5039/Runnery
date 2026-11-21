@@ -51,7 +51,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyDNr18ISSdX5ei8rcyxyybZZLMi4wDgOqs',
-    appId: '1:1007882678480:android:99883972485220e56f2ed5',
+    appId: '1:1007882678480:android:b6c43dee279500116f2ed5',
     messagingSenderId: '1007882678480',
     projectId: 'runnery-f0faf',
     storageBucket: 'runnery-f0faf.firebasestorage.app',

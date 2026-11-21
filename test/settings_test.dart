@@ -34,6 +34,30 @@ void main() {
     expect(reopened.countdownSeconds, 0);
   });
 
+  test('스트레칭 안내: 처음은 켜져 있고, 끄면 저장돼요', () async {
+    final dir = await Directory.systemTemp.createTemp('runnery_stretch_');
+    addTearDown(() => dir.delete(recursive: true));
+    final first = ProfileSettings(directory: () async => dir);
+    await first.load();
+    expect(first.stretch, isTrue);
+
+    first.update(() => first.stretch = false);
+    final file = File('${dir.path}/settings.json');
+    for (var i = 0; i < 50 && !file.existsSync(); i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    final reopened = ProfileSettings(directory: () async => dir);
+    await reopened.load();
+    expect(reopened.stretch, isFalse);
+
+    // 스트레칭 값이 없는 예전 설정 파일은 켜짐으로 읽어요.
+    file.writeAsStringSync('{"voice": false}');
+    final old = ProfileSettings(directory: () async => dir);
+    await old.load();
+    expect(old.stretch, isTrue);
+    expect(old.voice, isFalse);
+  });
+
   test('화면 모드: 처음은 라이트, 고른 모드가 저장되고 시스템 설정은 아이폰을 따라요', () async {
     final dir = await Directory.systemTemp.createTemp('runnery_theme_');
     addTearDown(() => dir.delete(recursive: true));

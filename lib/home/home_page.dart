@@ -144,8 +144,11 @@ class _HomePageV2State extends State<HomePageV2> with WidgetsBindingObserver {
         MaterialPageRoute(builder: (_) => const RecordListPageV2()),
       );
     } else if (label == '러닝') {
-      // 홈→러닝 시작: 먼저 스트레칭 안내(30-1)를 보여 주고, 건너뛰거나 마치면 목표 설정으로 갑니다.
-      Navigator.of(context).push<void>(stretchIntroRoute());
+      // 홈→러닝 시작: 스트레칭 안내가 켜져 있으면 스트레칭(30-1)을 먼저 보여 주고,
+      // 건너뛰거나 마치면 목표 설정으로 갑니다. 꺼져 있으면 바로 목표 설정입니다.
+      Navigator.of(context).push<void>(
+        _settings.stretch ? stretchIntroRoute() : runningHomeRoute(),
+      );
     }
   }
 

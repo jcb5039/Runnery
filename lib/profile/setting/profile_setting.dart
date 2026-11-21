@@ -25,6 +25,9 @@ class ProfileSettings extends ChangeNotifier {
   bool autoPause = true;
   bool calorieQuest = true;
 
+  /// 러닝 전 스트레칭 안내. 켜져 있으면 홈의 '러닝'에서 스트레칭 화면을 먼저 보여 줍니다.
+  bool stretch = true;
+
   /// 칼로리 퀘스트를 다시 시작하는 주기. 처음에는 일간입니다.
   CalorieQuestPeriod calorieQuestPeriod = CalorieQuestPeriod.daily;
   String countdown = '3초';
@@ -60,6 +63,7 @@ class ProfileSettings extends ChangeNotifier {
       voice = json['voice'] as bool? ?? voice;
       autoPause = json['autoPause'] as bool? ?? autoPause;
       calorieQuest = json['calorieQuest'] as bool? ?? calorieQuest;
+      stretch = json['stretch'] as bool? ?? stretch;
       calorieQuestPeriod = CalorieQuestPeriod.fromLabel(
         json['calorieQuestPeriod'] as String?,
       );
@@ -88,6 +92,7 @@ class ProfileSettings extends ChangeNotifier {
           'voice': voice,
           'autoPause': autoPause,
           'calorieQuest': calorieQuest,
+          'stretch': stretch,
           'calorieQuestPeriod': calorieQuestPeriod.label,
           'countdown': countdown,
           'themeMode': themeMode,
@@ -226,6 +231,12 @@ class ProfileSettingPage extends StatelessWidget {
                           CalorieQuestPeriod.fromLabel(v),
                     ),
                   ),
+                _toggle(
+                  '스트레칭 안내',
+                  '러닝 전에 몸 푸는 동작을 보여줘요',
+                  settings.stretch,
+                  (v) => settings.update(() => settings.stretch = v),
+                ),
                 _row(
                   '카운트다운',
                   value: settings.countdown,
