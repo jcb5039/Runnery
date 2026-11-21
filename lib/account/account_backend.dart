@@ -1,10 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart'
     show OAuthToken, UserApi, isKakaoTalkInstalled;
@@ -54,6 +58,10 @@ abstract class AccountBackend {
   /// 구글 로그인 창을 띄우고 그 계정으로 Firebase에 로그인합니다. 사용자가 창을 닫으면 null.
   Future<BackendUser?> signInWithGoogle();
 
+  /// 네이버 로그인 웹 화면을 띄우고, 서버 함수가 확인한 뒤 Firebase 계정으로 로그인합니다.
+  /// 사용자가 화면을 닫거나 동의하지 않으면 null.
+  Future<BackendUser?> signInWithNaver();
+
   /// 이메일 인증을 했는지 서버에서 다시 읽어 옵니다.
   Future<BackendUser?> reload();
   Future<void> sendVerification();
@@ -100,7 +108,8 @@ class FirebaseAccountBackend implements AccountBackend {
       _db.collection('usernames').doc(id);
 
   /// 소셜 계정의 uid는 서버 함수가 `kakao:회원번호`처럼 만듭니다.
-  static bool _isSocialUid(String uid) => uid.startsWith('kakao:');
+  static bool _isSocialUid(String uid) =>
+      uid.startsWith('kakao:') || uid.startsWith('naver:');
 
   BackendUser _user(User u) => BackendUser(
     uid: u.uid,
@@ -269,6 +278,62 @@ class FirebaseAccountBackend implements AccountBackend {
       throw _error(e, fallback: '구글 로그인을 하지 못했어요. 다시 시도해주세요');
     } catch (e) {
       throw _error(e, fallback: '구글 로그인을 하지 못했어요. 다시 시도해주세요');
+    }
+  }
+
+  /// 네이버 로그인: Client ID는 공개 값이고, 비밀 키는 서버 함수에만 있습니다.
+  static const _naverClientId = '16Yu9d6lDo16Rl8g1rlM';
+  static const _naverCallback =
+      'https://asia-northeast3-runnery-f0faf.cloudfunctions.net/naverCallback';
+  static const _naverAppScheme = 'runnerynaverlogin';
+
+  @override
+  Future<BackendUser?> signInWithNaver() async {
+    // 앱만 아는 확인 값. 서버에는 이 값의 SHA-256(state)만 먼저 보내고, 로그인 표는 확인 값을 보내야 받습니다.
+    final random = Random.secure();
+    final verifier = base64UrlEncode([
+      for (var i = 0; i < 32; i++) random.nextInt(256),
+    ]).replaceAll('=', '');
+    final state = sha256.convert(utf8.encode(verifier)).toString();
+    final url = Uri.https('nid.naver.com', '/oauth2.0/authorize', {
+      'response_type': 'code',
+      'client_id': _naverClientId,
+      'redirect_uri': _naverCallback,
+      'state': state,
+    }).toString();
+    final Uri back;
+    try {
+      back = Uri.parse(
+        await FlutterWebAuth2.authenticate(
+          url: url,
+          callbackUrlScheme: _naverAppScheme,
+        ),
+      );
+    } on PlatformException catch (e) {
+      if (e.code == 'CANCELED') return null;
+      throw const AuthException('네이버 로그인을 하지 못했어요. 다시 시도해주세요');
+    } catch (_) {
+      throw const AuthException('네이버 로그인을 하지 못했어요. 다시 시도해주세요');
+    }
+    final error = back.queryParameters['error'];
+    if (error == 'cancel') return null;
+    if (error != null || back.queryParameters['state'] != state) {
+      throw const AuthException('네이버 로그인을 하지 못했어요. 다시 시도해주세요');
+    }
+    try {
+      final result =
+          await FirebaseFunctions.instanceFor(region: 'asia-northeast3')
+              .httpsCallable('naverFinish')
+              .call<Map<String, dynamic>>({'verifier': verifier})
+              .timeout(_timeout);
+      final credential = await _auth
+          .signInWithCustomToken(result.data['customToken'] as String)
+          .timeout(_timeout);
+      return _user(credential.user!);
+    } on FirebaseFunctionsException catch (e) {
+      throw AuthException(e.message ?? '네이버 로그인을 확인하지 못했어요');
+    } catch (e) {
+      throw _error(e, fallback: '네이버 로그인을 하지 못했어요. 다시 시도해주세요');
     }
   }
 
