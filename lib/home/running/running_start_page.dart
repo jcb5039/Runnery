@@ -989,12 +989,6 @@ class _RunningStartPageState extends State<RunningStartPage>
   bool _ending = false;
   bool _goalReached = false;
 
-  /// 0이면 지도, 1이면 크게 보기(주황 전체 화면).
-  late final _page = AnimationController(
-    vsync: this,
-    duration: AppMotion.pauseTransition,
-  );
-
   /// 0이면 원래 화면, 1이면 집중 화면(달리기 속도일 때 숫자를 크게, 지도는 흐리게).
   late final _focus = AnimationController(
     vsync: this,
@@ -1094,7 +1088,6 @@ class _RunningStartPageState extends State<RunningStartPage>
     _watch.end();
     _session.dispose();
     _map.dispose();
-    _page.dispose();
     _focus.dispose();
     super.dispose();
   }
@@ -1343,8 +1336,7 @@ class _RunningStartPageState extends State<RunningStartPage>
     _focused = fast;
     if (fast) {
       _focus.forward();
-      // 크게 보기(주황)를 보고 있었으면 닫고, 지도는 다시 내 위치를 따라가게 합니다.
-      _showPage(0);
+      // 지도는 다시 내 위치를 따라가게 합니다.
       if (!_followUser) _recenter();
     } else {
       _focus.reverse();
@@ -1490,7 +1482,7 @@ class _RunningStartPageState extends State<RunningStartPage>
             ),
             // 넘기는 동안 매 프레임 다시 그리므로 지도와 따로 둡니다.
             ListenableBuilder(
-              listenable: Listenable.merge([_session, _page, _focus, ?_live]),
+              listenable: Listenable.merge([_session, _focus, ?_live]),
               builder: (context, _) => _buildControls(context),
             ),
           ],
@@ -1568,102 +1560,43 @@ class _RunningStartPageState extends State<RunningStartPage>
     });
   }
 
-  /// 옆으로 밀면 손가락을 따라 크게 보기 화면이 들어오고 나갑니다.
-  void _dragPage(DragUpdateDetails details) {
-    // 집중 화면은 달리는 동안 고정이라 넘기지 않습니다.
-    if (_focused) return;
-    _page.value -= details.primaryDelta! / MediaQuery.sizeOf(context).width;
-  }
-
-  void _endPageDrag(DragEndDetails details) {
-    if (_focused) return;
-    final v = details.primaryVelocity ?? 0;
-    final toBig = v.abs() > 300 ? v < 0 : _page.value > 0.5;
-    _showPage(toBig ? 1 : 0);
-  }
-
-  void _showPage(int page) {
-    _page.animateTo(page.toDouble(), curve: AppMotion.pushSlideCurve);
-  }
-
   // 카드·버튼은 지도 위에 겹쳐야 그 위의 드래그가 지도를 움직이지 않습니다.
   Widget _buildControls(BuildContext context) {
     final paused = _session.status == RunningStatus.paused;
-    final page = _page.value;
     final focus = _focus.value;
-    Widget swipe(Widget child) => GestureDetector(
-      onHorizontalDragUpdate: _dragPage,
-      onHorizontalDragEnd: _endPageDrag,
-      child: child,
-    );
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: page > 0.5 || !AppColors.isDark
+      value: !AppColors.isDark
           ? SystemUiOverlayStyle.dark
           : SystemUiOverlayStyle.light,
       child: Stack(
         children: [
-          // 카드·버튼보다 아래에 둬서 그 위의 누르기를 막지 않습니다.
-          // 지도는 끌어서 움직여야 하므로, 지도 위에서는 오른쪽 끝에서 밀 때만 크게 보기로 넘어갑니다.
-          Positioned(
-            top: 0,
-            right: 0,
-            bottom: 0,
-            width: AppComponentMetrics.runningEdgeSwipeWidth,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragUpdate: _dragPage,
-              onHorizontalDragEnd: _endPageDrag,
-            ),
-          ),
           // 집중 화면이 되면 위 카드는 사라지고, 같은 숫자가 가운데로 크게 내려옵니다.
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: IgnorePointer(
-              ignoring: focus > 0,
-              child: Opacity(
-                opacity: 1 - focus,
-                child: SafeArea(
-                  bottom: false,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.mapCardHorizontal,
-                      AppSpacing.space2,
-                      AppSpacing.mapCardHorizontal,
-                      0,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        swipe(
-                          _RunningCard(
-                            session: _session,
-                            options: widget.options,
-                            questKcal: _questKcal,
-                            onExpand: () => _showPage(1),
-                            onOpenQuest: _openQuestPage,
-                          ),
-                        ),
-                        // 함께 달리는 친구: 이름, 거리·페이스(또는 상태), 멀리 있으면 떨어진 거리.
-                        for (final f
-                            in _live?.friends ?? const <LiveFriend>[]) ...[
-                          const SizedBox(height: AppSpacing.space2),
-                          // 이름이 길어 화면 폭을 넘으면 칩을 통째로 줄입니다.
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: _FriendLiveChip(
-                              friend: f,
-                              awayMeters: _awayMeters(f),
-                            ),
-                          ),
-                        ],
-                      ],
+          // 카드는 끌어서 원하는 곳에 둘 수 있습니다.
+          _MovableCard(
+            focus: focus,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _RunningCard(
+                  session: _session,
+                  options: widget.options,
+                  questKcal: _questKcal,
+                  onOpenQuest: _openQuestPage,
+                ),
+                // 함께 달리는 친구: 이름, 거리·페이스(또는 상태), 멀리 있으면 떨어진 거리.
+                for (final f in _live?.friends ?? const <LiveFriend>[]) ...[
+                  const SizedBox(height: AppSpacing.space2),
+                  // 이름이 길어 화면 폭을 넘으면 칩을 통째로 줄입니다.
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: _FriendLiveChip(
+                      friend: f,
+                      awayMeters: _awayMeters(f),
                     ),
                   ),
-                ),
-              ),
+                ],
+              ],
             ),
           ),
           if (focus > 0)
@@ -1685,14 +1618,6 @@ class _RunningStartPageState extends State<RunningStartPage>
                 ),
               ),
             ),
-          // 06-8 크게 보기: 화면 전체를 주황으로 덮습니다.
-          if (page > 0)
-            Positioned.fill(
-              child: FractionalTranslation(
-                translation: Offset(1 - page, 0),
-                child: swipe(_BigStatsPage(session: _session)),
-              ),
-            ),
           Positioned(
             left: 0,
             right: 0,
@@ -1701,89 +1626,222 @@ class _RunningStartPageState extends State<RunningStartPage>
               top: false,
               child: Padding(
                 padding: const EdgeInsets.only(bottom: AppSpacing.space2),
-                child: swipe(
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Column(
-                            children: [
-                              // 크게 보기·집중 화면에서는 현재 위치 버튼을 숨깁니다.
-                              IgnorePointer(
-                                ignoring: page > 0 || focus > 0,
-                                child: Opacity(
-                                  opacity: (1 - page) * (1 - focus),
-                                  child: MapCircleButton(
-                                    icon: _followUser
-                                        ? Icons.my_location
-                                        : Icons.location_searching,
-                                    tooltip: '현재 위치',
-                                    onPressed: _recenter,
-                                  ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Column(
+                          children: [
+                            // 집중 화면에서는 현재 위치 버튼을 숨깁니다.
+                            IgnorePointer(
+                              ignoring: focus > 0,
+                              child: Opacity(
+                                opacity: 1 - focus,
+                                child: MapCircleButton(
+                                  icon: _followUser
+                                      ? Icons.my_location
+                                      : Icons.location_searching,
+                                  tooltip: '현재 위치',
+                                  onPressed: _recenter,
                                 ),
                               ),
-                              const SizedBox(height: AppSpacing.space4),
-                              _ControlButton(
-                                tooltip: '러닝 종료',
-                                color: mapFloatingColor,
-                                onPressed: _openEndSheet,
-                                child: Container(
-                                  width: 16,
-                                  height: 16,
-                                  decoration: BoxDecoration(
-                                    color: AppColors.textPrimary,
-                                    borderRadius: BorderRadius.circular(3),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(width: AppSpacing.space6),
-                          // 자동 일시정지 중에도 재개 버튼을 보여 줍니다.
-                          paused || _session.autoPaused
-                              ? _ControlButton(
-                                  tooltip: '다시 시작',
-                                  color: AppColors.primary,
-                                  onPressed: _resume,
-                                  child: const Icon(
-                                    Icons.play_arrow_rounded,
-                                    size: 34,
-                                    color: Colors.black,
-                                  ),
-                                )
-                              : _ControlButton(
-                                  tooltip: '일시정지',
+                            ),
+                            const SizedBox(height: AppSpacing.space4),
+                            _ControlButton(
+                              tooltip: '러닝 종료',
+                              color: mapFloatingColor,
+                              onPressed: _openEndSheet,
+                              child: Container(
+                                width: 16,
+                                height: 16,
+                                decoration: BoxDecoration(
                                   color: AppColors.textPrimary,
-                                  onPressed: _pause,
-                                  child: Icon(
-                                    Icons.pause,
-                                    size: 30,
-                                    color: AppColors.onInverse,
-                                  ),
+                                  borderRadius: BorderRadius.circular(3),
                                 ),
-                        ],
-                      ),
-                      const SizedBox(height: AppSpacing.space4),
-                      IgnorePointer(
-                        ignoring: focus > 0,
-                        child: Opacity(
-                          opacity: 1 - focus,
-                          child: _PageDots(
-                            page: page,
-                            onTap: () => _showPage(page > 0.5 ? 0 : 1),
-                          ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
-                  ),
+                        const SizedBox(width: AppSpacing.space6),
+                        // 자동 일시정지 중에도 재개 버튼을 보여 줍니다.
+                        paused || _session.autoPaused
+                            ? _ControlButton(
+                                tooltip: '다시 시작',
+                                color: AppColors.primary,
+                                onPressed: _resume,
+                                child: const Icon(
+                                  Icons.play_arrow_rounded,
+                                  size: 34,
+                                  color: Colors.black,
+                                ),
+                              )
+                            : _ControlButton(
+                                tooltip: '일시정지',
+                                color: AppColors.textPrimary,
+                                onPressed: _pause,
+                                child: Icon(
+                                  Icons.pause,
+                                  size: 30,
+                                  color: AppColors.onInverse,
+                                ),
+                              ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 러닝 중 위 카드를 끌어서 옮깁니다. 위로는 상태 표시줄 아래, 아래로는 현재 위치 버튼 바로 위까지.
+/// 옆으로 절반 넘게 밀고 놓으면 가장자리에 조금만 남기고 숨고, 남은 부분을 누르거나 끌면 다시 나옵니다.
+/// 옮긴 자리는 이번 러닝 동안만 기억합니다.
+class _MovableCard extends StatefulWidget {
+  const _MovableCard({required this.focus, required this.child});
+
+  /// 0이면 보이고, 1이면 집중 화면이라 숨깁니다.
+  final double focus;
+  final Widget child;
+
+  @override
+  State<_MovableCard> createState() => _MovableCardState();
+}
+
+class _MovableCardState extends State<_MovableCard> {
+  final _key = GlobalKey();
+
+  /// 카드 윗변 위치. null이면 맨 위 원래 자리.
+  double? _top;
+
+  /// 가운데에서 옆으로 옮긴 거리.
+  double _dx = 0;
+
+  /// 화면 밖으로 뺀 쪽: -1 왼쪽, 1 오른쪽, 0 안 뺌.
+  int _side = 0;
+  bool _dragging = false;
+  double _height = 0;
+  double _minTop = 0;
+  double _maxTop = 0;
+
+  void _measure() {
+    if (!mounted) return;
+    final h = _key.currentContext?.size?.height;
+    if (h != null && h != _height) setState(() => _height = h);
+  }
+
+  /// 숨긴 쪽에 따라 가장자리에 [AppComponentMetrics.runningCardPeekWidth]만 남도록 옮길 거리.
+  double _tuckedDx(double screenWidth, double width, int side) => side > 0
+      ? screenWidth -
+            AppComponentMetrics.runningCardPeekWidth -
+            AppSpacing.mapCardHorizontal
+      : AppComponentMetrics.runningCardPeekWidth -
+            width -
+            AppSpacing.mapCardHorizontal;
+
+  void _onDragUpdate(DragUpdateDetails d) {
+    setState(() {
+      _dragging = true;
+      _top = ((_top ?? _minTop) + d.delta.dy).clamp(_minTop, _maxTop);
+      _dx += d.delta.dx;
+    });
+  }
+
+  void _onDragEnd(DragEndDetails d, double width) {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final v = d.velocity.pixelsPerSecond.dx;
+    // 빠르게 튕기면 그 방향으로, 아니면 절반 넘게 밀었을 때만 숨깁니다.
+    final side = v.abs() > 800 && _dx.sign == v.sign
+        ? v.sign.toInt()
+        : (_dx.abs() > width / 2 ? _dx.sign.toInt() : 0);
+    setState(() {
+      _dragging = false;
+      _side = side;
+      _dx = side == 0 ? 0 : _tuckedDx(screenWidth, width, side);
+    });
+  }
+
+  void _bringBack() => setState(() {
+    _side = 0;
+    _dx = 0;
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final pad = MediaQuery.paddingOf(context);
+    final width = size.width - AppSpacing.mapCardHorizontal * 2;
+    // 아래 버튼 줄(종료·일시정지)과 그 위 현재 위치 버튼의 윗변.
+    final buttonTop =
+        size.height -
+        pad.bottom -
+        AppSpacing.space2 -
+        AppComponentMetrics.runningControlButtonSize -
+        AppSpacing.space4 -
+        AppComponentMetrics.mapButtonSize;
+    _minTop = pad.top + AppSpacing.space2;
+    _maxTop = math.max(_minTop, buttonTop - AppSpacing.space2 - _height);
+    final top = (_top ?? _minTop).clamp(_minTop, _maxTop);
+    // 화면 폭이 바뀌어도 숨긴 카드는 가장자리에 붙어 있게 합니다.
+    final dx = _side == 0 || _dragging
+        ? _dx
+        : _tuckedDx(size.width, width, _side);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
+    final tucked = _side != 0 && !_dragging;
+    return AnimatedPositioned(
+      duration: _dragging ? Duration.zero : AppMotion.pauseTransition,
+      curve: AppMotion.pushSlideCurve,
+      top: top,
+      left: AppSpacing.mapCardHorizontal + dx,
+      width: width,
+      child: IgnorePointer(
+        ignoring: widget.focus > 0,
+        child: Opacity(
+          opacity: 1 - widget.focus,
+          child: GestureDetector(
+            onPanStart: (_) => setState(() {
+              _dragging = true;
+              _dx = dx;
+            }),
+            onPanUpdate: _onDragUpdate,
+            onPanEnd: (d) => _onDragEnd(d, width),
+            onTap: tucked ? _bringBack : null,
+            child: Stack(
+              children: [
+                // 숨긴 동안에는 카드 안 버튼이 눌리지 않고, 누르면 다시 나옵니다.
+                AbsorbPointer(
+                  key: _key,
+                  absorbing: tucked,
+                  child: widget.child,
+                ),
+                if (tucked)
+                  Positioned(
+                    top: 0,
+                    bottom: 0,
+                    left: _side > 0 ? AppSpacing.space2 : null,
+                    right: _side < 0 ? AppSpacing.space2 : null,
+                    child: Center(
+                      child: Container(
+                        width: 4,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: AppColors.textTertiary,
+                          borderRadius: AppRadius.pillBorder,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1870,7 +1928,6 @@ class _RunningCard extends StatelessWidget {
     required this.session,
     required this.options,
     required this.questKcal,
-    required this.onExpand,
     required this.onOpenQuest,
   });
 
@@ -1879,7 +1936,6 @@ class _RunningCard extends StatelessWidget {
 
   /// 칼로리 퀘스트에 쓰는 오늘(또는 이번 주) 누적 칼로리.
   final double questKcal;
-  final VoidCallback onExpand;
   final VoidCallback onOpenQuest;
 
   @override
@@ -1927,45 +1983,31 @@ class _RunningCard extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.space3),
           ],
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: StatRow(
-                  cells: [
-                    StatCell(
-                      label: '거리',
-                      value: RunningFormat.km(session.distanceMeters),
-                      unit: 'km',
-                    ),
-                    StatCell(
-                      label: '시간',
-                      value: RunningFormat.clock(session.elapsed),
-                    ),
-                    StatCell(
-                      label: '페이스',
-                      value: RunningFormat.livePace(session.paceSecondsPerKm),
-                      unit: '/km',
-                    ),
-                    StatCell(
-                      label: '칼로리',
-                      value: RunningFormat.kcal(session.calories),
-                      unit: 'kcal',
-                    ),
-                  ],
+          Padding(
+            padding: const EdgeInsets.only(right: AppSpacing.space2),
+            child: StatRow(
+              cells: [
+                StatCell(
+                  label: '거리',
+                  value: RunningFormat.km(session.distanceMeters),
+                  unit: 'km',
                 ),
-              ),
-              IconButton(
-                tooltip: '크게 보기',
-                onPressed: onExpand,
-                visualDensity: VisualDensity.compact,
-                icon: Icon(
-                  Icons.open_in_full,
-                  size: 18,
-                  color: AppColors.textTertiary,
+                StatCell(
+                  label: '시간',
+                  value: RunningFormat.clock(session.elapsed),
                 ),
-              ),
-            ],
+                StatCell(
+                  label: '페이스',
+                  value: RunningFormat.livePace(session.paceSecondsPerKm),
+                  unit: '/km',
+                ),
+                StatCell(
+                  label: '칼로리',
+                  value: RunningFormat.kcal(session.calories),
+                  unit: 'kcal',
+                ),
+              ],
+            ),
           ),
           if (options.calorieQuest) ...[
             const SizedBox(height: AppSpacing.space3),
@@ -2124,108 +2166,6 @@ class _FocusStats extends StatelessWidget {
   }
 }
 
-/// 06-8 크게 보기: 주황 바탕에 거리를 크게, 페이스·시간·칼로리를 아래에.
-class _BigStatsPage extends StatelessWidget {
-  const _BigStatsPage({required this.session});
-
-  final RunningSession session;
-
-  @override
-  Widget build(BuildContext context) {
-    const ink = Colors.black;
-    final cells = [
-      (Icons.speed, RunningFormat.livePace(session.paceSecondsPerKm), '페이스'),
-      (Icons.timer_outlined, RunningFormat.clock(session.elapsed), '시간'),
-      (
-        Icons.local_fire_department_outlined,
-        RunningFormat.kcal(session.calories),
-        '칼로리',
-      ),
-    ];
-    return ColoredBox(
-      color: AppColors.primary,
-      child: SafeArea(
-        child: Padding(
-          // 아래 정지·일시정지 버튼 자리를 비웁니다.
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.space6,
-            AppSpacing.space4,
-            AppSpacing.space6,
-            AppComponentMetrics.runningControlButtonSize * 2,
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (session.status == RunningStatus.paused || session.autoPaused)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: AppSpacing.space4),
-                  child: Text(
-                    session.autoPaused ? '자동 일시정지' : '일시정지됨',
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: ink,
-                    ),
-                  ),
-                ),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  RunningFormat.km(session.distanceMeters),
-                  style: runningNumberStyle(
-                    180,
-                    weight: FontWeight.w800,
-                    color: ink,
-                  ),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.space2),
-              const Text(
-                'km',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: ink,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.space10),
-              Row(
-                children: [
-                  for (final (icon, value, label) in cells)
-                    Expanded(
-                      child: Column(
-                        children: [
-                          Icon(icon, size: 24, color: ink),
-                          const SizedBox(height: AppSpacing.space2),
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              value,
-                              style: runningNumberStyle(40, color: ink),
-                            ),
-                          ),
-                          const SizedBox(height: AppSpacing.space1),
-                          Text(
-                            label,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: ink,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// 러닝 중 아래 둥근 버튼: 종료(흰색)·일시정지(검정)·다시 시작(주황).
 class _ControlButton extends StatelessWidget {
   const _ControlButton({
@@ -2255,49 +2195,6 @@ class _ControlButton extends StatelessWidget {
             dimension: AppComponentMetrics.runningControlButtonSize,
             child: Center(child: child),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 지도·크게 보기 중 어느 화면인지 보여 주는 점 두 개. 누르면 다른 화면으로 넘깁니다.
-class _PageDots extends StatelessWidget {
-  const _PageDots({required this.page, required this.onTap});
-
-  /// 0이면 지도, 1이면 크게 보기.
-  final double page;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    Widget dot(double active) => Container(
-      width: 6 + 16 * active,
-      height: 6,
-      margin: const EdgeInsets.symmetric(horizontal: 3),
-      decoration: BoxDecoration(
-        color: Color.lerp(
-          AppColors.textTertiary,
-          AppColors.textPrimary,
-          active,
-        ),
-        borderRadius: AppRadius.pillBorder,
-      ),
-    );
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.space3,
-          vertical: AppSpacing.space2,
-        ),
-        decoration: BoxDecoration(
-          color: mapFloatingColor,
-          borderRadius: AppRadius.pillBorder,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [dot(1 - page), dot(page)],
         ),
       ),
     );

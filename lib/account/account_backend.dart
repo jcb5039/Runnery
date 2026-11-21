@@ -1,8 +1,12 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart'
+    show OAuthToken, UserApi, isKakaoTalkInstalled;
 
 import '../friends/data/friend_backend.dart';
 import '../friends/data/friend_models.dart';
@@ -22,9 +26,16 @@ class BackendUser {
     required this.uid,
     required this.email,
     required this.emailVerified,
+    this.social = false,
   });
   final String uid, email;
   final bool emailVerified;
+
+  /// 카카오처럼 다른 회사 계정으로 가입한 계정. 이메일·비밀번호가 없고 이메일 인증도 하지 않습니다.
+  final bool social;
+
+  /// 앱에 들어올 수 있는 계정인지: 이메일 인증을 마쳤거나 소셜 로그인 계정.
+  bool get verified => emailVerified || social;
 }
 
 /// 계정 서버와 주고받는 부분. 앱은 Firebase 구현을 쓰고, 테스트는 가짜로 바꿔 씁니다.
@@ -34,6 +45,10 @@ abstract class AccountBackend {
   Future<BackendUser> signUp(String email, String password);
   Future<BackendUser> signIn(String email, String password);
   Future<void> signOut();
+
+  /// 카카오 로그인 창을 띄우고, 서버 함수가 확인한 뒤 Firebase 계정으로 로그인합니다.
+  /// 사용자가 로그인 창을 닫으면 null.
+  Future<BackendUser?> signInWithKakao();
 
   /// 이메일 인증을 했는지 서버에서 다시 읽어 옵니다.
   Future<BackendUser?> reload();
@@ -80,10 +95,14 @@ class FirebaseAccountBackend implements AccountBackend {
   DocumentReference<Map<String, dynamic>> _idDoc(String id) =>
       _db.collection('usernames').doc(id);
 
+  /// 소셜 계정의 uid는 서버 함수가 `kakao:회원번호`처럼 만듭니다.
+  static bool _isSocialUid(String uid) => uid.startsWith('kakao:');
+
   BackendUser _user(User u) => BackendUser(
     uid: u.uid,
     email: u.email ?? '',
     emailVerified: u.emailVerified,
+    social: _isSocialUid(u.uid),
   );
 
   /// 서버 오류를 화면에 보여 줄 한국어 안내로 바꿉니다.
@@ -164,7 +183,62 @@ class FirebaseAccountBackend implements AccountBackend {
   }
 
   @override
-  Future<void> signOut() => _auth.signOut();
+  Future<void> signOut() async {
+    // 카카오 쪽 로그인도 끊어, 다음에 다른 카카오 계정을 고를 수 있게 합니다.
+    try {
+      await UserApi.instance.logout();
+    } catch (_) {
+      // 카카오로 로그인하지 않았거나 이미 끊겼으면 그대로 둡니다.
+    }
+    await _auth.signOut();
+  }
+
+  @override
+  Future<BackendUser?> signInWithKakao() async {
+    final String accessToken;
+    try {
+      final token = await _kakaoToken();
+      if (token == null) return null;
+      accessToken = token.accessToken;
+    } catch (_) {
+      throw const AuthException('카카오 로그인을 하지 못했어요. 다시 시도해주세요');
+    }
+    try {
+      final result =
+          await FirebaseFunctions.instanceFor(region: 'asia-northeast3')
+              .httpsCallable('kakaoLogin')
+              .call<Map<String, dynamic>>({'accessToken': accessToken})
+              .timeout(_timeout);
+      final customToken = result.data['customToken'] as String;
+      final credential = await _auth
+          .signInWithCustomToken(customToken)
+          .timeout(_timeout);
+      return _user(credential.user!);
+    } on FirebaseFunctionsException catch (e) {
+      throw AuthException(e.message ?? '카카오 로그인을 확인하지 못했어요');
+    } catch (e) {
+      throw _error(e, fallback: '카카오 로그인을 하지 못했어요. 다시 시도해주세요');
+    }
+  }
+
+  /// 카카오톡이 깔려 있으면 카카오톡으로, 아니면 카카오 계정 화면으로 로그인합니다. 닫으면 null.
+  static Future<OAuthToken?> _kakaoToken() async {
+    bool cancelled(Object e) => e is PlatformException && e.code == 'CANCELED';
+    if (await isKakaoTalkInstalled()) {
+      try {
+        return await UserApi.instance.loginWithKakaoTalk();
+      } catch (e) {
+        if (cancelled(e)) return null;
+        // 카카오톡에 연결된 계정이 없으면 카카오 계정 화면으로 이어 갑니다.
+      }
+    }
+    try {
+      return await UserApi.instance.loginWithKakaoAccount();
+    } catch (e) {
+      if (cancelled(e)) return null;
+      rethrow;
+    }
+  }
 
   @override
   Future<BackendUser?> reload() async {

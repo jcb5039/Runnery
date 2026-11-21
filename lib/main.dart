@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 
 import 'app_start.dart';
 import 'design_system/app_colors.dart';
@@ -18,6 +19,8 @@ Future<void> main() async {
   } catch (e) {
     debugPrint('Firebase 초기화 실패: $e');
   }
+  // 카카오 로그인. 네이티브 앱 키는 앱 안에 들어가는 공개용 키입니다(비밀 키 아님).
+  KakaoSdk.init(nativeAppKey: '9afd11768de18e3fa3981b8c2ce220b2');
   RecordRouteMap.basemapEnabled = true;
   // 첫 화면부터 저장된 화면 모드로 그리도록 설정을 먼저 읽습니다.
   await ProfileSettings.instance.load();

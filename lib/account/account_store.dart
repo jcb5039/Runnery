@@ -11,6 +11,9 @@ import 'account_backend.dart';
 
 export 'account_backend.dart' show AccountBackend, AuthException, BackendUser;
 
+/// 소셜 로그인 결과. [needsProfile]이면 가입 단계(이름·아이디·나이·성별·체중)를 이어서 받습니다.
+enum SocialLoginResult { cancelled, loggedIn, needsProfile }
+
 /// 가입할 때 입력한 정보. 비밀번호는 담지 않습니다.
 @immutable
 class Account {
@@ -78,12 +81,14 @@ class AccountStore extends ChangeNotifier {
   /// 마지막 인증 메일 발송이 실패했다면 그 이유. 성공했으면 null.
   String? get verificationError => _verificationError;
 
-  /// 로그인했고 이메일 인증도 끝난 상태.
-  bool get isLoggedIn =>
-      _user != null && _user!.emailVerified && _account != null;
+  /// 로그인했고 이메일 인증도 끝난 상태(소셜 계정은 인증이 필요 없습니다).
+  bool get isLoggedIn => _user != null && _user!.verified && _account != null;
 
   /// 로그인은 됐지만 이메일 인증을 아직 안 한 상태.
-  bool get needsVerification => _user != null && !_user!.emailVerified;
+  bool get needsVerification => _user != null && !_user!.verified;
+
+  /// 카카오처럼 다른 회사 계정으로 가입한 계정이라 비밀번호가 없는지.
+  bool get isSocial => _user?.social ?? false;
 
   /// 인증 메일을 받는 이메일.
   String? get pendingEmail => _user?.email;
@@ -115,7 +120,7 @@ class AccountStore extends ChangeNotifier {
       await _readLocal(file);
       final user = await backend.restore();
       _user = user;
-      if (user != null && user.emailVerified) {
+      if (user != null && user.verified) {
         await _loadProfile(user);
         _startRecordSync(user);
       }
@@ -284,6 +289,67 @@ class AccountStore extends ChangeNotifier {
       }
       _startRecordSync(user);
     }
+    notifyListeners();
+  }
+
+  /// 카카오로 로그인합니다. 처음이면 [SocialLoginResult.needsProfile]을 돌려주고,
+  /// 가입 단계를 마치면 [completeSocialProfile]로 프로필을 만듭니다.
+  Future<SocialLoginResult> loginWithKakao() async {
+    final user = await backend.signInWithKakao();
+    if (user == null) return SocialLoginResult.cancelled;
+    _user = user;
+    _account = null;
+    final Map<String, Object?>? data;
+    try {
+      data = await backend.readProfile(user.uid);
+    } catch (_) {
+      await _dropSession();
+      rethrow;
+    }
+    if (data == null) {
+      notifyListeners();
+      return SocialLoginResult.needsProfile;
+    }
+    _account = _toAccount(data, user);
+    _profiles[user.uid] = _plain(data);
+    await _writeLocal();
+    _startRecordSync(user);
+    notifyListeners();
+    return SocialLoginResult.loggedIn;
+  }
+
+  /// 소셜 로그인으로 처음 들어온 사람의 프로필을 만듭니다. 이메일·비밀번호는 받지 않습니다.
+  Future<void> completeSocialProfile(RegistrationData data) async {
+    final user = _user;
+    if (user == null || !user.social) {
+      throw const AuthException('로그인이 필요해요');
+    }
+    final id = data.id.trim();
+    final profile = <String, Object?>{
+      'name': data.name.trim(),
+      'email': '',
+      'id': id,
+      'age': data.age,
+      'gender': data.gender,
+      'weightKg': data.weight,
+    };
+    await backend.createProfile(user.uid, id, profile);
+    try {
+      await records.clear();
+    } catch (_) {
+      // 이 폰에 남은 예전 기록을 지우지 못해도 가입은 마칩니다.
+    }
+    _account = _toAccount(profile, user);
+    _profiles[user.uid] = _plain(profile);
+    await _writeLocal();
+    _startRecordSync(user);
+    notifyListeners();
+  }
+
+  /// 소셜 로그인 뒤 가입 단계를 끝내지 않고 나갔을 때: 로그인을 풀어 처음 상태로 돌립니다.
+  Future<void> cancelSocialSignUp() async {
+    if (_user == null || _account != null) return;
+    await _dropSession();
     notifyListeners();
   }
 

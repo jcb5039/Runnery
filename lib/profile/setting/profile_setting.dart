@@ -25,6 +25,9 @@ class ProfileSettings extends ChangeNotifier {
   bool autoPause = true;
   bool calorieQuest = true;
 
+  /// 러닝 전 스트레칭 안내. 켜져 있으면 홈의 '러닝'에서 스트레칭 화면을 먼저 보여 줍니다.
+  bool stretch = true;
+
   /// 칼로리 퀘스트를 다시 시작하는 주기. 처음에는 일간입니다.
   CalorieQuestPeriod calorieQuestPeriod = CalorieQuestPeriod.daily;
   String countdown = '3초';
@@ -60,6 +63,7 @@ class ProfileSettings extends ChangeNotifier {
       voice = json['voice'] as bool? ?? voice;
       autoPause = json['autoPause'] as bool? ?? autoPause;
       calorieQuest = json['calorieQuest'] as bool? ?? calorieQuest;
+      stretch = json['stretch'] as bool? ?? stretch;
       calorieQuestPeriod = CalorieQuestPeriod.fromLabel(
         json['calorieQuestPeriod'] as String?,
       );
@@ -88,6 +92,7 @@ class ProfileSettings extends ChangeNotifier {
           'voice': voice,
           'autoPause': autoPause,
           'calorieQuest': calorieQuest,
+          'stretch': stretch,
           'calorieQuestPeriod': calorieQuestPeriod.label,
           'countdown': countdown,
           'themeMode': themeMode,
@@ -226,6 +231,12 @@ class ProfileSettingPage extends StatelessWidget {
                           CalorieQuestPeriod.fromLabel(v),
                     ),
                   ),
+                _toggle(
+                  '스트레칭 안내',
+                  '러닝 전에 몸 푸는 동작을 보여줘요',
+                  settings.stretch,
+                  (v) => settings.update(() => settings.stretch = v),
+                ),
                 _row(
                   '카운트다운',
                   value: settings.countdown,
@@ -242,18 +253,15 @@ class ProfileSettingPage extends StatelessWidget {
                 // 시안의 '지도'(1 km 구간 표시·GPS 정확도)는 기능을 만들 때 넣습니다.
                 const SizedBox(height: 26),
                 _section('화면'),
-                _row(
-                  '화면 모드',
-                  subtitle: '처음 설치하면 라이트 모드로 시작해요',
-                  value: settings.themeMode,
-                  divider: false,
-                  onTap: () => _choose(
-                    context,
-                    '화면 모드',
-                    settings.themeMode,
-                    ProfileSettings.themeModeOptions,
-                    (v) => settings.themeMode = v,
+                // 켜면 다크, 끄면 라이트. 예전에 '시스템 설정'으로 저장했으면 지금 보이는 색을 따릅니다.
+                _toggle(
+                  '다크 모드',
+                  '어두운 화면으로 봐요',
+                  AppColors.isDark,
+                  (v) => settings.update(
+                    () => settings.themeMode = v ? '다크' : '라이트',
                   ),
+                  divider: false,
                 ),
                 const SizedBox(height: 26),
                 _section('계정'),
@@ -318,10 +326,12 @@ class ProfileSettingPage extends StatelessWidget {
     String title,
     String subtitle,
     bool value,
-    ValueChanged<bool> onChanged,
-  ) => _row(
+    ValueChanged<bool> onChanged, {
+    bool divider = true,
+  }) => _row(
     title,
     subtitle: subtitle,
+    divider: divider,
     trailing: Switch(
       value: value,
       onChanged: onChanged,
