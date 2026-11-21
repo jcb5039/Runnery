@@ -33,7 +33,7 @@ class FakeAccountBackend implements AccountBackend {
     uid: u.uid,
     email: u.email,
     emailVerified: u.verified,
-    social: u.uid.startsWith('kakao:'),
+    social: u.uid.startsWith('kakao:') || _google.contains(u.uid),
   );
 
   /// 인증 메일의 링크를 누른 것처럼 처리합니다.
@@ -66,6 +66,23 @@ class FakeAccountBackend implements AccountBackend {
 
   @override
   Future<void> signOut() async => _current = null;
+
+  /// 구글 로그인 결과로 쓸 구글 이메일. null이면 사용자가 로그인 창을 닫은 것으로 봅니다.
+  String? googleEmail = 'minji@gmail.com';
+
+  @override
+  Future<BackendUser?> signInWithGoogle() async {
+    final email = googleEmail;
+    if (email == null) return null;
+    final key = 'google:$email';
+    final user = _users[key] ??= _FakeUser('uid-${++_seq}', email, '', true);
+    _google.add(user.uid);
+    _current = user;
+    return _view(user);
+  }
+
+  /// 구글로 가입한 계정(uid). 비밀번호가 없는 소셜 계정으로 봅니다.
+  final Set<String> _google = {};
 
   /// 카카오 로그인 결과로 쓸 카카오 회원번호. null이면 사용자가 로그인 창을 닫은 것으로 봅니다.
   String? kakaoId = '1001';
