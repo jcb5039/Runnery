@@ -12,25 +12,92 @@ const _kakaoYellow = Color(0xFFFEE500);
 const _kakaoText = Color(0xFF191919);
 const _naverGreen = Color(0xFF03C75A);
 
+/// 소셜 로그인으로 가입·로그인을 마쳤다는 표시. 회원가입 화면이 앞 화면(로그인)에 돌려줍니다.
+class SocialSignedIn {
+  const SocialSignedIn();
+}
+
 /// 회원가입 첫 화면: 가입 방법(Apple·카카오·네이버·Google·이메일)을 고릅니다.
-/// 이메일 가입을 마치면 받은 가입 정보를 앞 화면(로그인)에 돌려줍니다.
-class SignUpChoicePage extends StatelessWidget {
+/// 이메일 가입을 마치면 받은 가입 정보([RegistrationData])를, 카카오로 가입·로그인을 마치면
+/// [SocialSignedIn]을 앞 화면(로그인)에 돌려줍니다.
+class SignUpChoicePage extends StatefulWidget {
   const SignUpChoicePage({super.key, this.store});
 
   /// 기본값은 AccountStore.instance. 이메일 가입 화면에 그대로 넘깁니다.
   final AccountStore? store;
 
-  /// 소셜 로그인은 아직 연결 전이라 안내만 띄웁니다.
+  @override
+  State<SignUpChoicePage> createState() => _SignUpChoicePageState();
+}
+
+class _SignUpChoicePageState extends State<SignUpChoicePage> {
+  late final AccountStore _store = widget.store ?? AccountStore.instance;
+  bool _busy = false;
+
+  /// 아직 연결 전인 소셜 로그인은 안내만 띄웁니다.
   void _notReady(BuildContext context, String name) =>
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('$name 로그인은 준비 중이에요')));
+      _message(context, '$name 로그인은 준비 중이에요');
+
+  void _message(BuildContext context, String text) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
 
   Future<void> _email(BuildContext context) async {
     final result = await Navigator.push<RegistrationData>(
       context,
-      MaterialPageRoute(builder: (_) => BasicInfoPage(store: store)),
+      MaterialPageRoute(builder: (_) => BasicInfoPage(store: widget.store)),
     );
     if (context.mounted && result != null) Navigator.pop(context, result);
+  }
+
+  /// 카카오로 시작하기: 이미 가입한 카카오 계정이면 바로 로그인, 처음이면 가입 단계를 받습니다.
+  Future<void> _kakao(BuildContext context) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final result = await _store.loginWithKakao();
+      if (!context.mounted) return;
+      switch (result) {
+        case SocialLoginResult.cancelled:
+          return;
+        case SocialLoginResult.loggedIn:
+          Navigator.pop(context, const SocialSignedIn());
+        case SocialLoginResult.needsProfile:
+          await _socialProfile(context);
+      }
+    } on AuthException catch (e) {
+      if (context.mounted) _message(context, e.message);
+    } catch (_) {
+      if (context.mounted) _message(context, '카카오 로그인을 하지 못했어요. 다시 시도해주세요');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// 소셜 로그인으로 처음 들어온 사람: 이름 → 아이디 → 나이·성별·체중을 받고 프로필을 만듭니다.
+  /// 중간에 나가거나 저장하지 못하면 로그인을 풀어 처음 상태로 돌립니다.
+  Future<void> _socialProfile(BuildContext context) async {
+    final data = await Navigator.push<RegistrationData>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BasicInfoPage(store: widget.store, social: true),
+      ),
+    );
+    if (data == null) {
+      await _store.cancelSocialSignUp();
+      return;
+    }
+    try {
+      await _store.completeSocialProfile(data);
+      if (context.mounted) Navigator.pop(context, const SocialSignedIn());
+    } catch (e) {
+      await _store.cancelSocialSignUp();
+      if (context.mounted) {
+        _message(
+          context,
+          e is AuthException ? e.message : '가입하지 못했어요. 다시 시도해주세요',
+        );
+      }
+    }
   }
 
   @override
@@ -90,7 +157,7 @@ class SignUpChoicePage extends StatelessWidget {
             icon: const Icon(Icons.chat_bubble, size: 18, color: _kakaoText),
             background: _kakaoYellow,
             foreground: _kakaoText,
-            onPressed: () => _notReady(inner, '카카오'),
+            onPressed: () => _kakao(inner),
           ),
           const SizedBox(height: 12),
           _SocialButton(

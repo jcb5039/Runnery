@@ -1,0 +1,16 @@
+{
+  "name": "runnery-functions",
+  "private": true,
+  "description": "러너리 서버 함수: 카카오·네이버 로그인을 Firebase 계정으로 바꿔 줍니다.",
+  "main": "index.js",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.5.1",
+    "firebase-functions": "^7.4.0"
+  }
+}

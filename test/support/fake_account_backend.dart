@@ -29,8 +29,12 @@ class FakeAccountBackend implements AccountBackend {
   _FakeUser? _current;
   int _seq = 0;
 
-  BackendUser _view(_FakeUser u) =>
-      BackendUser(uid: u.uid, email: u.email, emailVerified: u.verified);
+  BackendUser _view(_FakeUser u) => BackendUser(
+    uid: u.uid,
+    email: u.email,
+    emailVerified: u.verified,
+    social: u.uid.startsWith('kakao:'),
+  );
 
   /// 인증 메일의 링크를 누른 것처럼 처리합니다.
   void verify(String email) => _users[email]!.verified = true;
@@ -62,6 +66,24 @@ class FakeAccountBackend implements AccountBackend {
 
   @override
   Future<void> signOut() async => _current = null;
+
+  /// 카카오 로그인 결과로 쓸 카카오 회원번호. null이면 사용자가 로그인 창을 닫은 것으로 봅니다.
+  String? kakaoId = '1001';
+
+  @override
+  Future<BackendUser?> signInWithKakao() async {
+    final id = kakaoId;
+    if (id == null) return null;
+    final key = 'kakao:$id';
+    final user = _users[key] ??= _FakeUser(key, '', '', false);
+    _current = user;
+    return BackendUser(
+      uid: user.uid,
+      email: '',
+      emailVerified: false,
+      social: true,
+    );
+  }
 
   @override
   Future<BackendUser?> reload() async =>
