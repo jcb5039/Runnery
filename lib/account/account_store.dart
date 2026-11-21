@@ -87,7 +87,7 @@ class AccountStore extends ChangeNotifier {
   /// 로그인은 됐지만 이메일 인증을 아직 안 한 상태.
   bool get needsVerification => _user != null && !_user!.verified;
 
-  /// 카카오처럼 다른 회사 계정으로 가입한 계정이라 비밀번호가 없는지.
+  /// 카카오·구글처럼 다른 회사 계정으로 가입한 계정이라 비밀번호가 없는지.
   bool get isSocial => _user?.social ?? false;
 
   /// 인증 메일을 받는 이메일.
@@ -294,8 +294,17 @@ class AccountStore extends ChangeNotifier {
 
   /// 카카오로 로그인합니다. 처음이면 [SocialLoginResult.needsProfile]을 돌려주고,
   /// 가입 단계를 마치면 [completeSocialProfile]로 프로필을 만듭니다.
-  Future<SocialLoginResult> loginWithKakao() async {
-    final user = await backend.signInWithKakao();
+  Future<SocialLoginResult> loginWithKakao() =>
+      _loginWithSocial(backend.signInWithKakao);
+
+  /// 구글로 로그인합니다. 흐름은 [loginWithKakao]와 같습니다.
+  Future<SocialLoginResult> loginWithGoogle() =>
+      _loginWithSocial(backend.signInWithGoogle);
+
+  Future<SocialLoginResult> _loginWithSocial(
+    Future<BackendUser?> Function() signIn,
+  ) async {
+    final user = await signIn();
     if (user == null) return SocialLoginResult.cancelled;
     _user = user;
     _account = null;
@@ -318,7 +327,8 @@ class AccountStore extends ChangeNotifier {
     return SocialLoginResult.loggedIn;
   }
 
-  /// 소셜 로그인으로 처음 들어온 사람의 프로필을 만듭니다. 이메일·비밀번호는 받지 않습니다.
+  /// 소셜 로그인으로 처음 들어온 사람의 프로필을 만듭니다. 이메일·비밀번호는 받지 않고,
+  /// 구글처럼 계정에 이메일이 있으면 그 이메일을 저장합니다(카카오는 빈 값).
   Future<void> completeSocialProfile(RegistrationData data) async {
     final user = _user;
     if (user == null || !user.social) {
@@ -327,7 +337,7 @@ class AccountStore extends ChangeNotifier {
     final id = data.id.trim();
     final profile = <String, Object?>{
       'name': data.name.trim(),
-      'email': '',
+      'email': user.email,
       'id': id,
       'age': data.age,
       'gender': data.gender,

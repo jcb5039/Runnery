@@ -5,6 +5,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart'
     show OAuthToken, UserApi, isKakaoTalkInstalled;
 
@@ -31,7 +32,7 @@ class BackendUser {
   final String uid, email;
   final bool emailVerified;
 
-  /// 카카오처럼 다른 회사 계정으로 가입한 계정. 이메일·비밀번호가 없고 이메일 인증도 하지 않습니다.
+  /// 카카오·구글처럼 다른 회사 계정으로 가입한 계정. 비밀번호가 없고 이메일 인증도 하지 않습니다.
   final bool social;
 
   /// 앱에 들어올 수 있는 계정인지: 이메일 인증을 마쳤거나 소셜 로그인 계정.
@@ -49,6 +50,9 @@ abstract class AccountBackend {
   /// 카카오 로그인 창을 띄우고, 서버 함수가 확인한 뒤 Firebase 계정으로 로그인합니다.
   /// 사용자가 로그인 창을 닫으면 null.
   Future<BackendUser?> signInWithKakao();
+
+  /// 구글 로그인 창을 띄우고 그 계정으로 Firebase에 로그인합니다. 사용자가 창을 닫으면 null.
+  Future<BackendUser?> signInWithGoogle();
 
   /// 이메일 인증을 했는지 서버에서 다시 읽어 옵니다.
   Future<BackendUser?> reload();
@@ -102,8 +106,17 @@ class FirebaseAccountBackend implements AccountBackend {
     uid: u.uid,
     email: u.email ?? '',
     emailVerified: u.emailVerified,
-    social: _isSocialUid(u.uid),
+    social:
+        _isSocialUid(u.uid) ||
+        (u.providerData.any((p) => p.providerId == 'google.com') &&
+            !u.providerData.any((p) => p.providerId == 'password')),
   );
+
+  /// 구글 로그인 설정. 안드로이드가 Firebase용 확인 표를 받으려면 웹 클라이언트 ID가 필요합니다.
+  /// 아이폰 클라이언트 ID는 Info.plist(GIDClientID)에서 읽습니다. 둘 다 공개 값입니다.
+  static const _googleServerClientId =
+      '1007882678480-kdrt37uup07fh5mkqjs2rhs9q01pq10t.apps.googleusercontent.com';
+  static Future<void>? _googleReady;
 
   /// 서버 오류를 화면에 보여 줄 한국어 안내로 바꿉니다.
   static AuthException _error(
@@ -184,11 +197,16 @@ class FirebaseAccountBackend implements AccountBackend {
 
   @override
   Future<void> signOut() async {
-    // 카카오 쪽 로그인도 끊어, 다음에 다른 카카오 계정을 고를 수 있게 합니다.
+    // 카카오·구글 쪽 로그인도 끊어, 다음에 다른 계정을 고를 수 있게 합니다.
     try {
       await UserApi.instance.logout();
     } catch (_) {
       // 카카오로 로그인하지 않았거나 이미 끊겼으면 그대로 둡니다.
+    }
+    try {
+      if (_googleReady != null) await GoogleSignIn.instance.signOut();
+    } catch (_) {
+      // 구글로 로그인하지 않았으면 그대로 둡니다.
     }
     await _auth.signOut();
   }
@@ -218,6 +236,40 @@ class FirebaseAccountBackend implements AccountBackend {
       throw AuthException(e.message ?? '카카오 로그인을 확인하지 못했어요');
     } catch (e) {
       throw _error(e, fallback: '카카오 로그인을 하지 못했어요. 다시 시도해주세요');
+    }
+  }
+
+  @override
+  Future<BackendUser?> signInWithGoogle() async {
+    final String idToken;
+    try {
+      await (_googleReady ??= GoogleSignIn.instance.initialize(
+        serverClientId: _googleServerClientId,
+      ));
+      final account = await GoogleSignIn.instance.authenticate();
+      final token = account.authentication.idToken;
+      if (token == null) throw const AuthException('구글 로그인을 하지 못했어요');
+      idToken = token;
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled) return null;
+      throw const AuthException('구글 로그인을 하지 못했어요. 다시 시도해주세요');
+    } on AuthException {
+      rethrow;
+    } catch (_) {
+      throw const AuthException('구글 로그인을 하지 못했어요. 다시 시도해주세요');
+    }
+    try {
+      final credential = await _auth
+          .signInWithCredential(GoogleAuthProvider.credential(idToken: idToken))
+          .timeout(_timeout);
+      return _user(credential.user!);
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'account-exists-with-different-credential') {
+        throw const AuthException('이미 이메일로 가입한 주소예요. 이메일로 로그인해주세요');
+      }
+      throw _error(e, fallback: '구글 로그인을 하지 못했어요. 다시 시도해주세요');
+    } catch (e) {
+      throw _error(e, fallback: '구글 로그인을 하지 못했어요. 다시 시도해주세요');
     }
   }
 

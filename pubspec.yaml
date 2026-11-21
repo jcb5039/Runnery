@@ -46,6 +46,7 @@ dependencies:
   cloud_firestore: ^7.0.0
   kakao_flutter_sdk_user: ^1.9.7+3
   cloud_functions: 7.0.0
+  google_sign_in: ^7.2.0
 
 dev_dependencies:
   flutter_test:

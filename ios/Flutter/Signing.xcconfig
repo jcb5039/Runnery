@@ -4,4 +4,9 @@
 RUNNERY_BUNDLE_ID = com.runnery.app
 DEVELOPMENT_TEAM =
 
+// 구글 로그인: Firebase에 이 앱 아이디(com.runnery.app)로 등록한 아이폰 앱의 클라이언트 ID.
+// 앱 아이디를 바꿔 쓰는 사람은 Firebase에 그 아이디로 아이폰 앱을 등록하고 Signing.local.xcconfig에 덮어써요.
+GOOGLE_IOS_CLIENT_ID = 1007882678480-b40jn2drume0o7k02f5don2lt8avcan3.apps.googleusercontent.com
+GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.1007882678480-b40jn2drume0o7k02f5don2lt8avcan3
+
 #include? "Signing.local.xcconfig"
