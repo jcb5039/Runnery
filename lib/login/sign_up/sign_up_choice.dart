@@ -18,7 +18,7 @@ class SocialSignedIn {
 }
 
 /// 회원가입 첫 화면: 가입 방법(Apple·카카오·네이버·Google·이메일)을 고릅니다.
-/// 이메일 가입을 마치면 받은 가입 정보([RegistrationData])를, 카카오로 가입·로그인을 마치면
+/// 이메일 가입을 마치면 받은 가입 정보([RegistrationData])를, 카카오·구글로 가입·로그인을 마치면
 /// [SocialSignedIn]을 앞 화면(로그인)에 돌려줍니다.
 class SignUpChoicePage extends StatefulWidget {
   const SignUpChoicePage({super.key, this.store});
@@ -49,12 +49,16 @@ class _SignUpChoicePageState extends State<SignUpChoicePage> {
     if (context.mounted && result != null) Navigator.pop(context, result);
   }
 
-  /// 카카오로 시작하기: 이미 가입한 카카오 계정이면 바로 로그인, 처음이면 가입 단계를 받습니다.
-  Future<void> _kakao(BuildContext context) async {
+  /// 카카오·구글로 시작하기: 이미 가입한 계정이면 바로 로그인, 처음이면 가입 단계를 받습니다.
+  Future<void> _social(
+    BuildContext context,
+    String name,
+    Future<SocialLoginResult> Function() login,
+  ) async {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      final result = await _store.loginWithKakao();
+      final result = await login();
       if (!context.mounted) return;
       switch (result) {
         case SocialLoginResult.cancelled:
@@ -67,7 +71,7 @@ class _SignUpChoicePageState extends State<SignUpChoicePage> {
     } on AuthException catch (e) {
       if (context.mounted) _message(context, e.message);
     } catch (_) {
-      if (context.mounted) _message(context, '카카오 로그인을 하지 못했어요. 다시 시도해주세요');
+      if (context.mounted) _message(context, '$name 로그인을 하지 못했어요. 다시 시도해주세요');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -157,7 +161,7 @@ class _SignUpChoicePageState extends State<SignUpChoicePage> {
             icon: const Icon(Icons.chat_bubble, size: 18, color: _kakaoText),
             background: _kakaoYellow,
             foreground: _kakaoText,
-            onPressed: () => _kakao(inner),
+            onPressed: () => _social(inner, '카카오', _store.loginWithKakao),
           ),
           const SizedBox(height: 12),
           _SocialButton(
@@ -178,7 +182,7 @@ class _SignUpChoicePageState extends State<SignUpChoicePage> {
           _SocialButton(
             label: 'Google로 시작하기',
             icon: const CustomPaint(size: Size(18, 18), painter: _GoogleLogo()),
-            onPressed: () => _notReady(inner, 'Google'),
+            onPressed: () => _social(inner, '구글', _store.loginWithGoogle),
           ),
           const SizedBox(height: 20),
           Center(

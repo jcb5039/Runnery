@@ -12,7 +12,12 @@
           "package_name": "com.example.runnery_new"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1007882678480-kdrt37uup07fh5mkqjs2rhs9q01pq10t.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDNr18ISSdX5ei8rcyxyybZZLMi4wDgOqs"
@@ -20,7 +25,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1007882678480-kdrt37uup07fh5mkqjs2rhs9q01pq10t.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1007882678480-b40jn2drume0o7k02f5don2lt8avcan3.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.runnery.app"
+              }
+            }
+          ]
         }
       }
     },
@@ -31,7 +48,20 @@
           "package_name": "com.runnery.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1007882678480-2ma439e28inj0u4kslsqi237p3pljkfo.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.runnery.app",
+            "certificate_hash": "3319bf725547033dfa149ea727a9d498328d3017"
+          }
+        },
+        {
+          "client_id": "1007882678480-kdrt37uup07fh5mkqjs2rhs9q01pq10t.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDNr18ISSdX5ei8rcyxyybZZLMi4wDgOqs"
@@ -39,7 +69,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1007882678480-kdrt37uup07fh5mkqjs2rhs9q01pq10t.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1007882678480-b40jn2drume0o7k02f5don2lt8avcan3.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.runnery.app"
+              }
+            }
+          ]
         }
       }
     }

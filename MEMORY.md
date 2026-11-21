@@ -4,6 +4,7 @@
 
 ## 2026-11-21
 
+- **구글 로그인은 Firebase의 Google 로그인을 그대로 씁니다**(서버 함수 없음). 아이폰은 앱 아이디마다 Firebase에 아이폰 앱을 등록해야 해서 `com.runnery.app`(출시용)과 `com.chanbeom.runnery`(테스트용)를 등록했고, 클라이언트 ID는 `Signing.xcconfig`의 `GOOGLE_IOS_CLIENT_ID`·`GOOGLE_REVERSED_CLIENT_ID`로 넣어 각자 `Signing.local.xcconfig`에서 덮어씁니다. 안드로이드는 개발용 서명 지문(SHA-1)을 Firebase에 등록했습니다(출시용 서명 키 지문은 출시 때 추가). 구글 계정 이메일은 프로필에 저장하고, 같은 이메일의 이메일 가입이 있어 막히면 이메일로 로그인하라고 안내합니다.
 - **앱 이름을 `Runnery`, 앱 아이디를 `com.runnery.app`으로 바꿉니다**(사용자 결정). 카카오·네이버·구글 로그인에 앱 아이디를 등록하기 전에 바꿔 두려고 먼저 했습니다. 안드로이드는 Firebase에 `com.runnery.app` 앱을 새로 등록했습니다(예전 `com.example.runnery_new` 등록은 남아 있음). 아이폰 기본값(`Signing.xcconfig`)도 `com.runnery.app`이고, 각자 테스트용 아이디는 지금처럼 `Signing.local.xcconfig`에 둡니다. 코드 안쪽 이름(`runnery_new`, `package:runnery_new/`)은 사용자에게 보이지 않아 그대로 둡니다.
 - **카카오 로그인은 서버 함수로 Firebase 계정을 만듭니다**(사용자 결정). 앱이 카카오 로그인으로 받은 토큰을 서버 함수 `kakaoLogin`(`functions/`, 서울 지역)이 카카오에 확인하고(우리 앱 ID 1660545인지), `kakao:카카오회원번호` 계정의 Firebase 로그인 표를 돌려줍니다. 카카오에서 이름·사진·이메일은 받지 않고(동의항목 모두 사용 안 함), 처음 들어온 사람은 이름·아이디·나이·성별·체중을 앱에서 받습니다. 프로필 `email`은 빈 문자열입니다.
 - 서버 규칙 `verified()`는 '이메일 인증 또는 `sign_in_provider == 'custom'`(서버 함수로 로그인한 계정)'입니다. 커스텀 로그인 표는 서버 함수만 만들 수 있습니다.

@@ -84,9 +84,9 @@ class _ProfileMailPageState extends State<ProfileMailPage> {
 
   void _changePassword() {
     if (_account.isSocial) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('카카오로 가입한 계정은 비밀번호가 없어요')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('카카오·구글로 가입한 계정은 비밀번호가 없어요')),
+      );
       return;
     }
     Navigator.of(context).push<void>(

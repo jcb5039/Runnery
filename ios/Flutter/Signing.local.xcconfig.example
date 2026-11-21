@@ -3,3 +3,7 @@
 // 앱 아이디: 다른 사람과 겹치지 않게 자기 이름을 넣어요.
 DEVELOPMENT_TEAM = ABCDE12345
 RUNNERY_BUNDLE_ID = com.yourname.runneryNew
+// 구글 로그인을 쓰려면: Firebase 콘솔에 위 앱 아이디로 아이폰 앱을 등록하고, 받은 GoogleService-Info.plist의
+// CLIENT_ID와 REVERSED_CLIENT_ID를 적어요.
+// GOOGLE_IOS_CLIENT_ID = 1234-abcd.apps.googleusercontent.com
+// GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.1234-abcd

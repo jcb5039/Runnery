@@ -114,4 +114,40 @@ void main() {
     expect(find.byType(SignUpChoicePage), findsOneWidget);
     expect(store!.isSocial, isFalse);
   });
+
+  test('구글 처음 로그인: 가입 단계를 마치면 로그인되고, 구글 이메일을 저장해요', () async {
+    final store = open();
+    expect(await store.loginWithGoogle(), SocialLoginResult.needsProfile);
+    expect(store.isLoggedIn, isFalse);
+    expect(store.isSocial, isTrue);
+
+    await store.completeSocialProfile(profile);
+    expect(store.isLoggedIn, isTrue);
+    expect(store.current?.email, 'minji@gmail.com');
+    expect(backend.verificationsSent, 0);
+
+    await store.logout();
+    expect(await open().loginWithGoogle(), SocialLoginResult.loggedIn);
+  });
+
+  test('구글 로그인 창을 닫으면 아무 일도 없어요', () async {
+    backend.googleEmail = null;
+    final store = open();
+    expect(await store.loginWithGoogle(), SocialLoginResult.cancelled);
+    expect(store.isLoggedIn, isFalse);
+  });
+
+  testWidgets('Google로 시작하기: 처음이면 이메일 없이 이름부터 받아요', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = await tester.runAsync(() async => open());
+    await tester.pumpWidget(MaterialApp(home: SignUpChoicePage(store: store)));
+    await tester.tap(find.text('Google로 시작하기'));
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pumpAndSettle();
+    expect(find.byType(BasicInfoPage), findsOneWidget);
+    expect(find.text('EMAIL'), findsNothing);
+  });
 }
