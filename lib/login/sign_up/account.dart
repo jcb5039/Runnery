@@ -5,8 +5,17 @@ import '../auth_ui/auth_ui.dart';
 import 'running_info.dart';
 
 class AccountPage extends StatefulWidget {
-  const AccountPage({super.key, this.name = '', this.email = '', this.store});
+  const AccountPage({
+    super.key,
+    this.name = '',
+    this.email = '',
+    this.store,
+    this.social = false,
+  });
   final String name, email;
+
+  /// 소셜 로그인으로 가입하는 중이면 비밀번호를 받지 않습니다(로그인은 카카오로 합니다).
+  final bool social;
 
   /// 기본값은 AccountStore.instance. 아이디가 비어 있는지 서버에 물어볼 때 씁니다.
   final AccountStore? store;
@@ -65,7 +74,7 @@ class _AccountPageState extends State<AccountPage> {
           name: widget.name,
           email: widget.email,
           id: id.text.trim(),
-          password: password.text,
+          password: widget.social ? '' : password.text,
         ),
       ),
     );
@@ -79,10 +88,12 @@ class _AccountPageState extends State<AccountPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SignupHeading(
+          SignupHeading(
             step: 2,
             title: 'ACCOUNT',
-            description: '앱에서 쓸 아이디와 로그인할 비밀번호를 만들어주세요',
+            description: widget.social
+                ? '앱에서 쓸 아이디를 만들어주세요'
+                : '앱에서 쓸 아이디와 로그인할 비밀번호를 만들어주세요',
           ),
           const SizedBox(height: 40),
           AuthField(
@@ -100,33 +111,35 @@ class _AccountPageState extends State<AccountPage> {
               return null;
             },
           ),
-          const SizedBox(height: 24),
-          AuthField(
-            label: 'PASSWORD',
-            controller: password,
-            password: true,
-            hint: '비밀번호를 입력해주세요',
-            success: '영문·숫자 포함 8자 이상',
-            validator: (v) =>
-                v != null &&
-                    v.length >= 8 &&
-                    RegExp('[a-zA-Z]').hasMatch(v) &&
-                    RegExp('[0-9]').hasMatch(v)
-                ? null
-                : '영문·숫자 포함 8자 이상 입력해주세요',
-          ),
-          const SizedBox(height: 24),
-          AuthField(
-            label: 'CONFIRM PASSWORD',
-            controller: confirm,
-            password: true,
-            hint: '비밀번호를 다시 입력해주세요',
-            action: TextInputAction.done,
-            validator: (v) => v != null && v.isNotEmpty && v == password.text
-                ? null
-                : '비밀번호가 일치하지 않아요',
-            success: '비밀번호가 일치해요',
-          ),
+          if (!widget.social) ...[
+            const SizedBox(height: 24),
+            AuthField(
+              label: 'PASSWORD',
+              controller: password,
+              password: true,
+              hint: '비밀번호를 입력해주세요',
+              success: '영문·숫자 포함 8자 이상',
+              validator: (v) =>
+                  v != null &&
+                      v.length >= 8 &&
+                      RegExp('[a-zA-Z]').hasMatch(v) &&
+                      RegExp('[0-9]').hasMatch(v)
+                  ? null
+                  : '영문·숫자 포함 8자 이상 입력해주세요',
+            ),
+            const SizedBox(height: 24),
+            AuthField(
+              label: 'CONFIRM PASSWORD',
+              controller: confirm,
+              password: true,
+              hint: '비밀번호를 다시 입력해주세요',
+              action: TextInputAction.done,
+              validator: (v) => v != null && v.isNotEmpty && v == password.text
+                  ? null
+                  : '비밀번호가 일치하지 않아요',
+              success: '비밀번호가 일치해요',
+            ),
+          ],
         ],
       ),
     ),

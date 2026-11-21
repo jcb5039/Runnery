@@ -67,11 +67,15 @@ class _LoginPageV2State extends State<LoginPageV2> {
   }
 
   Future<void> register() async {
-    final data = await Navigator.push<RegistrationData>(
+    final result = await Navigator.push<Object>(
       context,
       MaterialPageRoute(builder: (_) => SignUpChoicePage(store: _store)),
     );
-    if (!mounted || data == null) return;
+    if (!mounted) return;
+    // 카카오로 가입·로그인을 마쳤으면 바로 홈으로 갑니다.
+    if (result is SocialSignedIn) return _next();
+    if (result is! RegistrationData) return;
+    final data = result;
     setState(() => busy = true);
     try {
       await _store.register(data);

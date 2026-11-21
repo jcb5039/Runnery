@@ -25,9 +25,10 @@ void main() {
     // 계정 파일 읽기는 실제 비동기 I/O라서 runAsync에서 먼저 끝냅니다.
     final dir = Directory.systemTemp.createTempSync('runnery_start_test_');
     addTearDown(() => dir.deleteSync(recursive: true));
+    // 카카오 로그인 창을 닫은 것처럼(아무 일도 일어나지 않음) 둡니다.
     AccountStore.instance = AccountStore(
       directory: () async => dir,
-      backend: FakeAccountBackend(),
+      backend: FakeAccountBackend()..kakaoId = null,
     );
     await tester.runAsync(AccountStore.instance.load);
     await tester.pumpWidget(const MyApp());
@@ -42,7 +43,9 @@ void main() {
     expect(find.byType(SignUpChoicePage), findsOneWidget);
     await tester.tap(find.text('카카오로 시작하기'));
     await tester.pump();
-    expect(find.text('카카오 로그인은 준비 중이에요'), findsOneWidget);
+    // 로그인 창을 닫으면 회원가입 화면에 그대로 있어요.
+    expect(find.byType(SignUpChoicePage), findsOneWidget);
+    expect(find.byType(BasicInfoPage), findsNothing);
     await tester.tap(find.text('이메일로 가입하기'));
     await tester.pumpAndSettle();
     expect(find.byType(BasicInfoPage), findsOneWidget);

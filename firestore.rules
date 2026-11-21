@@ -17,9 +17,11 @@ service cloud.firestore {
       return id.matches('^[a-z0-9_]{4,16}$');
     }
 
-    // 이메일 인증을 마친 계정인지(로그인 증표에 적혀 있습니다).
+    // 이메일 인증을 마친 계정이거나 소셜(카카오) 계정인지(로그인 증표에 적혀 있습니다).
+    // 소셜 계정의 로그인 증표는 우리 서버 함수(kakaoLogin)만 만들 수 있어 'custom'이면 확인을 거친 계정입니다.
     function verified() {
-      return request.auth.token.email_verified == true;
+      return request.auth.token.email_verified == true
+        || request.auth.token.firebase.sign_in_provider == 'custom';
     }
 
     // [uid]의 친구인지(친구 목록에 내가 적혀 있는지).
