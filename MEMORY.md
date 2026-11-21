@@ -2,6 +2,10 @@
 
 이 프로젝트의 중요한 결정을 남깁니다. 최근 항목이 위에 옵니다.
 
+## 2026-11-22
+
+- **네이버 로그인은 웹 로그인 화면 + 서버 함수로 합니다**(사용자 결정). 공식 패키지 `flutter_naver_login`은 아이폰에서 CocoaPods만 지원해 우리 앱(Swift Package Manager)과 맞지 않고, 앱이 받은 토큰만으로는 서버가 우리 앱 것인지 확인할 수 없어서입니다. 앱이 `flutter_web_auth_2`(5.1.0)로 네이버 로그인 웹 화면을 열면 네이버가 서버 함수 `naverCallback`으로 코드를 보내고, 서버가 Client Secret으로 코드를 바꿔 `naver:회원번호` 계정을 확인한 뒤 `naverLogins/{state}`에 5분간 저장합니다. 앱은 처음 만든 확인 값을 `naverFinish`에 보내야 로그인 표를 받습니다(앱 주소를 가로채도 표는 못 받음). Client Secret은 서버 비밀 저장소(`NAVER_CLIENT_SECRET`)에만 있고 앱·GitHub에는 없습니다. 네이버 개발자 센터에 모바일 웹 환경과 Callback URL(`.../naverCallback`)을 등록했습니다. 사용자는 네이버 앱 간편 로그인 대신 웹 화면에서 로그인합니다.
+
 ## 2026-11-21
 
 - **구글 로그인은 Firebase의 Google 로그인을 그대로 씁니다**(서버 함수 없음). 아이폰은 앱 아이디마다 Firebase에 아이폰 앱을 등록해야 해서 `com.runnery.app`(출시용)과 `com.chanbeom.runnery`(테스트용)를 등록했고, 클라이언트 ID는 `Signing.xcconfig`의 `GOOGLE_IOS_CLIENT_ID`·`GOOGLE_REVERSED_CLIENT_ID`로 넣어 각자 `Signing.local.xcconfig`에서 덮어씁니다. 안드로이드는 개발용 서명 지문(SHA-1)을 Firebase에 등록했습니다(출시용 서명 키 지문은 출시 때 추가). 구글 계정 이메일은 프로필에 저장하고, 같은 이메일의 이메일 가입이 있어 막히면 이메일로 로그인하라고 안내합니다.

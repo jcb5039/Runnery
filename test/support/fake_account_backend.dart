@@ -33,7 +33,10 @@ class FakeAccountBackend implements AccountBackend {
     uid: u.uid,
     email: u.email,
     emailVerified: u.verified,
-    social: u.uid.startsWith('kakao:') || _google.contains(u.uid),
+    social:
+        u.uid.startsWith('kakao:') ||
+        u.uid.startsWith('naver:') ||
+        _google.contains(u.uid),
   );
 
   /// 인증 메일의 링크를 누른 것처럼 처리합니다.
@@ -83,6 +86,19 @@ class FakeAccountBackend implements AccountBackend {
 
   /// 구글로 가입한 계정(uid). 비밀번호가 없는 소셜 계정으로 봅니다.
   final Set<String> _google = {};
+
+  /// 네이버 로그인 결과로 쓸 네이버 회원번호. null이면 사용자가 로그인 화면을 닫은 것으로 봅니다.
+  String? naverId = 'n-3003';
+
+  @override
+  Future<BackendUser?> signInWithNaver() async {
+    final id = naverId;
+    if (id == null) return null;
+    final key = 'naver:$id';
+    final user = _users[key] ??= _FakeUser(key, '', '', false);
+    _current = user;
+    return _view(user);
+  }
 
   /// 카카오 로그인 결과로 쓸 카카오 회원번호. null이면 사용자가 로그인 창을 닫은 것으로 봅니다.
   String? kakaoId = '1001';

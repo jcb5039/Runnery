@@ -18,7 +18,7 @@ class SocialSignedIn {
 }
 
 /// 회원가입 첫 화면: 가입 방법(Apple·카카오·네이버·Google·이메일)을 고릅니다.
-/// 이메일 가입을 마치면 받은 가입 정보([RegistrationData])를, 카카오·구글로 가입·로그인을 마치면
+/// 이메일 가입을 마치면 받은 가입 정보([RegistrationData])를, 카카오·구글·네이버로 가입·로그인을 마치면
 /// [SocialSignedIn]을 앞 화면(로그인)에 돌려줍니다.
 class SignUpChoicePage extends StatefulWidget {
   const SignUpChoicePage({super.key, this.store});
@@ -176,7 +176,7 @@ class _SignUpChoicePageState extends State<SignUpChoicePage> {
                 color: _naverGreen,
               ),
             ),
-            onPressed: () => _notReady(inner, '네이버'),
+            onPressed: () => _social(inner, '네이버', _store.loginWithNaver),
           ),
           const SizedBox(height: 12),
           _SocialButton(
