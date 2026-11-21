@@ -93,6 +93,13 @@ Route<void> stretchIntroRoute() => PageRouteBuilder(
   pageBuilder: (_, _, _) => const StretchIntroPage(),
 );
 
+/// 스트레칭 없이 바로 여는 러닝 목표 설정 화면 경로(설정에서 스트레칭 안내를 끈 경우).
+Route<void> runningHomeRoute() => PageRouteBuilder(
+  transitionDuration: Duration.zero,
+  reverseTransitionDuration: Duration.zero,
+  pageBuilder: (_, _, _) => const RunningHomePage(),
+);
+
 Route<void> _stretchRoute(Widget page) => MaterialPageRoute(
   settings: const RouteSettings(name: _stretchRouteName),
   builder: (_) => page,
