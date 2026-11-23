@@ -892,12 +892,13 @@ class _StartSheetState extends State<_StartSheet> {
                   floating: false,
                   onTap: widget.onVoiceGuideToggled,
                 ),
-                StatusChip(
-                  label: widget.autoPause ? '자동 일시정지 켜짐' : '자동 일시정지 꺼짐',
-                  icon: Icons.pause,
-                  floating: false,
-                  onTap: widget.onAutoPauseToggled,
-                ),
+                if (RunningConfig.autoPauseAvailable)
+                  StatusChip(
+                    label: widget.autoPause ? '자동 일시정지 켜짐' : '자동 일시정지 꺼짐',
+                    icon: Icons.pause,
+                    floating: false,
+                    onTap: widget.onAutoPauseToggled,
+                  ),
               ],
             ),
           ],

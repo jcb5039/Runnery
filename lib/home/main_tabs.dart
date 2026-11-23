@@ -2,21 +2,23 @@ import 'package:flutter/material.dart';
 
 import '../design_system/app_colors.dart';
 import '../friends/data/together_store.dart';
+import '../friends/friends_feature.dart';
 import '../friends/friends_page.dart';
 import '../friends/together/together_invite.dart';
 import '../profile/profile_main_page.dart';
 import '../record/list/record_list_page.dart';
 import 'home_page.dart';
 
-/// 홈·기록·친구·내 정보 네 탭을 한 번만 만들어 두고 효과 없이 바로 바꿉니다.
+/// 홈·기록·(친구)·내 정보 탭을 한 번만 만들어 두고 효과 없이 바로 바꿉니다.
+/// 친구 탭은 [FriendsFeature.available]이 켜져 있을 때만 있습니다(1차 출시는 꺼짐).
 /// 탭을 누를 때마다 화면(기록 읽기·지도)을 새로 만들지 않아 끊기지 않고,
 /// 안 보이는 탭은 그리지 않아 이전 탭의 지도가 남아 보이지 않습니다.
-/// 앱을 켜 둔 동안 친구가 함께 달리기 약속을 보내면 어느 탭에서든 창을 띄우고,
+/// 친구 기능이 켜져 있으면, 앱을 켜 둔 동안 친구가 함께 달리기 약속을 보낼 때 어느 탭에서든 창을 띄우고,
 /// 친구 탭 아이콘에 아직 답하지 않은 약속 수를 표시합니다.
 class MainTabs extends StatefulWidget {
   const MainTabs({super.key, this.initialIndex = 0});
 
-  /// 0 홈, 1 기록, 2 친구, 3 내 정보.
+  /// 0 홈, 1 기록, 2 친구, 3 내 정보. 친구 기능이 꺼져 있으면 0 홈, 1 기록, 2 내 정보.
   final int initialIndex;
 
   @override
@@ -27,9 +29,15 @@ class _MainTabsState extends State<MainTabs> {
   static const _tabs = [
     ('홈', Icons.home_outlined),
     ('기록', Icons.format_align_left),
-    ('친구', Icons.people_outline),
+    if (FriendsFeature.available) ('친구', Icons.people_outline),
     ('내 정보', Icons.person_outline),
   ];
+  static const _home = 0;
+  static const _records = 1;
+
+  /// 친구 탭 번호. 친구 기능이 꺼져 있으면 없는 번호(-1)입니다.
+  static const _friends = FriendsFeature.available ? 2 : -1;
+  static const _profile = FriendsFeature.available ? 3 : 2;
 
   late int _index = widget.initialIndex;
 
@@ -39,19 +47,19 @@ class _MainTabsState extends State<MainTabs> {
   late final List<Widget> _pages = [
     HomePageV2(
       showNavigation: false,
-      onRecords: () => _go(1),
-      onProfile: () => _go(3),
+      onRecords: () => _go(_records),
+      onProfile: () => _go(_profile),
     ),
     RecordListPageV2(
       showNavigation: false,
-      onHome: () => _go(0),
-      onProfile: () => _go(3),
+      onHome: () => _go(_home),
+      onProfile: () => _go(_profile),
     ),
-    const FriendsPage(),
+    if (FriendsFeature.available) const FriendsPage(),
     ProfileMainPage(
       showNavigation: false,
-      onHome: () => _go(0),
-      onRecords: () => _go(1),
+      onHome: () => _go(_home),
+      onRecords: () => _go(_records),
     ),
   ];
 
@@ -64,31 +72,36 @@ class _MainTabsState extends State<MainTabs> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: AppColors.background,
-    bottomNavigationBar: ListenableBuilder(
-      listenable: TogetherStore.instance,
-      builder: (context, _) => _TabBar(
-        index: _index,
-        onTap: _go,
-        friendBadge: TogetherStore.instance.requests.length,
-      ),
-    ),
-    body: TogetherInviteListener(
-      child: Stack(
-        children: [
-          for (final i in _opened.toList()..sort())
-            KeyedSubtree(
-              key: ValueKey(i),
-              child: Offstage(
-                offstage: i != _index,
-                child: TickerMode(enabled: i == _index, child: _pages[i]),
-              ),
+  Widget build(BuildContext context) {
+    final pages = Stack(
+      children: [
+        for (final i in _opened.toList()..sort())
+          KeyedSubtree(
+            key: ValueKey(i),
+            child: Offstage(
+              offstage: i != _index,
+              child: TickerMode(enabled: i == _index, child: _pages[i]),
             ),
-        ],
-      ),
-    ),
-  );
+          ),
+      ],
+    );
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      bottomNavigationBar: FriendsFeature.available
+          ? ListenableBuilder(
+              listenable: TogetherStore.instance,
+              builder: (context, _) => _TabBar(
+                index: _index,
+                onTap: _go,
+                friendBadge: TogetherStore.instance.requests.length,
+              ),
+            )
+          : _TabBar(index: _index, onTap: _go),
+      body: FriendsFeature.available
+          ? TogetherInviteListener(child: pages)
+          : pages,
+    );
+  }
 }
 
 /// 탭 묶음의 하단 탭. 각 화면이 그리던 탭과 같은 모양입니다.
@@ -144,7 +157,7 @@ class _TabBar extends StatelessWidget {
                                   : AppColors.textTertiary,
                             ),
                             // 주황·빨강은 이 용도에 쓰지 않아 선택 탭과 같은 흰색으로 둡니다.
-                            if (i == 2 && friendBadge > 0)
+                            if (i == _MainTabsState._friends && friendBadge > 0)
                               Positioned(
                                 top: -4,
                                 right: -9,
