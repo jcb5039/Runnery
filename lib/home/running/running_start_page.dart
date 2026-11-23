@@ -71,6 +71,10 @@ abstract final class RunningConfig {
   /// 러닝 중 지도를 만진 뒤 손을 떼고 이만큼 지나면 다시 내 위치를 따라갑니다.
   static const followResumeAfter = Duration(seconds: 5);
 
+  /// 자동 일시정지를 쓸지. 가만히 있어도 다시 풀리는 문제가 있어 1차 출시는 끄고 수동 일시정지만 씁니다.
+  /// 끄면 설정·시작 화면의 스위치가 숨고, 저장된 설정 값과 관계없이 러닝 중 자동으로 멈추지 않습니다.
+  static const autoPauseAvailable = false;
+
   /// 자동 일시정지: 이만큼 움직임이 없으면 운동 시간을 멈춥니다.
   static const autoPauseAfter = Duration(seconds: 10);
 
@@ -975,7 +979,7 @@ class _RunningStartPageState extends State<RunningStartPage>
   static const _zoom = MapZoom.running;
 
   late final _session = RunningSession(
-    autoPause: widget.options.autoPause,
+    autoPause: RunningConfig.autoPauseAvailable && widget.options.autoPause,
     weightKg:
         AccountStore.instance.current?.weightKg ??
         RunningConfig.defaultWeightKg,

@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../design_system/app_colors.dart';
 import '../../friends/share/record_visibility_page.dart';
 import '../../home/running/calorie_quest.dart';
+import '../../home/running/running_start_page.dart' show RunningConfig;
 
 /// 러닝 설정. 기기에 저장되어 앱을 다시 켜도 유지되고, 러닝 시작 화면의 기본값으로 쓰입니다.
 class ProfileSettings extends ChangeNotifier {
@@ -205,12 +206,13 @@ class ProfileSettingPage extends StatelessWidget {
                   settings.voice,
                   (v) => settings.update(() => settings.voice = v),
                 ),
-                _toggle(
-                  '자동 일시정지',
-                  '멈춰 서면 기록을 잠시 멈춰요',
-                  settings.autoPause,
-                  (v) => settings.update(() => settings.autoPause = v),
-                ),
+                if (RunningConfig.autoPauseAvailable)
+                  _toggle(
+                    '자동 일시정지',
+                    '멈춰 서면 기록을 잠시 멈춰요',
+                    settings.autoPause,
+                    (v) => settings.update(() => settings.autoPause = v),
+                  ),
                 _toggle(
                   '칼로리 퀘스트',
                   '태운 칼로리를 간식 단계로 보여줘요',
