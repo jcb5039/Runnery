@@ -1,10 +1,12 @@
-// 러너리 서버 함수. Firebase가 직접 지원하지 않는 카카오·네이버 로그인을 Firebase 계정으로 바꿔 줍니다.
+// 러너리 서버 함수. Firebase가 직접 지원하지 않는 카카오·네이버 로그인을 Firebase 계정으로 바꿔 주고,
+// 회원 탈퇴 때 서버 데이터를 지웁니다.
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const { logger } = require('firebase-functions');
 const { initializeApp } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
-const { getFirestore, Timestamp } = require('firebase-admin/firestore');
+const { FieldValue, getFirestore, Timestamp } = require('firebase-admin/firestore');
+const { ProofError, checkProof, deleteUserData } = require('./delete_account');
 const { KakaoTokenError, verifyKakaoToken } = require('./kakao');
 const { NaverLoginError, naverIdFromCode, stateFor, validState } = require('./naver');
 
@@ -83,9 +85,21 @@ exports.naverCallback = onRequest(
  */
 exports.naverFinish = onCall({ region: REGION, maxInstances: 10 }, async (request) => {
   const verifier = request.data && request.data.verifier;
-  if (typeof verifier !== 'string' || verifier.length < 32 || verifier.length > 200) {
+  if (!validVerifier(verifier)) {
     throw new HttpsError('invalid-argument', '네이버 로그인 요청이 올바르지 않아요');
   }
+  const uid = await takeNaverLogin(verifier);
+  if (!uid) throw new HttpsError('not-found', '네이버 로그인이 만료됐어요. 다시 시도해주세요');
+  return { customToken: await customTokenFor(uid, 'naver') };
+});
+
+function validVerifier(verifier) {
+  return typeof verifier === 'string' && verifier.length >= 32 && verifier.length <= 200;
+}
+
+/** 네이버 로그인 1단계 결과(계정 이름)를 한 번만 꺼냅니다. 없거나 만료됐으면 null. */
+async function takeNaverLogin(verifier) {
+  if (!validVerifier(verifier)) return null;
   const db = getFirestore();
   const ref = db.collection('naverLogins').doc(stateFor(verifier));
   const snapshot = await db.runTransaction(async (t) => {
@@ -93,8 +107,43 @@ exports.naverFinish = onCall({ region: REGION, maxInstances: 10 }, async (reques
     if (found.exists) t.delete(ref);
     return found;
   });
-  if (!snapshot.exists || snapshot.get('expiresAt').toMillis() < Date.now()) {
-    throw new HttpsError('not-found', '네이버 로그인이 만료됐어요. 다시 시도해주세요');
+  if (!snapshot.exists || snapshot.get('expiresAt').toMillis() < Date.now()) return null;
+  return snapshot.get('uid');
+}
+
+/**
+ * 회원 탈퇴: 본인 확인을 한 뒤 서버 데이터(러닝 기록, 프로필, 아이디, 친구 데이터)를 모두 지우고
+ * 마지막에 로그인 계정을 지웁니다. 관리자 권한으로 지우므로 보안 규칙을 풀지 않습니다.
+ * 본인 확인은 delete_account.js의 checkProof를 봅니다. 중간에 실패해도 다시 부르면 이어 지웁니다.
+ */
+exports.deleteAccount = onCall({ region: REGION, maxInstances: 10, timeoutSeconds: 300 }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', '로그인이 필요해요');
+  const uid = request.auth.uid;
+  try {
+    await checkProof({
+      uid,
+      authTime: request.auth.token.auth_time,
+      data: request.data,
+      now: Date.now(),
+      verifyKakao: verifyKakaoToken,
+      takeNaverLogin,
+    });
+  } catch (e) {
+    if (e instanceof ProofError || e instanceof KakaoTokenError) {
+      throw new HttpsError('permission-denied', e instanceof ProofError ? e.message : '카카오 로그인을 확인하지 못했어요. 다시 시도해주세요');
+    }
+    logger.error('탈퇴 본인 확인 실패', e);
+    throw new HttpsError('unavailable', '본인 확인을 하지 못했어요. 잠시 후 다시 시도해주세요');
   }
-  return { customToken: await customTokenFor(snapshot.get('uid'), 'naver') };
+  try {
+    await deleteUserData(getFirestore(), uid, FieldValue);
+    await getAuth().deleteUser(uid).catch((e) => {
+      if (e.code !== 'auth/user-not-found') throw e;
+    });
+  } catch (e) {
+    logger.error('탈퇴 데이터 삭제 실패', uid, e);
+    throw new HttpsError('internal', '탈퇴하지 못했어요. 잠시 후 다시 시도해주세요');
+  }
+  logger.info('회원 탈퇴 완료', uid);
+  return { ok: true };
 });
