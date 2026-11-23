@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../design_system/app_colors.dart';
+import '../../friends/friends_feature.dart';
 import '../../friends/share/record_visibility_page.dart';
 import '../../home/running/calorie_quest.dart';
 import '../../home/running/running_start_page.dart' show RunningConfig;
@@ -271,14 +272,15 @@ class ProfileSettingPage extends StatelessWidget {
                   '개인 정보 수정',
                   onTap: onEditProfile ?? () => _pending(context, '개인 정보 수정'),
                 ),
-                _row(
-                  '기록 공개 설정',
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const RecordVisibilityPage(),
+                if (FriendsFeature.available)
+                  _row(
+                    '기록 공개 설정',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const RecordVisibilityPage(),
+                      ),
                     ),
                   ),
-                ),
                 // 시안의 '알림'은 켜고 끌 알림 설정이 생기면 넣습니다.
                 _row(
                   '비밀번호 변경',

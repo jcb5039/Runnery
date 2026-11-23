@@ -26,6 +26,7 @@ import 'running_result_page.dart';
 import '../../friends/data/record_share.dart';
 import '../../friends/data/together_live.dart';
 import '../../friends/data/together_store.dart';
+import '../../friends/friends_feature.dart';
 import '../../record/data/record_from_session.dart';
 import '../../record/data/record_places.dart';
 import '../../record/data/route_thumbnails.dart';
@@ -1405,13 +1406,16 @@ class _RunningStartPageState extends State<RunningStartPage>
               unawaited(TogetherStore.instance.runFinished(id, saved));
             }
             // 자동 공유를 켜 두었으면 장소 이름을 찾은 뒤 친구 피드에 올립니다.
-            unawaited(
-              record.places.then(
-                (p) => RecordShare.instance.shareIfAuto(
-                  saved.withPlaces(area: p.area, start: p.start, end: p.end),
+            // 친구 기능이 꺼져 있으면(1차 출시) 올리지 않습니다.
+            if (FriendsFeature.available) {
+              unawaited(
+                record.places.then(
+                  (p) => RecordShare.instance.shareIfAuto(
+                    saved.withPlaces(area: p.area, start: p.start, end: p.end),
+                  ),
                 ),
-              ),
-            );
+              );
+            }
             break;
           } catch (_) {
             if (!mounted) return;
