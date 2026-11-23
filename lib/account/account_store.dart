@@ -9,7 +9,8 @@ import '../login/auth_ui/auth_ui.dart' show RegistrationData;
 import '../record/data/running_record_store.dart';
 import 'account_backend.dart';
 
-export 'account_backend.dart' show AccountBackend, AuthException, BackendUser;
+export 'account_backend.dart'
+    show AccountBackend, AuthException, BackendUser, LoginMethod;
 
 /// 소셜 로그인 결과. [needsProfile]이면 가입 단계(이름·아이디·나이·성별·체중)를 이어서 받습니다.
 enum SocialLoginResult { cancelled, loggedIn, needsProfile }
@@ -95,6 +96,9 @@ class AccountStore extends ChangeNotifier {
 
   /// 로그인한 사용자. 로그아웃 상태면 null.
   Account? get current => isLoggedIn ? _account : null;
+
+  /// 로그인한 계정의 로그인 방법. 회원 탈퇴 화면이 본인 확인 방법을 고르는 데 씁니다.
+  LoginMethod? get loginMethod => isLoggedIn ? backend.loginMethod : null;
 
   /// 로그인한 사용자의 서버 계정 번호. 친구 기능이 서버에서 나를 가리킬 때 씁니다.
   String? get uid => isLoggedIn ? _user!.uid : null;
@@ -512,5 +516,55 @@ class AccountStore extends ChangeNotifier {
       }
     }
     notifyListeners();
+  }
+
+  /// 회원 탈퇴. 본인 확인 뒤 서버의 계정과 데이터(러닝 기록, 프로필, 아이디 등)를 지우고, 이 기기의
+  /// 러닝 기록·서버에 올릴 일 목록·프로필 복사본·프로필 사진을 지운 뒤 로그아웃 상태가 됩니다.
+  /// 이메일 계정은 [password]로, 소셜 계정은 그 로그인을 한 번 더 해서 본인 확인을 합니다.
+  /// 로그인 화면을 닫으면 아무것도 지우지 않고 false. 실패하면 [AuthException]이고 이 기기 데이터는 그대로입니다.
+  Future<bool> deleteAccount({String? password}) async {
+    final user = _user;
+    if (user == null || !isLoggedIn) {
+      throw const AuthException('로그인이 필요해요');
+    }
+    // 지우는 동안 서버에 기록이 다시 올라가지 않게 맞추기를 멈춥니다. 탈퇴하지 않으면 다시 시작합니다
+    // (멈추면 올릴 일 목록이 비지만, 다시 시작할 때 폰에만 있는 기록을 다시 올립니다).
+    final hadRecordSync = records.syncActive;
+    if (hadRecordSync) await records.stopSync();
+    final bool deleted;
+    try {
+      deleted = await backend.deleteAccount(password: password);
+    } catch (_) {
+      if (hadRecordSync) _startRecordSync(user);
+      rethrow;
+    }
+    if (!deleted) {
+      if (hadRecordSync) _startRecordSync(user);
+      return false;
+    }
+    _user = null;
+    _account = null;
+    try {
+      await records.clear();
+    } catch (_) {
+      // 기록 파일을 지우지 못해도 탈퇴는 끝났습니다.
+    }
+    _profiles.remove(user.uid);
+    final photo = _photos.remove(user.uid);
+    try {
+      await _writeLocal();
+    } catch (_) {
+      // 복사본을 지우지 못해도 탈퇴는 끝났습니다.
+    }
+    final folder = _folderPath;
+    if (photo != null && folder != null) {
+      try {
+        await File('$folder/$photo').delete();
+      } on FileSystemException {
+        // 이미 없으면 그대로 둡니다.
+      }
+    }
+    notifyListeners();
+    return true;
   }
 }

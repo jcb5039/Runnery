@@ -115,6 +115,7 @@ class ProfileSettingPage extends StatelessWidget {
     this.onLogout,
     this.onEditProfile,
     this.onChangePassword,
+    this.onDeleteAccount,
   });
   final ProfileSettings settings;
   final VoidCallback? onLogout;
@@ -124,6 +125,9 @@ class ProfileSettingPage extends StatelessWidget {
 
   /// '비밀번호 변경'. 없으면 준비 중 안내를 띄웁니다.
   final VoidCallback? onChangePassword;
+
+  /// '회원 탈퇴'. 없으면 준비 중 안내를 띄웁니다.
+  final VoidCallback? onDeleteAccount;
 
   void _pending(BuildContext context, String label) {
     ScaffoldMessenger.of(context)
@@ -303,7 +307,22 @@ class ProfileSettingPage extends StatelessWidget {
                       ),
                       child: const Text('로그아웃'),
                     ),
-                    // '회원 탈퇴'는 기능을 만들 때 '로그아웃 | 회원 탈퇴'로 넣습니다.
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text(
+                        '|',
+                        style: TextStyle(color: AppColors.textTertiary),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed:
+                          onDeleteAccount ?? () => _pending(context, '회원 탈퇴'),
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        foregroundColor: AppColors.textTertiary,
+                      ),
+                      child: const Text('회원 탈퇴'),
+                    ),
                   ],
                 ),
               ],
