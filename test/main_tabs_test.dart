@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:runnery_new/friends/data/friend_store.dart';
 import 'package:runnery_new/friends/data/together_store.dart';
 import 'package:runnery_new/friends/friends_feature.dart';
+import 'package:runnery_new/hamster/hamster_room_page.dart';
 import 'package:runnery_new/home/home_page.dart';
 import 'package:runnery_new/home/main_tabs.dart';
 import 'package:runnery_new/record/list/record_list_page.dart';
@@ -45,10 +46,14 @@ void main() {
     await tester.pump();
 
     expect(find.text('친구'), findsNothing);
-    // 세 번째 탭이 내 정보입니다.
+    // 세 번째 탭은 캐릭터(룸메이트) 미리보기, 네 번째 탭이 내 정보입니다.
+    await tester.tap(find.text('룸메이트').last);
+    await tester.pump();
+    expect(find.byType(HamsterRoomPage), findsOneWidget);
     await tester.tap(find.text('내 정보').last);
     await tester.pump();
     expect(find.byType(HomePageV2), findsNothing);
+    expect(find.byType(HamsterRoomPage), findsNothing);
     expect(tester.takeException(), isNull);
   }, skip: FriendsFeature.available);
 

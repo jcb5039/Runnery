@@ -71,6 +71,10 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # 캐릭터 탭 그림. 지금은 시안을 잘라 만든 미리보기용입니다.
+  assets:
+    - assets/hamster/
+
   # 디자인 가이드 글꼴(OFL 공개 글꼴, 사용 허락은 assets/fonts/*-OFL.txt).
   # Pretendard는 굵기별 파일, Archivo는 굵기·폭(wdth)을 바꿀 수 있는 가변 글꼴 하나입니다.
   fonts:
