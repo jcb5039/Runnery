@@ -5,11 +5,13 @@ import '../friends/data/together_store.dart';
 import '../friends/friends_feature.dart';
 import '../friends/friends_page.dart';
 import '../friends/together/together_invite.dart';
+import '../hamster/hamster_room_page.dart';
 import '../profile/profile_main_page.dart';
 import '../record/list/record_list_page.dart';
 import 'home_page.dart';
 
-/// 홈·기록·(친구)·내 정보 탭을 한 번만 만들어 두고 효과 없이 바로 바꿉니다.
+/// 홈·기록·(친구)·룸메이트·내 정보 탭을 한 번만 만들어 두고 효과 없이 바로 바꿉니다.
+/// 룸메이트(캐릭터 탭)는 지금 시안 미리보기입니다.
 /// 친구 탭은 [FriendsFeature.available]이 켜져 있을 때만 있습니다(1차 출시는 꺼짐).
 /// 탭을 누를 때마다 화면(기록 읽기·지도)을 새로 만들지 않아 끊기지 않고,
 /// 안 보이는 탭은 그리지 않아 이전 탭의 지도가 남아 보이지 않습니다.
@@ -18,7 +20,7 @@ import 'home_page.dart';
 class MainTabs extends StatefulWidget {
   const MainTabs({super.key, this.initialIndex = 0});
 
-  /// 0 홈, 1 기록, 2 친구, 3 내 정보. 친구 기능이 꺼져 있으면 0 홈, 1 기록, 2 내 정보.
+  /// 0 홈, 1 기록, 2 친구, 3 룸메이트, 4 내 정보. 친구 기능이 꺼져 있으면 0 홈, 1 기록, 2 룸메이트, 3 내 정보.
   final int initialIndex;
 
   @override
@@ -26,18 +28,21 @@ class MainTabs extends StatefulWidget {
 }
 
 class _MainTabsState extends State<MainTabs> {
-  static const _tabs = [
-    ('홈', Icons.home_outlined),
-    ('기록', Icons.format_align_left),
-    if (FriendsFeature.available) ('친구', Icons.people_outline),
-    ('내 정보', Icons.person_outline),
+  /// (이름, 아이콘, 그림 아이콘). 그림 아이콘이 있으면 아이콘 대신 그 그림을 씁니다.
+  /// 그림 아이콘은 흰색 모양만 있는 그림이고, 다른 탭 아이콘과 같은 색을 칠합니다.
+  static const _tabs = <(String, IconData, String?)>[
+    ('홈', Icons.home_outlined, null),
+    ('기록', Icons.format_align_left, null),
+    if (FriendsFeature.available) ('친구', Icons.people_outline, null),
+    ('룸메이트', Icons.meeting_room_outlined, 'assets/hamster/tab_room.png'),
+    ('내 정보', Icons.person_outline, null),
   ];
   static const _home = 0;
   static const _records = 1;
 
   /// 친구 탭 번호. 친구 기능이 꺼져 있으면 없는 번호(-1)입니다.
   static const _friends = FriendsFeature.available ? 2 : -1;
-  static const _profile = FriendsFeature.available ? 3 : 2;
+  static const _profile = FriendsFeature.available ? 4 : 3;
 
   late int _index = widget.initialIndex;
 
@@ -56,6 +61,7 @@ class _MainTabsState extends State<MainTabs> {
       onProfile: () => _go(_profile),
     ),
     if (FriendsFeature.available) const FriendsPage(),
+    const HamsterRoomPage(),
     ProfileMainPage(
       showNavigation: false,
       onHome: () => _go(_home),
@@ -129,7 +135,8 @@ class _TabBar extends StatelessWidget {
         height: 64,
         child: Row(
           children: [
-            for (final (i, (label, icon)) in _MainTabsState._tabs.indexed)
+            for (final (i, (label, icon, image))
+                in _MainTabsState._tabs.indexed)
               Expanded(
                 child: Semantics(
                   selected: i == index,
@@ -149,13 +156,26 @@ class _TabBar extends StatelessWidget {
                         Stack(
                           clipBehavior: Clip.none,
                           children: [
-                            Icon(
-                              icon,
-                              size: 22,
-                              color: i == index
-                                  ? AppColors.textPrimary
-                                  : AppColors.textTertiary,
-                            ),
+                            if (image != null)
+                              // 그림 모양에 다른 탭 아이콘과 같은 색을 칠합니다.
+                              Image.asset(
+                                image,
+                                width: 22,
+                                height: 22,
+                                color: i == index
+                                    ? AppColors.textPrimary
+                                    : AppColors.textTertiary,
+                                colorBlendMode: BlendMode.srcIn,
+                                filterQuality: FilterQuality.medium,
+                              )
+                            else
+                              Icon(
+                                icon,
+                                size: 22,
+                                color: i == index
+                                    ? AppColors.textPrimary
+                                    : AppColors.textTertiary,
+                              ),
                             // 주황·빨강은 이 용도에 쓰지 않아 선택 탭과 같은 흰색으로 둡니다.
                             if (i == _MainTabsState._friends && friendBadge > 0)
                               Positioned(
