@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show StringCharacters;
 import 'package:path_provider/path_provider.dart';
 
 import '../login/auth_ui/auth_ui.dart' show RegistrationData;
@@ -25,7 +26,15 @@ class Account {
     required this.gender,
     required this.weightKg,
     this.photo,
+    this.mateName,
   });
+
+  /// 룸메이트(캐릭터)의 처음 이름.
+  static const defaultMateName = '룸메이트';
+
+  /// 룸메이트 이름 최대 글자 수(닉네임 카드에 들어가는 만큼).
+  static const mateNameMaxLength = 5;
+
   final String name, email, id, gender;
   final int age;
   final double weightKg;
@@ -33,6 +42,12 @@ class Account {
   /// 프로필 사진 파일 이름(앱 Documents 폴더 안). 없으면 이름 첫 글자를 보여 줍니다.
   /// 앱을 다시 설치하면 폴더 경로가 바뀌므로 전체 경로가 아닌 파일 이름만 저장합니다.
   final String? photo;
+
+  /// 사용자가 정한 룸메이트 이름. 정하지 않았으면 null이고 [defaultMateName]을 보여 줍니다.
+  final String? mateName;
+
+  /// 화면에 보여 줄 룸메이트 이름.
+  String get mateNameOrDefault => mateName ?? defaultMateName;
 
   /// 아바타에 쓰는 이름 첫 글자.
   String get initial =>
@@ -189,6 +204,7 @@ class AccountStore extends ChangeNotifier {
     gender: data['gender'] as String? ?? '선택 안 함',
     weightKg: (data['weightKg'] as num?)?.toDouble() ?? 60,
     photo: _photos[user.uid],
+    mateName: data['mateName'] as String?,
   );
 
   /// 서버에서 프로필을 읽어 옵니다. 서버에 닿지 못하면 이 기기에 저장해 둔 복사본을 씁니다.
@@ -212,7 +228,14 @@ class AccountStore extends ChangeNotifier {
 
   /// 파일에 저장할 수 있는 값만 남깁니다(서버 시각 같은 값은 뺍니다).
   Map<String, Object?> _plain(Map<String, Object?> data) => {
-    for (final key in const ['name', 'id', 'age', 'gender', 'weightKg'])
+    for (final key in const [
+      'name',
+      'id',
+      'age',
+      'gender',
+      'weightKg',
+      'mateName',
+    ])
       if (data[key] != null) key: data[key],
   };
 
@@ -468,8 +491,9 @@ class AccountStore extends ChangeNotifier {
       gender: gender,
       weightKg: weightKg,
       photo: photo,
+      mateName: old.mateName,
     );
-    _profiles[user.uid] = _plain(profile);
+    _profiles[user.uid] = _plain({...profile, 'mateName': old.mateName});
     if (photo == null) {
       _photos.remove(user.uid);
     } else {
@@ -483,6 +507,38 @@ class AccountStore extends ChangeNotifier {
       } on FileSystemException {
         // 이미 없으면 그대로 둡니다.
       }
+    }
+    notifyListeners();
+  }
+
+  /// 룸메이트(캐릭터) 이름을 바꿉니다. 앞뒤 빈칸은 지우고, 1~[Account.mateNameMaxLength]글자만 받습니다.
+  /// 서버 프로필에 저장하고(다른 폰에서도 같은 이름), 이 기기의 복사본에도 둡니다.
+  Future<void> updateMateName(String name) async {
+    final old = _account, user = _user;
+    if (old == null || user == null) {
+      throw const AuthException('로그인이 필요해요');
+    }
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) throw const AuthException('이름을 입력해주세요');
+    if (trimmed.characters.length > Account.mateNameMaxLength) {
+      throw const AuthException('이름은 ${Account.mateNameMaxLength}글자까지 쓸 수 있어요');
+    }
+    await backend.updateMateName(user.uid, trimmed);
+    _account = Account(
+      name: old.name,
+      email: old.email,
+      id: old.id,
+      age: old.age,
+      gender: old.gender,
+      weightKg: old.weightKg,
+      photo: old.photo,
+      mateName: trimmed,
+    );
+    _profiles[user.uid] = {...?_profiles[user.uid], 'mateName': trimmed};
+    try {
+      await _writeLocal();
+    } catch (_) {
+      // 복사본을 못 써도 서버에는 저장됐습니다.
     }
     notifyListeners();
   }

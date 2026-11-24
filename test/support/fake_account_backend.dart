@@ -190,4 +190,16 @@ class FakeAccountBackend implements AccountBackend {
     }
     _current = null;
   }
+
+  /// true면 룸메이트 이름 저장이 인터넷이 없는 것처럼 실패합니다.
+  bool failMateName = false;
+
+  @override
+  Future<void> updateMateName(String uid, String name) async {
+    if (failMateName) throw const AuthException('인터넷 연결을 확인해주세요');
+    _profiles[uid] = {...?_profiles[uid], 'mateName': name};
+  }
+
+  /// 서버에 저장된 룸메이트 이름(확인용).
+  String? mateNameOf(String uid) => _profiles[uid]?['mateName'] as String?;
 }

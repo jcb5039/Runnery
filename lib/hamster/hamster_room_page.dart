@@ -1,19 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../account/account_store.dart';
 import '../record/data/running_record_store.dart';
 import 'hamster_level.dart';
 
 /// 캐릭터 탭('룸메이트') 미리보기. 폰에서 어떻게 보이는지 보려고 시안 그림을 잘라
 /// 그대로 보여 줍니다(맨 위 제목은 그림에서 지웠습니다). Lv은 그림에 들어 있어 바뀌지 않고, EXP 막대는
 /// 그림 속 막대 위에 코드로 같은 모양을 덮어 그립니다. 'Lv. 1' 부분도 코드로 덮어 진짜 레벨을 보여 줍니다.
-/// 레벨·경험치는 저장된 러닝 기록의 총 거리로 계산합니다([HamsterLevel]). 진짜 화면은 배경·캐릭터 그림을 따로 받아 다시 만듭니다.
+/// 레벨·경험치는 저장된 러닝 기록의 총 거리로 계산합니다([HamsterLevel]).
+/// 닉네임 카드의 이름(처음은 '룸메이트')은 오른쪽 연필 아이콘을 눌러 바꾸고, 서버 프로필에 저장합니다. 진짜 화면은 배경·캐릭터 그림을 따로 받아 다시 만듭니다.
 ///
 /// 햄스터는 시안에서 떼어 낸 그림을 배경 속 햄스터 자리에 겹쳐, 천천히 부풀었다 가라앉으며 숨 쉬게 합니다.
 class HamsterRoomPage extends StatefulWidget {
-  const HamsterRoomPage({super.key, this.records});
+  const HamsterRoomPage({super.key, this.records, this.account});
 
   /// 기본값은 RunningRecordStore.instance.
   final RunningRecordStore? records;
+
+  /// 기본값은 AccountStore.instance.
+  final AccountStore? account;
 
   @override
   State<HamsterRoomPage> createState() => _HamsterRoomPageState();
@@ -24,6 +30,9 @@ class _HamsterRoomPageState extends State<HamsterRoomPage>
   /// 시안 맨 위(제목 칸) 색. 상태 표시줄 뒤를 같은 색으로 채웁니다.
   static const _topColor = Color(0xFFFCF2EA);
 
+  /// 닉네임 글자 색(시안의 검은 글자).
+  static const _nameColor = Color(0xFF1E1E1E);
+
   /// 배경 그림(room_preview.png) 크기와, 그 안에서 햄스터 그림(hamster_preview.png)을 잘라 낸 자리.
   static const _roomSize = Size(816, 1450);
   static const _hamsterRect = Rect.fromLTWH(260, 655, 295, 330);
@@ -33,6 +42,15 @@ class _HamsterRoomPageState extends State<HamsterRoomPage>
 
   /// 배경 그림 속 'Lv. 1' 진한 칸 자리. 코드로 그린 레벨 칸을 겹칩니다.
   static const _lvRect = Rect.fromLTRB(272, 558, 383, 603);
+
+  /// 닉네임 카드 안의 이름 자리(가운데 정렬)와 연필 아이콘 자리.
+  static const _nameRect = Rect.fromLTRB(388, 558, 516, 603);
+  static const _pencilRect = Rect.fromLTRB(516, 562, 550, 600);
+
+  /// 이름이나 연필을 누를 수 있는 자리. 손가락으로 누르기 쉽게 카드보다 위아래로 넓습니다.
+  static const _nameTapRect = Rect.fromLTRB(386, 536, 560, 626);
+
+  late final AccountStore _account = widget.account ?? AccountStore.instance;
 
   late final RunningRecordStore _records =
       widget.records ?? RunningRecordStore.instance;
@@ -86,6 +104,27 @@ class _HamsterRoomPageState extends State<HamsterRoomPage>
     vsync: this,
     duration: _breath,
   )..repeat();
+
+  /// 이름 바꾸기 창을 띄우고, 저장을 누르면 서버 프로필에 저장합니다.
+  Future<void> _editName() async {
+    final current =
+        _account.current?.mateNameOrDefault ?? Account.defaultMateName;
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) => _MateNameDialog(initial: current),
+    );
+    if (name == null || name == current || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await _account.updateMateName(name);
+    } on AuthException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('이름을 저장하지 못했어요. 다시 시도해주세요')),
+      );
+    }
+  }
 
   @override
   void dispose() {
@@ -157,6 +196,52 @@ class _HamsterRoomPageState extends State<HamsterRoomPage>
                 width: _lvRect.width * scale,
                 height: _lvRect.height * scale,
                 child: _LevelChip(level: _level.level, scale: scale),
+              ),
+              Positioned(
+                left: dx + _nameRect.left * scale,
+                top: dy + _nameRect.top * scale,
+                width: _nameRect.width * scale,
+                height: _nameRect.height * scale,
+                child: Center(
+                  child: ListenableBuilder(
+                    listenable: _account,
+                    builder: (context, _) => FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        _account.current?.mateNameOrDefault ??
+                            Account.defaultMateName,
+                        maxLines: 1,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 28 * scale,
+                          fontWeight: FontWeight.w800,
+                          color: _nameColor,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: dx + _pencilRect.left * scale,
+                top: dy + _pencilRect.top * scale,
+                width: _pencilRect.width * scale,
+                height: _pencilRect.height * scale,
+                child: Icon(Icons.edit, size: 24 * scale, color: _ExpBar._text),
+              ),
+              Positioned(
+                left: dx + _nameTapRect.left * scale,
+                top: dy + _nameTapRect.top * scale,
+                width: _nameTapRect.width * scale,
+                height: _nameTapRect.height * scale,
+                child: Semantics(
+                  button: true,
+                  label: '룸메이트 이름 바꾸기',
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _editName,
+                  ),
+                ),
               ),
             ],
           );
@@ -257,5 +342,60 @@ class _LevelChip extends StatelessWidget {
         ),
       ),
     ),
+  );
+}
+
+/// 룸메이트 이름 바꾸기 창. 가운데 정렬이고, [Account.mateNameMaxLength]글자가 차면 더 쳐도 입력되지 않습니다.
+/// 저장을 누르면 입력한 이름(앞뒤 빈칸 제외)을, 취소하면 null을 돌려줍니다.
+class _MateNameDialog extends StatefulWidget {
+  const _MateNameDialog({required this.initial});
+  final String initial;
+
+  @override
+  State<_MateNameDialog> createState() => _MateNameDialogState();
+}
+
+class _MateNameDialogState extends State<_MateNameDialog> {
+  late final _controller = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final name = _controller.text.trim();
+    if (name.isEmpty) return;
+    Navigator.pop(context, name);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('룸메이트 이름', textAlign: TextAlign.center),
+    content: TextField(
+      controller: _controller,
+      autofocus: true,
+      textAlign: TextAlign.center,
+      maxLength: Account.mateNameMaxLength,
+      // 최대 글자 수가 차면 더 입력되지 않습니다(한글은 조합 중인 글자를 끝까지 완성할 수 있습니다).
+      maxLengthEnforcement: MaxLengthEnforcement.enforced,
+      textInputAction: TextInputAction.done,
+      onSubmitted: (_) => _save(),
+      decoration: const InputDecoration(hintText: '이름을 입력해주세요'),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('취소'),
+      ),
+      ValueListenableBuilder(
+        valueListenable: _controller,
+        builder: (context, value, _) => TextButton(
+          onPressed: value.text.trim().isEmpty ? null : _save,
+          child: const Text('저장'),
+        ),
+      ),
+    ],
   );
 }
