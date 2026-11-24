@@ -88,15 +88,39 @@ void main() {
       account.updateMateName('가나다라마바'),
       throwsA(isA<AuthException>()),
     );
-    await account.updateMateName('가나다라마');
-    expect(account.current!.mateName, '가나다라마');
-
+    await expectLater(
+      account.updateMateName('뛰뛰😀'),
+      throwsA(isA<AuthException>()),
+    );
+    await expectLater(
+      account.updateMateName('하트❤️'),
+      throwsA(isA<AuthException>()),
+    );
+    // 서버 저장에 실패하면 이름은 그대로이고, 한 번 바꿀 기회도 남습니다.
     server.failMateName = true;
     await expectLater(
       account.updateMateName('다른이름'),
       throwsA(isA<AuthException>()),
     );
-    expect(account.current!.mateName, '가나다라마');
+    expect(account.current!.mateName, isNull);
+    server.failMateName = false;
+
+    // 숫자와 영어는 쓸 수 있습니다.
+    await account.updateMateName('Run12');
+    expect(account.current!.mateName, 'Run12');
+
+    // 한 번 바꾸면 더 바꿀 수 없습니다.
+    await expectLater(
+      account.updateMateName('가나다라마'),
+      throwsA(
+        isA<AuthException>().having(
+          (e) => e.message,
+          'message',
+          '닉네임은 한 번만 바꿀 수 있어요',
+        ),
+      ),
+    );
+    expect(account.current!.mateName, 'Run12');
   });
 
   testWidgets('연필을 누르면 이름 창이 뜨고, 5글자가 넘으면 더 입력되지 않아요', (tester) async {
@@ -126,31 +150,47 @@ void main() {
     );
     await tester.pump();
     expect(find.text('룸메이트'), findsOneWidget);
-    expect(find.byIcon(Icons.edit), findsOneWidget);
+    expect(
+      find.image(const AssetImage('assets/hamster/pencil.png')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.bySemanticsLabel('룸메이트 이름 바꾸기'));
     await tester.pump(const Duration(milliseconds: 400));
-    expect(find.text('룸메이트 이름'), findsOneWidget);
+    expect(find.text('닉네임 변경'), findsOneWidget);
 
     // 5글자가 차면 더 입력되지 않습니다.
     await tester.enterText(find.byType(TextField), '가나다라마바사');
     await tester.pump();
     expect(find.widgetWithText(TextField, '가나다라마'), findsOneWidget);
 
-    // 빈 이름이면 저장 버튼이 꺼집니다.
+    // 이모지는 입력되지 않습니다.
+    await tester.enterText(find.byType(TextField), '뛰😀뛰🇰🇷👍🏻');
+    await tester.pump();
+    expect(find.widgetWithText(TextField, '뛰뛰'), findsOneWidget);
+
+    // 빈 이름이면 변경하기 버튼이 꺼집니다.
     await tester.enterText(find.byType(TextField), '  ');
     await tester.pump();
-    final save = tester.widget<TextButton>(
-      find.widgetWithText(TextButton, '저장'),
+    final save = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, '변경하기'),
     );
     expect(save.onPressed, isNull);
 
     await tester.enterText(find.byType(TextField), '뛰뛰');
     await tester.pump();
-    await tester.tap(find.text('저장'));
+    await tester.tap(find.text('변경하기'));
     // 저장 뒤 폰 복사본을 파일에 쓰고 나서 화면에 알립니다. 실제 파일 쓰기가 끝날 시간을 주고,
     // 그 뒤에 이어지는 일을 흘려보냅니다.
-    for (var i = 0; i < 20 && find.text('뛰뛰').evaluate().isEmpty; i++) {
+    for (
+      var i = 0;
+      i < 20 &&
+          find
+              .image(const AssetImage('assets/hamster/pencil.png'))
+              .evaluate()
+              .isNotEmpty;
+      i++
+    ) {
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 20)),
       );
@@ -158,5 +198,15 @@ void main() {
     }
     expect(account.current!.mateName, '뛰뛰');
     expect(find.text('뛰뛰'), findsOneWidget);
+
+    // 한 번 바꾸면 연필 버튼이 사라지고, 이름을 눌러도 창이 뜨지 않습니다.
+    expect(
+      find.image(const AssetImage('assets/hamster/pencil.png')),
+      findsNothing,
+    );
+    expect(find.bySemanticsLabel('룸메이트 이름 바꾸기'), findsNothing);
+    await tester.tap(find.text('뛰뛰'));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('닉네임 변경'), findsNothing);
   });
 }

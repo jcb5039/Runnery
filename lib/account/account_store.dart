@@ -35,6 +35,21 @@ class Account {
   /// 룸메이트 이름 최대 글자 수(닉네임 카드에 들어가는 만큼).
   static const mateNameMaxLength = 5;
 
+  /// 룸메이트 이름에 쓸 수 없는 이모지. 그림 문자(😀, ❤, ✨, © 등), 국기 글자, 피부색, 이모지를 잇거나
+  /// 꾸미는 글자를 찾습니다. 숫자와 #·* 같은 일반 글자는 그대로 쓸 수 있습니다.
+  /// (분석기가 유니코드 속성 표현을 몰라 잘못된 정규식으로 보므로 조각을 이어 만듭니다.)
+  static final emojiPattern = RegExp(
+    const [
+      '[',
+      r'\p{Extended_Pictographic}',
+      r'\p{Regional_Indicator}',
+      r'\p{Emoji_Modifier}',
+      r'\u200D\uFE0F\u20E3',
+      ']',
+    ].join(),
+    unicode: true,
+  );
+
   final String name, email, id, gender;
   final int age;
   final double weightKg;
@@ -512,14 +527,21 @@ class AccountStore extends ChangeNotifier {
   }
 
   /// 룸메이트(캐릭터) 이름을 바꿉니다. 앞뒤 빈칸은 지우고, 1~[Account.mateNameMaxLength]글자만 받습니다.
+  /// 처음 한 번만 바꿀 수 있습니다(이미 정한 이름이 있으면 거절). 다시 바꾸는 건 나중에 상점의 닉네임 변경권으로 합니다.
   /// 서버 프로필에 저장하고(다른 폰에서도 같은 이름), 이 기기의 복사본에도 둡니다.
   Future<void> updateMateName(String name) async {
     final old = _account, user = _user;
     if (old == null || user == null) {
       throw const AuthException('로그인이 필요해요');
     }
+    if (old.mateName != null) {
+      throw const AuthException('닉네임은 한 번만 바꿀 수 있어요');
+    }
     final trimmed = name.trim();
     if (trimmed.isEmpty) throw const AuthException('이름을 입력해주세요');
+    if (Account.emojiPattern.hasMatch(trimmed)) {
+      throw const AuthException('이름에는 이모지를 쓸 수 없어요');
+    }
     if (trimmed.characters.length > Account.mateNameMaxLength) {
       throw const AuthException('이름은 ${Account.mateNameMaxLength}글자까지 쓸 수 있어요');
     }

@@ -9,7 +9,8 @@ import 'hamster_level.dart';
 /// 그대로 보여 줍니다(맨 위 제목은 그림에서 지웠습니다). Lv은 그림에 들어 있어 바뀌지 않고, EXP 막대는
 /// 그림 속 막대 위에 코드로 같은 모양을 덮어 그립니다. 'Lv. 1' 부분도 코드로 덮어 진짜 레벨을 보여 줍니다.
 /// 레벨·경험치는 저장된 러닝 기록의 총 거리로 계산합니다([HamsterLevel]).
-/// 닉네임 카드의 이름(처음은 '룸메이트')은 오른쪽 연필 아이콘을 눌러 바꾸고, 서버 프로필에 저장합니다. 진짜 화면은 배경·캐릭터 그림을 따로 받아 다시 만듭니다.
+/// 닉네임 카드의 이름(처음은 '룸메이트')은 카드 오른쪽 바깥의 연필 버튼을 눌러 바꾸고, 서버 프로필에 저장합니다.
+/// 이름은 처음 한 번만 무료로 바꿀 수 있어서, 한 번 바꾸면 연필 버튼이 사라집니다(나중에 상점의 닉네임 변경권으로). 진짜 화면은 배경·캐릭터 그림을 따로 받아 다시 만듭니다.
 ///
 /// 햄스터는 시안에서 떼어 낸 그림을 배경 속 햄스터 자리에 겹쳐, 천천히 부풀었다 가라앉으며 숨 쉬게 합니다.
 class HamsterRoomPage extends StatefulWidget {
@@ -43,14 +44,26 @@ class _HamsterRoomPageState extends State<HamsterRoomPage>
   /// 배경 그림 속 'Lv. 1' 진한 칸 자리. 코드로 그린 레벨 칸을 겹칩니다.
   static const _lvRect = Rect.fromLTRB(272, 558, 383, 603);
 
-  /// 닉네임 카드 안의 이름 자리(가운데 정렬)와 연필 아이콘 자리.
-  static const _nameRect = Rect.fromLTRB(388, 558, 516, 603);
-  static const _pencilRect = Rect.fromLTRB(516, 562, 550, 600);
+  /// 닉네임 카드 안의 이름 자리('Lv' 칸 오른쪽부터 카드 안쪽 끝까지, 가운데 정렬).
+  static const _nameRect = Rect.fromLTRB(388, 558, 548, 603);
+
+  /// 연필 버튼: 카드 오른쪽(바깥 끝 558) 옆 정사각형 자리(바탕 없음). 한 변이 카드 높이(위 547 ~ 아래 613, 67px)와 같습니다.
+  /// 칸 안 여백(12px)과 연필 그림 가장자리 여백이 있어서, 칸을 카드 끝보다 6px 안쪽에서 시작해야
+  /// 연필이 카드와 약 8px 떨어져 보입니다.
+  static const _pencilRect = Rect.fromLTWH(552, 547, 67, 67);
 
   /// 이름이나 연필을 누를 수 있는 자리. 손가락으로 누르기 쉽게 카드보다 위아래로 넓습니다.
-  static const _nameTapRect = Rect.fromLTRB(386, 536, 560, 626);
+  static const _nameTapRect = Rect.fromLTRB(386, 536, 640, 626);
 
   late final AccountStore _account = widget.account ?? AccountStore.instance;
+
+  /// 아직 이름을 한 번도 바꾸지 않았는지. 한 번 바꾸면 연필 버튼을 숨깁니다.
+  bool get _canRename =>
+      _account.current != null && _account.current!.mateName == null;
+
+  void _onAccountChanged() {
+    if (mounted) setState(() {});
+  }
 
   late final RunningRecordStore _records =
       widget.records ?? RunningRecordStore.instance;
@@ -61,6 +74,8 @@ class _HamsterRoomPageState extends State<HamsterRoomPage>
     super.initState();
     // 러닝을 저장하거나 기록을 지우면 다시 계산합니다.
     _records.addListener(_reload);
+    // 이름을 바꾸면 연필 버튼을 숨깁니다.
+    _account.addListener(_onAccountChanged);
     _reload();
   }
 
@@ -129,6 +144,7 @@ class _HamsterRoomPageState extends State<HamsterRoomPage>
   @override
   void dispose() {
     _records.removeListener(_reload);
+    _account.removeListener(_onAccountChanged);
     _clock.dispose();
     super.dispose();
   }
@@ -222,27 +238,36 @@ class _HamsterRoomPageState extends State<HamsterRoomPage>
                   ),
                 ),
               ),
-              Positioned(
-                left: dx + _pencilRect.left * scale,
-                top: dy + _pencilRect.top * scale,
-                width: _pencilRect.width * scale,
-                height: _pencilRect.height * scale,
-                child: Icon(Icons.edit, size: 24 * scale, color: _ExpBar._text),
-              ),
-              Positioned(
-                left: dx + _nameTapRect.left * scale,
-                top: dy + _nameTapRect.top * scale,
-                width: _nameTapRect.width * scale,
-                height: _nameTapRect.height * scale,
-                child: Semantics(
-                  button: true,
-                  label: '룸메이트 이름 바꾸기',
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _editName,
+              if (_canRename) ...[
+                Positioned(
+                  left: dx + _pencilRect.left * scale,
+                  top: dy + _pencilRect.top * scale,
+                  width: _pencilRect.width * scale,
+                  height: _pencilRect.height * scale,
+                  child: Padding(
+                    padding: EdgeInsets.all(12 * scale),
+                    child: Image.asset(
+                      'assets/hamster/pencil.png',
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.medium,
+                    ),
                   ),
                 ),
-              ),
+                Positioned(
+                  left: dx + _nameTapRect.left * scale,
+                  top: dy + _nameTapRect.top * scale,
+                  width: _nameTapRect.width * scale,
+                  height: _nameTapRect.height * scale,
+                  child: Semantics(
+                    button: true,
+                    label: '룸메이트 이름 바꾸기',
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _editName,
+                    ),
+                  ),
+                ),
+              ],
             ],
           );
         },
@@ -345,10 +370,13 @@ class _LevelChip extends StatelessWidget {
   );
 }
 
-/// 룸메이트 이름 바꾸기 창. 가운데 정렬이고, [Account.mateNameMaxLength]글자가 차면 더 쳐도 입력되지 않습니다.
-/// 저장을 누르면 입력한 이름(앞뒤 빈칸 제외)을, 취소하면 null을 돌려줍니다.
+/// 닉네임 변경 창(시안 디자인: 크림색 바탕, 굵은 갈색 테두리, 오른쪽 위 닫기, 노란 '변경하기').
+/// 입력은 가운데 정렬이고, [Account.mateNameMaxLength]글자가 차면 더 쳐도 입력되지 않습니다. 이모지도 입력되지 않습니다.
+/// 변경하기를 누르면 입력한 이름(앞뒤 빈칸 제외)을, 취소·닫기는 null을 돌려줍니다.
 class _MateNameDialog extends StatefulWidget {
   const _MateNameDialog({required this.initial});
+
+  /// 지금 이름. 입력 칸은 비워 두고 안내 문구로 새 이름을 받습니다.
   final String initial;
 
   @override
@@ -356,7 +384,17 @@ class _MateNameDialog extends StatefulWidget {
 }
 
 class _MateNameDialogState extends State<_MateNameDialog> {
-  late final _controller = TextEditingController(text: widget.initial);
+  final _controller = TextEditingController();
+
+  // 시안에서 잰 색.
+  static const _background = Color(0xFFFCF2E3);
+  static const _brown = Color(0xFF703403);
+  static const _title = Color(0xFF4A2408);
+  static const _field = Color(0xFFFFFBF5);
+  static const _hint = Color(0xFFB5ACA5);
+  static const _counter = Color(0xFFA89F98);
+  static const _cancel = Color(0xFFFCE4C5);
+  static const _confirm = Color(0xFFFCAF25);
 
   @override
   void dispose() {
@@ -371,31 +409,174 @@ class _MateNameDialogState extends State<_MateNameDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: const Text('룸메이트 이름', textAlign: TextAlign.center),
-    content: TextField(
-      controller: _controller,
-      autofocus: true,
-      textAlign: TextAlign.center,
-      maxLength: Account.mateNameMaxLength,
-      // 최대 글자 수가 차면 더 입력되지 않습니다(한글은 조합 중인 글자를 끝까지 완성할 수 있습니다).
-      maxLengthEnforcement: MaxLengthEnforcement.enforced,
-      textInputAction: TextInputAction.done,
-      onSubmitted: (_) => _save(),
-      decoration: const InputDecoration(hintText: '이름을 입력해주세요'),
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('취소'),
+  Widget build(BuildContext context) => Dialog(
+    backgroundColor: Colors.transparent,
+    insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+    child: Container(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+      decoration: BoxDecoration(
+        color: _background,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: _brown, width: 3),
       ),
-      ValueListenableBuilder(
-        valueListenable: _controller,
-        builder: (context, value, _) => TextButton(
-          onPressed: value.text.trim().isEmpty ? null : _save,
-          child: const Text('저장'),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const SizedBox(width: 36),
+              const Expanded(
+                child: Text(
+                  '닉네임 변경',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: _title,
+                  ),
+                ),
+              ),
+              Semantics(
+                button: true,
+                label: '닫기',
+                child: GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: _brown, width: 2),
+                    ),
+                    child: const Icon(Icons.close, size: 22, color: _brown),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            textAlign: TextAlign.center,
+            // 이모지는 쳐도 입력되지 않습니다.
+            inputFormatters: [
+              FilteringTextInputFormatter.deny(Account.emojiPattern),
+            ],
+            maxLength: Account.mateNameMaxLength,
+            // 최대 글자 수가 차면 더 입력되지 않습니다(한글은 조합 중인 글자를 끝까지 완성할 수 있습니다).
+            maxLengthEnforcement: MaxLengthEnforcement.enforced,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _save(),
+            cursorColor: _brown,
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: _title,
+            ),
+            decoration: InputDecoration(
+              hintText: '새 닉네임을 입력하세요',
+              hintStyle: const TextStyle(fontSize: 16, color: _hint),
+              // 글자 수는 아래에 따로 그립니다.
+              counterText: '',
+              filled: true,
+              fillColor: _field,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 14,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: const BorderSide(color: _brown, width: 2),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: const BorderSide(color: _brown, width: 2.5),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          ValueListenableBuilder(
+            valueListenable: _controller,
+            builder: (context, value, _) => Text(
+              '${value.text.characters.length} / ${Account.mateNameMaxLength}',
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: _counter,
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: _DialogButton(
+                  label: '취소',
+                  fill: _cancel,
+                  textColor: _title,
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ValueListenableBuilder(
+                  valueListenable: _controller,
+                  builder: (context, value, _) => _DialogButton(
+                    label: '변경하기',
+                    fill: _confirm,
+                    textColor: Colors.white,
+                    onPressed: value.text.trim().isEmpty ? null : _save,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// 닉네임 변경 창의 둥근 버튼(갈색 테두리). [onPressed]가 없으면 흐리게 보이고 눌리지 않습니다.
+class _DialogButton extends StatelessWidget {
+  const _DialogButton({
+    required this.label,
+    required this.fill,
+    required this.textColor,
+    required this.onPressed,
+  });
+
+  final String label;
+  final Color fill, textColor;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) => Opacity(
+    opacity: onPressed == null ? 0.5 : 1,
+    child: SizedBox(
+      height: 52,
+      child: FilledButton(
+        onPressed: onPressed,
+        style: FilledButton.styleFrom(
+          backgroundColor: fill,
+          disabledBackgroundColor: fill,
+          foregroundColor: textColor,
+          disabledForegroundColor: textColor,
+          shape: StadiumBorder(
+            side: const BorderSide(
+              color: _MateNameDialogState._brown,
+              width: 2,
+            ),
+          ),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
         ),
       ),
-    ],
+    ),
   );
 }
