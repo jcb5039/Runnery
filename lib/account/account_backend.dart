@@ -95,6 +95,9 @@ abstract class AccountBackend {
   /// 방금 만든 계정을 지우고 로그아웃합니다(가입 도중 실패했을 때 뒷정리).
   Future<void> deleteUser();
 
+  /// 룸메이트(캐릭터) 이름을 프로필에 저장합니다.
+  Future<void> updateMateName(String uid, String name);
+
   /// 지금 로그인한 계정의 로그인 방법. 로그아웃 상태면 null.
   LoginMethod? get loginMethod;
 
@@ -543,6 +546,15 @@ class FirebaseAccountBackend implements AccountBackend {
       // 지우지 못해도 로그아웃은 합니다.
     } finally {
       await _auth.signOut();
+    }
+  }
+
+  @override
+  Future<void> updateMateName(String uid, String name) async {
+    try {
+      await _userDoc(uid).update({'mateName': name}).timeout(_timeout);
+    } catch (e) {
+      throw _error(e, fallback: '이름을 저장하지 못했어요. 다시 시도해주세요');
     }
   }
 
