@@ -43,6 +43,9 @@ class BackendUser {
   bool get verified => emailVerified || social;
 }
 
+/// 계정에 로그인하는 방법. 회원 탈퇴 때 본인 확인 방법이 달라집니다.
+enum LoginMethod { email, google, kakao, naver }
+
 /// 계정 서버와 주고받는 부분. 앱은 Firebase 구현을 쓰고, 테스트는 가짜로 바꿔 씁니다.
 abstract class AccountBackend {
   /// 앱을 켰을 때 이전 로그인이 남아 있으면 그 계정. 없으면 null.
@@ -94,6 +97,14 @@ abstract class AccountBackend {
 
   /// 룸메이트(캐릭터) 이름을 프로필에 저장합니다.
   Future<void> updateMateName(String uid, String name);
+
+  /// 지금 로그인한 계정의 로그인 방법. 로그아웃 상태면 null.
+  LoginMethod? get loginMethod;
+
+  /// 회원 탈퇴. 본인 확인(이메일 계정은 [password], 카카오·네이버·구글 계정은 그 로그인을 한 번 더)을 한 뒤
+  /// 서버 함수가 서버 데이터와 로그인 계정을 지우고, 이 기기는 로그아웃합니다.
+  /// 사용자가 로그인 화면을 닫으면 아무것도 지우지 않고 false를 돌려줍니다.
+  Future<bool> deleteAccount({String? password});
 }
 
 /// Firebase(로그인) + Firestore(프로필·아이디)를 쓰는 실제 구현.
@@ -250,9 +261,8 @@ class FirebaseAccountBackend implements AccountBackend {
     }
   }
 
-  @override
-  Future<BackendUser?> signInWithGoogle() async {
-    final String idToken;
+  /// 구글 로그인 창을 띄워 구글 확인 표(idToken)를 받습니다. 창을 닫으면 null.
+  static Future<String?> _googleIdToken() async {
     try {
       await (_googleReady ??= GoogleSignIn.instance.initialize(
         serverClientId: _googleServerClientId,
@@ -260,7 +270,7 @@ class FirebaseAccountBackend implements AccountBackend {
       final account = await GoogleSignIn.instance.authenticate();
       final token = account.authentication.idToken;
       if (token == null) throw const AuthException('구글 로그인을 하지 못했어요');
-      idToken = token;
+      return token;
     } on GoogleSignInException catch (e) {
       if (e.code == GoogleSignInExceptionCode.canceled) return null;
       throw const AuthException('구글 로그인을 하지 못했어요. 다시 시도해주세요');
@@ -269,6 +279,12 @@ class FirebaseAccountBackend implements AccountBackend {
     } catch (_) {
       throw const AuthException('구글 로그인을 하지 못했어요. 다시 시도해주세요');
     }
+  }
+
+  @override
+  Future<BackendUser?> signInWithGoogle() async {
+    final idToken = await _googleIdToken();
+    if (idToken == null) return null;
     try {
       final credential = await _auth
           .signInWithCredential(GoogleAuthProvider.credential(idToken: idToken))
@@ -292,6 +308,28 @@ class FirebaseAccountBackend implements AccountBackend {
 
   @override
   Future<BackendUser?> signInWithNaver() async {
+    final verifier = await _naverVerifier();
+    if (verifier == null) return null;
+    try {
+      final result =
+          await FirebaseFunctions.instanceFor(region: 'asia-northeast3')
+              .httpsCallable('naverFinish')
+              .call<Map<String, dynamic>>({'verifier': verifier})
+              .timeout(_timeout);
+      final credential = await _auth
+          .signInWithCustomToken(result.data['customToken'] as String)
+          .timeout(_timeout);
+      return _user(credential.user!);
+    } on FirebaseFunctionsException catch (e) {
+      throw AuthException(e.message ?? '네이버 로그인을 확인하지 못했어요');
+    } catch (e) {
+      throw _error(e, fallback: '네이버 로그인을 하지 못했어요. 다시 시도해주세요');
+    }
+  }
+
+  /// 네이버 로그인 웹 화면을 띄우고, 끝나면 서버에 결과를 받으러 갈 확인 값(verifier)을 돌려줍니다.
+  /// 화면을 닫거나 동의하지 않으면 null.
+  static Future<String?> _naverVerifier() async {
     // 앱만 아는 확인 값. 서버에는 이 값의 SHA-256(state)만 먼저 보내고, 로그인 표는 확인 값을 보내야 받습니다.
     final random = Random.secure();
     final verifier = base64UrlEncode([
@@ -323,21 +361,7 @@ class FirebaseAccountBackend implements AccountBackend {
     if (error != null || back.queryParameters['state'] != state) {
       throw const AuthException('네이버 로그인을 하지 못했어요. 다시 시도해주세요');
     }
-    try {
-      final result =
-          await FirebaseFunctions.instanceFor(region: 'asia-northeast3')
-              .httpsCallable('naverFinish')
-              .call<Map<String, dynamic>>({'verifier': verifier})
-              .timeout(_timeout);
-      final credential = await _auth
-          .signInWithCustomToken(result.data['customToken'] as String)
-          .timeout(_timeout);
-      return _user(credential.user!);
-    } on FirebaseFunctionsException catch (e) {
-      throw AuthException(e.message ?? '네이버 로그인을 확인하지 못했어요');
-    } catch (e) {
-      throw _error(e, fallback: '네이버 로그인을 하지 못했어요. 다시 시도해주세요');
-    }
+    return verifier;
   }
 
   /// 카카오톡이 깔려 있으면 카카오톡으로, 아니면 카카오 계정 화면으로 로그인합니다. 닫으면 null.
@@ -531,6 +555,117 @@ class FirebaseAccountBackend implements AccountBackend {
       await _userDoc(uid).update({'mateName': name}).timeout(_timeout);
     } catch (e) {
       throw _error(e, fallback: '이름을 저장하지 못했어요. 다시 시도해주세요');
+    }
+  }
+
+  @override
+  LoginMethod? get loginMethod {
+    final u = _auth.currentUser;
+    if (u == null) return null;
+    if (u.uid.startsWith('kakao:')) return LoginMethod.kakao;
+    if (u.uid.startsWith('naver:')) return LoginMethod.naver;
+    final google = u.providerData.any((p) => p.providerId == 'google.com');
+    final password = u.providerData.any((p) => p.providerId == 'password');
+    return google && !password ? LoginMethod.google : LoginMethod.email;
+  }
+
+  @override
+  Future<bool> deleteAccount({String? password}) async {
+    final user = _auth.currentUser;
+    final method = loginMethod;
+    if (user == null || method == null) {
+      throw const AuthException('로그인이 필요해요');
+    }
+    // 본인 확인. 이메일·구글은 Firebase에서 다시 로그인해 로그인 시각을 새로 만들고(서버가 5분 안인지 봅니다),
+    // 카카오·네이버는 방금 받은 로그인 결과를 서버 함수에 보내 서버가 같은 계정인지 직접 확인합니다.
+    final data = <String, Object?>{};
+    switch (method) {
+      case LoginMethod.email:
+        final email = user.email;
+        if (email == null || password == null || password.isEmpty) {
+          throw const AuthException('비밀번호를 입력해주세요');
+        }
+        try {
+          await user
+              .reauthenticateWithCredential(
+                EmailAuthProvider.credential(email: email, password: password),
+              )
+              .timeout(_timeout);
+        } on FirebaseAuthException catch (e) {
+          if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+            throw const AuthException('비밀번호가 맞지 않아요');
+          }
+          throw _error(e, fallback: '본인 확인을 하지 못했어요. 다시 시도해주세요');
+        } catch (e) {
+          throw _error(e, fallback: '본인 확인을 하지 못했어요. 다시 시도해주세요');
+        }
+      case LoginMethod.google:
+        final idToken = await _googleIdToken();
+        if (idToken == null) return false;
+        try {
+          await user
+              .reauthenticateWithCredential(
+                GoogleAuthProvider.credential(idToken: idToken),
+              )
+              .timeout(_timeout);
+        } on FirebaseAuthException catch (e) {
+          if (e.code == 'user-mismatch') {
+            throw const AuthException('가입한 구글 계정으로 로그인해주세요');
+          }
+          throw _error(e, fallback: '본인 확인을 하지 못했어요. 다시 시도해주세요');
+        } catch (e) {
+          throw _error(e, fallback: '본인 확인을 하지 못했어요. 다시 시도해주세요');
+        }
+      case LoginMethod.kakao:
+        final OAuthToken? token;
+        try {
+          token = await _kakaoToken();
+        } catch (_) {
+          throw const AuthException('카카오 로그인을 하지 못했어요. 다시 시도해주세요');
+        }
+        if (token == null) return false;
+        data['kakaoAccessToken'] = token.accessToken;
+      case LoginMethod.naver:
+        final verifier = await _naverVerifier();
+        if (verifier == null) return false;
+        data['naverVerifier'] = verifier;
+    }
+    try {
+      await FirebaseFunctions.instanceFor(region: 'asia-northeast3')
+          .httpsCallable(
+            'deleteAccount',
+            options: HttpsCallableOptions(timeout: const Duration(minutes: 5)),
+          )
+          .call<Map<String, dynamic>>(data);
+    } on FirebaseFunctionsException catch (e) {
+      // 다른 카카오 계정으로 로그인했다면 그 카카오 로그인은 끊어 둡니다(러너리 로그인은 그대로).
+      if (method == LoginMethod.kakao) await _kakaoLogout();
+      throw AuthException(e.message ?? '탈퇴하지 못했어요. 다시 시도해주세요');
+    } catch (e) {
+      if (method == LoginMethod.kakao) await _kakaoLogout();
+      throw _error(e, fallback: '탈퇴하지 못했어요. 다시 시도해주세요');
+    }
+    // 서버에서 계정을 지웠습니다. 카카오는 우리 앱과의 연결도 끊습니다(실패해도 탈퇴는 끝났습니다).
+    if (method == LoginMethod.kakao) {
+      try {
+        await UserApi.instance.unlink();
+      } catch (_) {
+        // 이미 끊겼거나 카카오에 닿지 못했으면 그대로 둡니다.
+      }
+    }
+    try {
+      await signOut();
+    } catch (_) {
+      // 계정이 이미 지워져 로그아웃이 실패해도 이 기기는 로그아웃 상태로 봅니다.
+    }
+    return true;
+  }
+
+  static Future<void> _kakaoLogout() async {
+    try {
+      await UserApi.instance.logout();
+    } catch (_) {
+      // 카카오 로그인이 없으면 그대로 둡니다.
     }
   }
 }
