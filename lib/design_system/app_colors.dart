@@ -85,13 +85,13 @@ abstract final class AppColors {
     onInverse: Color(0xFF000000), // 흰 주요 버튼·선택 칩 위 글자.
     error: Color(0xFFFF5A4F), // #FF5A4F: 입력 오류에만 사용.
     scrim: Color(0x80000000), // 시트 뒤 화면 50% 검정.
-    mapLand: Color(0xFF1D2331), // #1D2331: 지도 바탕.
-    mapBuilding: Color(0xFF28303F), // #28303F: 건물.
-    mapPark: Color(0xFF1C4A31), // #1C4A31: 공원.
-    mapWater: Color(0xFF153A5C), // #153A5C: 강·하천.
-    mapRoad: Color(0xFF4A5467), // #4A5467: 도로 기본 토큰.
-    mapRoadLight: Color(0xFF5C6882), // #5C6882: 지도 예시 도로 밝은 끝값.
-    mapRoadDark: Color(0xFF2F3746), // #2F3746: 지도 예시 도로 어두운 끝값.
+    mapLand: Color(0xFF1F2738), // #1F2738: 지도 바탕.
+    mapBuilding: Color(0xFF2F3B50), // #2F3B50: 건물.
+    mapPark: Color(0xFF2A5E45), // #2A5E45: 공원.
+    mapWater: Color(0xFF1E66A6), // #1E66A6: 강·하천.
+    mapRoad: Color(0xFF6C7A96), // #6C7A96: 도로 기본 토큰.
+    mapRoadLight: Color(0xFF8EA0C4), // #8EA0C4: 지도 도로 밝은 끝값(큰길).
+    mapRoadDark: Color(0xFF323A4A), // #323A4A: 지도 도로 어두운 끝값(골목).
     mapButtonBase: Color(0xFF0E0F11), // #0E0F11: 지도 버튼 바탕, opacity 별도.
     mapButtonOpacity: 0.94, // 지도 버튼 바탕 94%.
     mapButtonBorder: Color(0xFF2C3238), // #2C3238: 지도 버튼 테두리.
@@ -117,13 +117,13 @@ abstract final class AppColors {
     onInverse: Color(0xFFFFFFFF), // 검정 주요 버튼·선택 칩 위 글자.
     error: Color(0xFFD93A30), // signal/error: 입력 오류에만.
     scrim: Color(0x73000000), // 시트 뒤 화면 45% 검정.
-    mapLand: Color(0xFFEEF1F4), // map/land
-    mapBuilding: Color(0xFFDEE3E9), // map/building
-    mapPark: Color(0xFFD4EBDA), // map/park
-    mapWater: Color(0xFFC4DDF3), // map/water
+    mapLand: Color(0xFFFAFBF8), // map/land
+    mapBuilding: Color(0xFFE6E9F0), // map/building
+    mapPark: Color(0xFF9ED99A), // map/park
+    mapWater: Color(0xFF7EC3F4), // map/water
     mapRoad: Color(0xFFFFFFFF), // map/road
-    mapRoadLight: Color(0xFFFFFFFF),
-    mapRoadDark: Color(0xFFD2D8DF), // 길 테두리.
+    mapRoadLight: Color(0xFFDDE8FF), // 큰길(하늘빛).
+    mapRoadDark: Color(0xFFB9C3D3), // 길 테두리.
     mapButtonBase: Color(0xFFFFFFFF), // 지도 위 버튼·카드: 반투명 흰색.
     mapButtonOpacity: 0.96,
     mapButtonBorder: Color(0xFFE9ECEF),
