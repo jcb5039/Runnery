@@ -96,11 +96,12 @@ abstract final class RunningConfig {
   /// 자동 일시정지 중 움직임이 이만큼 이어져야 다시 잽니다. 한 발짝 움직였다 멈추면 다시 재지 않습니다.
   static const autoResumeAfter = Duration(seconds: 5);
 
-  /// 이 속도(분속 134m ≈ 시속 8km) 미만은 걷기, 이상은 달리기 공식으로 칼로리를 계산합니다.
-  static const walkRunThresholdMetersPerMinute = 134.0;
+  /// 이 속도(분속 약 117m = 시속 7km) 미만은 걷기, 이상은 달리기 공식으로 칼로리를 계산합니다.
+  /// 1km를 8분 34초보다 빨리 가면 달리기입니다. 천천히 달리는 초보 러너도 달리기로 보려고 8km에서 낮췄습니다.
+  static const walkRunThresholdMetersPerMinute = 7000 / 60;
 
   /// 집중 화면: 최근 [speedWindow] 동안 [walkRunThresholdMetersPerMinute] 이상으로 달리면 숫자를 크게 보여 줍니다.
-  /// 그보다 느린 상태가 이만큼 이어져야 원래 화면으로 돌아갑니다(시속 8km 근처에서 깜빡이지 않게).
+  /// 그보다 느린 상태가 이만큼 이어져야 원래 화면으로 돌아갑니다(시속 7km 근처에서 깜빡이지 않게).
   static const focusExitAfter = Duration(seconds: 5);
 
   /// 함께 달리기: 친구가 이 거리 안에 있을 때만 지도에 점·지나간 길을 그립니다. 그보다 멀면
@@ -629,7 +630,7 @@ class RunningSession extends ChangeNotifier {
   /// 자동 일시정지 중인지. 이때 [status]는 running 그대로이고 운동 시간만 멈춰 있습니다.
   bool get autoPaused => _autoPaused;
 
-  /// 달리기 속도(시속 약 8km 이상)로 달리는 중인지. 러닝 화면이 집중 화면으로 바뀝니다.
+  /// 달리기 속도(시속 7km 이상)로 달리는 중인지. 러닝 화면이 집중 화면으로 바뀝니다.
   /// 일시정지·자동 일시정지 중에는 항상 false입니다.
   bool get runningFast =>
       _runningFast && _status == RunningStatus.running && !_autoPaused;

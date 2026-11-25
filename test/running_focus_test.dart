@@ -3,7 +3,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:runnery_new/home/running/running_start_page.dart';
 
 void main() {
-  test('집중 화면: 시속 8km 이상이면 켜지고, 느려진 채 5초가 지나야 꺼져요', () {
+  test('집중 화면: 시속 7km 이상이면 켜지고, 느려진 채 5초가 지나야 꺼져요', () {
     var clock = DateTime(2026, 11, 15, 8);
     final session = RunningSession(weightKg: 65, now: () => clock);
     var north = 0.0;
