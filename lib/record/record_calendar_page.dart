@@ -230,7 +230,13 @@ class _RecordCalendarPageState extends State<RecordCalendarPage> {
             const SizedBox(height: 18),
             SizedBox(
               height: 176,
-              child: RecordRouteMap(record: r, basemap: true),
+              // 날짜를 바꾸면 지도를 새로 만들어 그 기록의 경로에 위치를 맞춥니다.
+              // 같은 지도를 다시 쓰면 처음 맞춘 위치에 머물러 경로가 화면 밖에 그려집니다.
+              child: RecordRouteMap(
+                key: ValueKey(r.id),
+                record: r,
+                basemap: true,
+              ),
             ),
             const SizedBox(height: 16),
             IntrinsicHeight(
