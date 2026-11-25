@@ -18,8 +18,7 @@ final class WatchLinkChannel: NSObject, WCSessionDelegate {
     channel.setMethodCallHandler { call, result in
       switch call.method {
       case "launch":
-        shared.launchWatchApp()
-        result(nil)
+        shared.launchWatchApp(result: result)
       case "send":
         shared.send(call.arguments as? [String: Any] ?? [:], result: result)
       default:
@@ -33,14 +32,26 @@ final class WatchLinkChannel: NSObject, WCSessionDelegate {
   }
 
   /// 러닝을 시작하면 워치 앱을 깨워 '운동 중' 상태로 열어요(워치 앱이 설치돼 있을 때만).
-  private func launchWatchApp() {
-    guard HKHealthStore.isHealthDataAvailable(), WCSession.isSupported(),
-      WCSession.default.isPaired, WCSession.default.isWatchAppInstalled
-    else { return }
+  /// 결과: 'ok' 또는 안 된 이유. 러닝 진단 기록에 남겨 워치가 안 켜질 때 원인을 찾아요.
+  private func launchWatchApp(result: @escaping FlutterResult) {
+    guard HKHealthStore.isHealthDataAvailable() else { return result("noHealthData") }
+    guard WCSession.isSupported() else { return result("noWatchSupport") }
+    let session = WCSession.default
+    guard session.activationState == .activated else { return result("notActivated") }
+    guard session.isPaired else { return result("notPaired") }
+    guard session.isWatchAppInstalled else { return result("watchAppNotInstalled") }
     let config = HKWorkoutConfiguration()
     config.activityType = .running
     config.locationType = .outdoor
-    healthStore.startWatchApp(with: config) { _, _ in }
+    healthStore.startWatchApp(with: config) { success, error in
+      let text: String
+      if let error = error as NSError? {
+        text = "error \(error.domain) \(error.code): \(error.localizedDescription)"
+      } else {
+        text = success ? "ok" : "failed"
+      }
+      DispatchQueue.main.async { result(text) }
+    }
   }
 
   /// 결과: 워치가 받은 경로 점 개수(워치가 앱을 열어 두지 않았으면 nil).
@@ -49,6 +60,13 @@ final class WatchLinkChannel: NSObject, WCSessionDelegate {
     let session = WCSession.default
     guard session.activationState == .activated, session.isPaired, session.isWatchAppInstalled
     else { return result(nil) }
+    // 러닝이 끝나면 워치가 켜져 있어도 맡겨 둔 상태를 '끝남'으로 바꿔요.
+    // 안 그러면 손목을 내렸을 때 맡겨 둔 '달리는 중'이 남아, 다음에 워치 앱을 켤 때 지난 기록이 보여요.
+    if state["state"] as? String == "ended" {
+      var context = state
+      context["sentAt"] = Date().timeIntervalSince1970
+      try? session.updateApplicationContext(context)
+    }
     if session.isReachable {
       session.sendMessage(
         state,
@@ -82,7 +100,19 @@ final class WatchLinkChannel: NSObject, WCSessionDelegate {
     forward(message)
   }
 
+  /// 워치가 연결이 끊겨 있을 때 맡겨 둔 진단 기록.
+  func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+    forward(userInfo)
+  }
+
   private func forward(_ message: [String: Any]) {
+    // 워치 쪽 진단 기록(운동 모드 시작 결과 등)은 러닝 진단 기록에 남겨요.
+    if let log = message["log"] as? [String: Any] {
+      DispatchQueue.main.async { [weak self] in
+        self?.channel?.invokeMethod("log", arguments: log)
+      }
+      return
+    }
     guard let action = message["action"] as? String else { return }
     DispatchQueue.main.async { [weak self] in
       self?.channel?.invokeMethod("control", arguments: action)

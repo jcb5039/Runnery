@@ -139,4 +139,27 @@ void main() {
     await l.end();
     expect(sent.last, {'state': 'ended'});
   });
+
+  test('워치 앱을 깨운 결과와 워치 운동 모드 기록을 진단 기록에 남겨요', () async {
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      return call.method == 'launch' ? 'watchAppNotInstalled' : null;
+    });
+    final events = <(String, Map<String, Object?>)>[];
+    RunningWatchLink(
+      channel: channel,
+      supported: true,
+      onEvent: (type, extra) => events.add((type, extra)),
+    ).start();
+    await pumpEventQueue();
+    await messenger.handlePlatformMessage(
+      channel.name,
+      channel.codec.encodeMethodCall(
+        const MethodCall('log', {'event': 'workoutAuth', 'status': 'denied'}),
+      ),
+      (_) {},
+    );
+    expect([for (final e in events) e.$1], ['watchLaunch', 'watch']);
+    expect(events[0].$2, {'result': 'watchAppNotInstalled'});
+    expect(events[1].$2, {'event': 'workoutAuth', 'status': 'denied'});
+  });
 }
