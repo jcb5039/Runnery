@@ -10,6 +10,7 @@ import '../../design_system/app_component_metrics.dart';
 import '../../design_system/app_motion.dart';
 import '../../design_system/app_radius.dart';
 import '../../design_system/app_spacing.dart';
+import '../../friends/friends_feature.dart';
 import '../../friends/share/share_record_sheet.dart';
 import '../../record/data/record_from_session.dart';
 import 'running_home_page.dart';
@@ -1092,6 +1093,7 @@ List<(String, String)> _speedParts(double? kmh) =>
     kmh == null ? [('-', '')] : [(RunningFormat.speed(kmh), 'km/h')];
 
 /// 18-3 친구에게 기록 공유 창을 엽니다. 저장된 기록과 같은 번호로 올라가고, 장소 이름도 함께 담습니다.
+/// 친구 기능이 꺼져 있으면 버튼 없이 같은 크기의 빈자리만 둡니다(가운데 제목이 밀리지 않게).
 class _ShareButton extends StatelessWidget {
   const _ShareButton({required this.record});
 
@@ -1109,6 +1111,11 @@ class _ShareButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!FriendsFeature.available) {
+      return const SizedBox.square(
+        dimension: AppComponentMetrics.mapButtonSize,
+      );
+    }
     return MapCircleButton(
       icon: Icons.ios_share,
       tooltip: '친구에게 공유',

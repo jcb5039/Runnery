@@ -3,13 +3,15 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show StringCharacters;
 import 'package:path_provider/path_provider.dart';
 
 import '../login/auth_ui/auth_ui.dart' show RegistrationData;
 import '../record/data/running_record_store.dart';
 import 'account_backend.dart';
 
-export 'account_backend.dart' show AccountBackend, AuthException, BackendUser;
+export 'account_backend.dart'
+    show AccountBackend, AuthException, BackendUser, LoginMethod;
 
 /// 소셜 로그인 결과. [needsProfile]이면 가입 단계(이름·아이디·나이·성별·체중)를 이어서 받습니다.
 enum SocialLoginResult { cancelled, loggedIn, needsProfile }
@@ -25,7 +27,30 @@ class Account {
     required this.gender,
     required this.weightKg,
     this.photo,
+    this.mateName,
   });
+
+  /// 룸메이트(캐릭터)의 처음 이름.
+  static const defaultMateName = '룸메이트';
+
+  /// 룸메이트 이름 최대 글자 수(닉네임 카드에 들어가는 만큼).
+  static const mateNameMaxLength = 5;
+
+  /// 룸메이트 이름에 쓸 수 없는 이모지. 그림 문자(😀, ❤, ✨, © 등), 국기 글자, 피부색, 이모지를 잇거나
+  /// 꾸미는 글자를 찾습니다. 숫자와 #·* 같은 일반 글자는 그대로 쓸 수 있습니다.
+  /// (분석기가 유니코드 속성 표현을 몰라 잘못된 정규식으로 보므로 조각을 이어 만듭니다.)
+  static final emojiPattern = RegExp(
+    const [
+      '[',
+      r'\p{Extended_Pictographic}',
+      r'\p{Regional_Indicator}',
+      r'\p{Emoji_Modifier}',
+      r'\u200D\uFE0F\u20E3',
+      ']',
+    ].join(),
+    unicode: true,
+  );
+
   final String name, email, id, gender;
   final int age;
   final double weightKg;
@@ -33,6 +58,12 @@ class Account {
   /// 프로필 사진 파일 이름(앱 Documents 폴더 안). 없으면 이름 첫 글자를 보여 줍니다.
   /// 앱을 다시 설치하면 폴더 경로가 바뀌므로 전체 경로가 아닌 파일 이름만 저장합니다.
   final String? photo;
+
+  /// 사용자가 정한 룸메이트 이름. 정하지 않았으면 null이고 [defaultMateName]을 보여 줍니다.
+  final String? mateName;
+
+  /// 화면에 보여 줄 룸메이트 이름.
+  String get mateNameOrDefault => mateName ?? defaultMateName;
 
   /// 아바타에 쓰는 이름 첫 글자.
   String get initial =>
@@ -87,7 +118,7 @@ class AccountStore extends ChangeNotifier {
   /// 로그인은 됐지만 이메일 인증을 아직 안 한 상태.
   bool get needsVerification => _user != null && !_user!.verified;
 
-  /// 카카오·구글처럼 다른 회사 계정으로 가입한 계정이라 비밀번호가 없는지.
+  /// 카카오·구글·네이버처럼 다른 회사 계정으로 가입한 계정이라 비밀번호가 없는지.
   bool get isSocial => _user?.social ?? false;
 
   /// 인증 메일을 받는 이메일.
@@ -95,6 +126,9 @@ class AccountStore extends ChangeNotifier {
 
   /// 로그인한 사용자. 로그아웃 상태면 null.
   Account? get current => isLoggedIn ? _account : null;
+
+  /// 로그인한 계정의 로그인 방법. 회원 탈퇴 화면이 본인 확인 방법을 고르는 데 씁니다.
+  LoginMethod? get loginMethod => isLoggedIn ? backend.loginMethod : null;
 
   /// 로그인한 사용자의 서버 계정 번호. 친구 기능이 서버에서 나를 가리킬 때 씁니다.
   String? get uid => isLoggedIn ? _user!.uid : null;
@@ -189,6 +223,7 @@ class AccountStore extends ChangeNotifier {
     gender: data['gender'] as String? ?? '선택 안 함',
     weightKg: (data['weightKg'] as num?)?.toDouble() ?? 60,
     photo: _photos[user.uid],
+    mateName: data['mateName'] as String?,
   );
 
   /// 서버에서 프로필을 읽어 옵니다. 서버에 닿지 못하면 이 기기에 저장해 둔 복사본을 씁니다.
@@ -212,7 +247,14 @@ class AccountStore extends ChangeNotifier {
 
   /// 파일에 저장할 수 있는 값만 남깁니다(서버 시각 같은 값은 뺍니다).
   Map<String, Object?> _plain(Map<String, Object?> data) => {
-    for (final key in const ['name', 'id', 'age', 'gender', 'weightKg'])
+    for (final key in const [
+      'name',
+      'id',
+      'age',
+      'gender',
+      'weightKg',
+      'mateName',
+    ])
       if (data[key] != null) key: data[key],
   };
 
@@ -301,6 +343,10 @@ class AccountStore extends ChangeNotifier {
   Future<SocialLoginResult> loginWithGoogle() =>
       _loginWithSocial(backend.signInWithGoogle);
 
+  /// 네이버로 로그인합니다. 흐름은 [loginWithKakao]와 같습니다.
+  Future<SocialLoginResult> loginWithNaver() =>
+      _loginWithSocial(backend.signInWithNaver);
+
   Future<SocialLoginResult> _loginWithSocial(
     Future<BackendUser?> Function() signIn,
   ) async {
@@ -328,7 +374,7 @@ class AccountStore extends ChangeNotifier {
   }
 
   /// 소셜 로그인으로 처음 들어온 사람의 프로필을 만듭니다. 이메일·비밀번호는 받지 않고,
-  /// 구글처럼 계정에 이메일이 있으면 그 이메일을 저장합니다(카카오는 빈 값).
+  /// 구글처럼 계정에 이메일이 있으면 그 이메일을 저장합니다(카카오·네이버는 빈 값).
   Future<void> completeSocialProfile(RegistrationData data) async {
     final user = _user;
     if (user == null || !user.social) {
@@ -464,8 +510,9 @@ class AccountStore extends ChangeNotifier {
       gender: gender,
       weightKg: weightKg,
       photo: photo,
+      mateName: old.mateName,
     );
-    _profiles[user.uid] = _plain(profile);
+    _profiles[user.uid] = _plain({...profile, 'mateName': old.mateName});
     if (photo == null) {
       _photos.remove(user.uid);
     } else {
@@ -479,6 +526,45 @@ class AccountStore extends ChangeNotifier {
       } on FileSystemException {
         // 이미 없으면 그대로 둡니다.
       }
+    }
+    notifyListeners();
+  }
+
+  /// 룸메이트(캐릭터) 이름을 바꿉니다. 앞뒤 빈칸은 지우고, 1~[Account.mateNameMaxLength]글자만 받습니다.
+  /// 처음 한 번만 바꿀 수 있습니다(이미 정한 이름이 있으면 거절). 다시 바꾸는 건 나중에 상점의 닉네임 변경권으로 합니다.
+  /// 서버 프로필에 저장하고(다른 폰에서도 같은 이름), 이 기기의 복사본에도 둡니다.
+  Future<void> updateMateName(String name) async {
+    final old = _account, user = _user;
+    if (old == null || user == null) {
+      throw const AuthException('로그인이 필요해요');
+    }
+    if (old.mateName != null) {
+      throw const AuthException('닉네임은 한 번만 바꿀 수 있어요');
+    }
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) throw const AuthException('이름을 입력해주세요');
+    if (Account.emojiPattern.hasMatch(trimmed)) {
+      throw const AuthException('이름에는 이모지를 쓸 수 없어요');
+    }
+    if (trimmed.characters.length > Account.mateNameMaxLength) {
+      throw const AuthException('이름은 ${Account.mateNameMaxLength}글자까지 쓸 수 있어요');
+    }
+    await backend.updateMateName(user.uid, trimmed);
+    _account = Account(
+      name: old.name,
+      email: old.email,
+      id: old.id,
+      age: old.age,
+      gender: old.gender,
+      weightKg: old.weightKg,
+      photo: old.photo,
+      mateName: trimmed,
+    );
+    _profiles[user.uid] = {...?_profiles[user.uid], 'mateName': trimmed};
+    try {
+      await _writeLocal();
+    } catch (_) {
+      // 복사본을 못 써도 서버에는 저장됐습니다.
     }
     notifyListeners();
   }
@@ -508,5 +594,55 @@ class AccountStore extends ChangeNotifier {
       }
     }
     notifyListeners();
+  }
+
+  /// 회원 탈퇴. 본인 확인 뒤 서버의 계정과 데이터(러닝 기록, 프로필, 아이디 등)를 지우고, 이 기기의
+  /// 러닝 기록·서버에 올릴 일 목록·프로필 복사본·프로필 사진을 지운 뒤 로그아웃 상태가 됩니다.
+  /// 이메일 계정은 [password]로, 소셜 계정은 그 로그인을 한 번 더 해서 본인 확인을 합니다.
+  /// 로그인 화면을 닫으면 아무것도 지우지 않고 false. 실패하면 [AuthException]이고 이 기기 데이터는 그대로입니다.
+  Future<bool> deleteAccount({String? password}) async {
+    final user = _user;
+    if (user == null || !isLoggedIn) {
+      throw const AuthException('로그인이 필요해요');
+    }
+    // 지우는 동안 서버에 기록이 다시 올라가지 않게 맞추기를 멈춥니다. 탈퇴하지 않으면 다시 시작합니다
+    // (멈추면 올릴 일 목록이 비지만, 다시 시작할 때 폰에만 있는 기록을 다시 올립니다).
+    final hadRecordSync = records.syncActive;
+    if (hadRecordSync) await records.stopSync();
+    final bool deleted;
+    try {
+      deleted = await backend.deleteAccount(password: password);
+    } catch (_) {
+      if (hadRecordSync) _startRecordSync(user);
+      rethrow;
+    }
+    if (!deleted) {
+      if (hadRecordSync) _startRecordSync(user);
+      return false;
+    }
+    _user = null;
+    _account = null;
+    try {
+      await records.clear();
+    } catch (_) {
+      // 기록 파일을 지우지 못해도 탈퇴는 끝났습니다.
+    }
+    _profiles.remove(user.uid);
+    final photo = _photos.remove(user.uid);
+    try {
+      await _writeLocal();
+    } catch (_) {
+      // 복사본을 지우지 못해도 탈퇴는 끝났습니다.
+    }
+    final folder = _folderPath;
+    if (photo != null && folder != null) {
+      try {
+        await File('$folder/$photo').delete();
+      } on FileSystemException {
+        // 이미 없으면 그대로 둡니다.
+      }
+    }
+    notifyListeners();
+    return true;
   }
 }

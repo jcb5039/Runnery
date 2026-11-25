@@ -892,12 +892,13 @@ class _StartSheetState extends State<_StartSheet> {
                   floating: false,
                   onTap: widget.onVoiceGuideToggled,
                 ),
-                StatusChip(
-                  label: widget.autoPause ? '자동 일시정지 켜짐' : '자동 일시정지 꺼짐',
-                  icon: Icons.pause,
-                  floating: false,
-                  onTap: widget.onAutoPauseToggled,
-                ),
+                if (RunningConfig.autoPauseAvailable)
+                  StatusChip(
+                    label: widget.autoPause ? '자동 일시정지 켜짐' : '자동 일시정지 꺼짐',
+                    icon: Icons.pause,
+                    floating: false,
+                    onTap: widget.onAutoPauseToggled,
+                  ),
               ],
             ),
           ],
@@ -1683,28 +1684,35 @@ class PrimaryButton extends StatelessWidget {
 // ═════════════════════════════════════════════════════
 
 /// 지도 스타일 색. 스타일 JSON에 넣기 위해 HEX 문자열로 둡니다.
-/// 라이트: 밝은 회색 땅, 흰 길(회색 테두리), 옅은 녹색 공원, 하늘색 강, 진한 회색 지명에 흰 테두리.
+/// 라이트('선명'): 흰 땅, 진한 초록 공원, 진한 파랑 강, 하늘빛 큰길, 구역마다 다른 색.
+/// 다크('다크 선명 4-E'): 남색 땅에 공원·강·구역 색을 살리고 길을 또렷하게.
+/// 빨강·주황·노랑은 넓게 쓰지 않습니다. 주황 경로가 가장 눈에 띄어야 해서요.
 abstract final class MapPalette {
-  static String get land => AppColors.isDark ? '#1D2331' : '#EEF1F4';
-  static String get building => AppColors.isDark ? '#28303F' : '#DEE3E9';
-  static String get tower => AppColors.isDark ? '#2E3749' : '#D7DDE4';
-  static String get apartment => AppColors.isDark ? '#2C3345' : '#DADFE6';
-  static String get park => AppColors.isDark ? '#1C4A31' : '#D4EBDA';
-  static String get water => AppColors.isDark ? '#153A5C' : '#C4DDF3';
-  static String get expressway => AppColors.isDark ? '#5C6882' : '#FFFFFF';
-  static String get arterial => AppColors.isDark ? '#4A5467' : '#FFFFFF';
-  static String get collector => AppColors.isDark ? '#3A4354' : '#FFFFFF';
-  static String get local => AppColors.isDark ? '#2F3746' : '#FFFFFF';
-  static String get alley => AppColors.isDark ? '#272E3A' : '#F7F8FA';
-  static String get casing => AppColors.isDark ? '#141922' : '#D2D8DF';
-  static String get subway5 => AppColors.isDark ? '#9B80F2' : '#9B80F2';
+  static String get land => AppColors.isDark ? '#1F2738' : '#FAFBF8';
+  static String get building => AppColors.isDark ? '#2F3B50' : '#E6E9F0';
+  static String get tower => AppColors.isDark ? '#37455E' : '#D9DEEA';
+  static String get apartment => AppColors.isDark ? '#433A60' : '#F3E4EC';
+  static String get park => AppColors.isDark ? '#2A5E45' : '#9ED99A';
+  static String get water => AppColors.isDark ? '#1E66A6' : '#7EC3F4';
+
+  /// 땅 용도 구역: 학교(청록), 병원(장밋빛), 상가(남색·하늘색).
+  static String get zoneSchool => AppColors.isDark ? '#1E4F5D' : '#CFEFE3';
+  static String get zoneHospital => AppColors.isDark ? '#552D42' : '#FFD7DD';
+  static String get zoneShop => AppColors.isDark ? '#2D3E69' : '#D6E6FF';
+  static String get expressway => AppColors.isDark ? '#8EA0C4' : '#DDE8FF';
+  static String get arterial => AppColors.isDark ? '#6C7A96' : '#FFFFFF';
+  static String get collector => AppColors.isDark ? '#525E75' : '#FFFFFF';
+  static String get local => AppColors.isDark ? '#404A5D' : '#FFFFFF';
+  static String get alley => AppColors.isDark ? '#323A4A' : '#FFFFFF';
+  static String get casing => AppColors.isDark ? '#121722' : '#B9C3D3';
+  static String get subway5 => AppColors.isDark ? '#A98DF6' : '#8E6CF0';
   static String get subway9 => AppColors.isDark ? '#D6AF55' : '#D6AF55';
-  static String get labelDistrict => AppColors.isDark ? '#DCE2EA' : '#3A434C';
-  static String get labelPlace => AppColors.isDark ? '#CAD2DC' : '#4F5761';
-  static String get labelDong => AppColors.isDark ? '#A9B4C2' : '#646D77';
-  static String get labelRoad => AppColors.isDark ? '#909BAB' : '#7D8791';
-  static String get labelWater => AppColors.isDark ? '#7BAFDD' : '#4A7FB5';
-  static String get labelHalo => AppColors.isDark ? '#181D26' : '#FFFFFF';
+  static String get labelDistrict => AppColors.isDark ? '#E6EBF2' : '#1F2933';
+  static String get labelPlace => AppColors.isDark ? '#CFD6E0' : '#33404D';
+  static String get labelDong => AppColors.isDark ? '#ADB8C8' : '#4A5663';
+  static String get labelRoad => AppColors.isDark ? '#A8B3C4' : '#5E6B78';
+  static String get labelWater => AppColors.isDark ? '#88C9F8' : '#1E6FB8';
+  static String get labelHalo => AppColors.isDark ? '#192030' : '#FFFFFF';
 
   static const poiPark = Color(0xFF3E9A5C);
   static const poiSchool = Color(0xFF4A7FC4);
@@ -2468,6 +2476,29 @@ String _runneryMapStyle(double routeWidth, [double routeOpacity = 1]) {
         'type': 'background',
         'paint': {'background-color': MapPalette.land},
       },
+      // 땅 용도 구역은 공원·물·건물보다 아래에 깝니다.
+      for (final (id, classes, color) in [
+        (
+          'school',
+          ['school', 'university', 'college', 'kindergarten'],
+          MapPalette.zoneSchool,
+        ),
+        ('hospital', ['hospital'], MapPalette.zoneHospital),
+        ('shop', ['commercial', 'retail'], MapPalette.zoneShop),
+      ])
+        fill(
+          'zone-$id',
+          'landuse',
+          color,
+          filter: [
+            'match',
+            ['get', 'class'],
+            classes,
+            true,
+            false,
+          ],
+          minzoom: MapZoom.overview,
+        ),
       fill('park', 'park', MapPalette.park),
       fill(
         'landcover-green',

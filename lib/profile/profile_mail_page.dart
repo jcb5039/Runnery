@@ -17,6 +17,7 @@ import '../record/list/record_list_page.dart';
 import '../record/list/detail/record_detail_page.dart' show RecordRouteMap;
 import 'edit/profile_edit_page.dart';
 import 'setting/change_password_page.dart';
+import 'setting/delete_account_page.dart';
 import 'setting/profile_setting.dart';
 
 /// 로그인한 계정(AccountStore)과 저장된 러닝 기록(RunningRecordStore)을 보여주는 내 정보.
@@ -84,9 +85,9 @@ class _ProfileMailPageState extends State<ProfileMailPage> {
 
   void _changePassword() {
     if (_account.isSocial) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('카카오·구글로 가입한 계정은 비밀번호가 없어요')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('소셜 계정으로 가입해서 비밀번호가 없어요')));
       return;
     }
     Navigator.of(context).push<void>(
@@ -121,6 +122,12 @@ class _ProfileMailPageState extends State<ProfileMailPage> {
     } finally {
       navigator.pop();
     }
+  }
+
+  void _deleteAccount() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => DeleteAccountPage(store: _account)),
+    );
   }
 
   /// 실수로 눌러도 바로 로그아웃되지 않게 한 번 더 묻습니다.
@@ -248,6 +255,7 @@ class _ProfileMailPageState extends State<ProfileMailPage> {
                           onEditProfile: _editProfile,
                           onChangePassword: _changePassword,
                           onLogout: widget.onLogout ?? _logout,
+                          onDeleteAccount: _deleteAccount,
                         ),
                       ),
                     ),

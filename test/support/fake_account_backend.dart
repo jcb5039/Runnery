@@ -33,7 +33,10 @@ class FakeAccountBackend implements AccountBackend {
     uid: u.uid,
     email: u.email,
     emailVerified: u.verified,
-    social: u.uid.startsWith('kakao:') || _google.contains(u.uid),
+    social:
+        u.uid.startsWith('kakao:') ||
+        u.uid.startsWith('naver:') ||
+        _google.contains(u.uid),
   );
 
   /// 인증 메일의 링크를 누른 것처럼 처리합니다.
@@ -83,6 +86,19 @@ class FakeAccountBackend implements AccountBackend {
 
   /// 구글로 가입한 계정(uid). 비밀번호가 없는 소셜 계정으로 봅니다.
   final Set<String> _google = {};
+
+  /// 네이버 로그인 결과로 쓸 네이버 회원번호. null이면 사용자가 로그인 화면을 닫은 것으로 봅니다.
+  String? naverId = 'n-3003';
+
+  @override
+  Future<BackendUser?> signInWithNaver() async {
+    final id = naverId;
+    if (id == null) return null;
+    final key = 'naver:$id';
+    final user = _users[key] ??= _FakeUser(key, '', '', false);
+    _current = user;
+    return _view(user);
+  }
 
   /// 카카오 로그인 결과로 쓸 카카오 회원번호. null이면 사용자가 로그인 창을 닫은 것으로 봅니다.
   String? kakaoId = '1001';
@@ -168,10 +184,76 @@ class FakeAccountBackend implements AccountBackend {
   Future<void> deleteUser() async {
     final user = _current;
     if (user != null) {
-      _users.remove(user.email);
+      _users.removeWhere((_, u) => u == user);
       _profiles.remove(user.uid);
       _ids.removeWhere((_, uid) => uid == user.uid);
     }
     _current = null;
   }
+
+  /// true면 룸메이트 이름 저장이 인터넷이 없는 것처럼 실패합니다.
+  bool failMateName = false;
+
+  @override
+  Future<void> updateMateName(String uid, String name) async {
+    if (failMateName) throw const AuthException('인터넷 연결을 확인해주세요');
+    _profiles[uid] = {...?_profiles[uid], 'mateName': name};
+  }
+
+  /// 서버에 저장된 룸메이트 이름(확인용).
+  String? mateNameOf(String uid) => _profiles[uid]?['mateName'] as String?;
+
+  @override
+  LoginMethod? get loginMethod {
+    final user = _current;
+    if (user == null) return null;
+    if (user.uid.startsWith('kakao:')) return LoginMethod.kakao;
+    if (user.uid.startsWith('naver:')) return LoginMethod.naver;
+    if (_google.contains(user.uid)) return LoginMethod.google;
+    return LoginMethod.email;
+  }
+
+  /// true면 탈퇴 때 소셜 로그인 화면을 닫은 것으로 봅니다.
+  bool cancelReauth = false;
+
+  /// 탈퇴 때 다시 로그인한 계정이 다른 계정인 것으로 봅니다.
+  bool reauthOtherAccount = false;
+
+  /// true면 서버가 탈퇴 처리에 실패한 것으로 봅니다(인터넷 끊김 등).
+  bool failDeleteAccount = false;
+
+  /// 탈퇴한 계정(uid).
+  final List<String> deletedAccounts = [];
+
+  @override
+  Future<bool> deleteAccount({String? password}) async {
+    final user = _current;
+    final method = loginMethod;
+    if (user == null || method == null) {
+      throw const AuthException('로그인이 필요해요');
+    }
+    if (method == LoginMethod.email) {
+      if (password == null || password.isEmpty) {
+        throw const AuthException('비밀번호를 입력해주세요');
+      }
+      if (password != user.password) {
+        throw const AuthException('비밀번호가 맞지 않아요');
+      }
+    } else {
+      if (cancelReauth) return false;
+      if (reauthOtherAccount) {
+        throw const AuthException('가입한 계정으로 로그인해주세요');
+      }
+    }
+    if (failDeleteAccount) {
+      throw const AuthException('탈퇴하지 못했어요. 다시 시도해주세요');
+    }
+    deletedAccounts.add(user.uid);
+    _google.remove(user.uid);
+    await deleteUser();
+    return true;
+  }
+
+  /// 서버에 이 계정의 프로필이 남아 있는지(탈퇴 확인용).
+  bool hasProfile(String uid) => _profiles.containsKey(uid);
 }

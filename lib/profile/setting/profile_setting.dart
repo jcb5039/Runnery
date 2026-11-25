@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../design_system/app_colors.dart';
+import '../../friends/friends_feature.dart';
 import '../../friends/share/record_visibility_page.dart';
 import '../../home/running/calorie_quest.dart';
+import '../../home/running/running_start_page.dart' show RunningConfig;
 
 /// 러닝 설정. 기기에 저장되어 앱을 다시 켜도 유지되고, 러닝 시작 화면의 기본값으로 쓰입니다.
 class ProfileSettings extends ChangeNotifier {
@@ -113,6 +115,7 @@ class ProfileSettingPage extends StatelessWidget {
     this.onLogout,
     this.onEditProfile,
     this.onChangePassword,
+    this.onDeleteAccount,
   });
   final ProfileSettings settings;
   final VoidCallback? onLogout;
@@ -122,6 +125,9 @@ class ProfileSettingPage extends StatelessWidget {
 
   /// '비밀번호 변경'. 없으면 준비 중 안내를 띄웁니다.
   final VoidCallback? onChangePassword;
+
+  /// '회원 탈퇴'. 없으면 준비 중 안내를 띄웁니다.
+  final VoidCallback? onDeleteAccount;
 
   void _pending(BuildContext context, String label) {
     ScaffoldMessenger.of(context)
@@ -205,12 +211,13 @@ class ProfileSettingPage extends StatelessWidget {
                   settings.voice,
                   (v) => settings.update(() => settings.voice = v),
                 ),
-                _toggle(
-                  '자동 일시정지',
-                  '멈춰 서면 기록을 잠시 멈춰요',
-                  settings.autoPause,
-                  (v) => settings.update(() => settings.autoPause = v),
-                ),
+                if (RunningConfig.autoPauseAvailable)
+                  _toggle(
+                    '자동 일시정지',
+                    '멈춰 서면 기록을 잠시 멈춰요',
+                    settings.autoPause,
+                    (v) => settings.update(() => settings.autoPause = v),
+                  ),
                 _toggle(
                   '칼로리 퀘스트',
                   '태운 칼로리를 간식 단계로 보여줘요',
@@ -269,14 +276,15 @@ class ProfileSettingPage extends StatelessWidget {
                   '개인 정보 수정',
                   onTap: onEditProfile ?? () => _pending(context, '개인 정보 수정'),
                 ),
-                _row(
-                  '기록 공개 설정',
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const RecordVisibilityPage(),
+                if (FriendsFeature.available)
+                  _row(
+                    '기록 공개 설정',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const RecordVisibilityPage(),
+                      ),
                     ),
                   ),
-                ),
                 // 시안의 '알림'은 켜고 끌 알림 설정이 생기면 넣습니다.
                 _row(
                   '비밀번호 변경',
@@ -299,7 +307,22 @@ class ProfileSettingPage extends StatelessWidget {
                       ),
                       child: const Text('로그아웃'),
                     ),
-                    // '회원 탈퇴'는 기능을 만들 때 '로그아웃 | 회원 탈퇴'로 넣습니다.
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text(
+                        '|',
+                        style: TextStyle(color: AppColors.textTertiary),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed:
+                          onDeleteAccount ?? () => _pending(context, '회원 탈퇴'),
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        foregroundColor: AppColors.textTertiary,
+                      ),
+                      child: const Text('회원 탈퇴'),
+                    ),
                   ],
                 ),
               ],

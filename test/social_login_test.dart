@@ -150,4 +150,21 @@ void main() {
     expect(find.byType(BasicInfoPage), findsOneWidget);
     expect(find.text('EMAIL'), findsNothing);
   });
+
+  test('네이버 처음 로그인: 가입 단계를 마치면 로그인되고 이메일은 비워 둬요', () async {
+    final store = open();
+    expect(await store.loginWithNaver(), SocialLoginResult.needsProfile);
+    expect(store.isSocial, isTrue);
+    await store.completeSocialProfile(profile);
+    expect(store.isLoggedIn, isTrue);
+    expect(store.current?.email, '');
+
+    await store.logout();
+    expect(await open().loginWithNaver(), SocialLoginResult.loggedIn);
+  });
+
+  test('네이버 로그인 화면을 닫으면 아무 일도 없어요', () async {
+    backend.naverId = null;
+    expect(await open().loginWithNaver(), SocialLoginResult.cancelled);
+  });
 }
