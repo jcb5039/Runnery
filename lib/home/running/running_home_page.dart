@@ -1727,14 +1727,14 @@ abstract final class MapZoom {
   /// 개요: + 보조간선·지하철 노선·구 이름·강 이름
   static const overview = 12.5;
 
-  /// 기본: + 건물·생활도로·역·장소·도로 이름 (러닝 중·결과·상세)
+  /// 기본: + 건물·생활도로·역·장소·도로 이름 (결과·상세)
   static const basic = 13.5;
 
-  /// 상세: + 골목·아파트·주차장·쇼핑 (러닝 시작·지도 크게 보기)
+  /// 상세: + 골목·아파트·주차장·쇼핑 (러닝 시작·러닝 중·지도 크게 보기)
   static const detail = 14.5;
 
   static const start = 14.5;
-  static const running = 14.0;
+  static const running = 14.5;
 }
 
 /// 경로 두께: 지도 상세·결과·상세 4.5 / 러닝 중 4 / 미리보기 3.
