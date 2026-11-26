@@ -377,10 +377,10 @@ class _QuestSummary extends StatelessWidget {
                 TextSpan(
                   text: '$number',
                   style: AppTextStyles.statHero.copyWith(
-                    fontSize: 64,
+                    fontSize: 48,
                     height: 1.1,
                     fontWeight: FontWeight.w800,
-                    letterSpacing: -2,
+                    letterSpacing: -1,
                     color: AppColors.textPrimary,
                   ),
                 ),
