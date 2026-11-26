@@ -82,6 +82,8 @@ void main() {
     final backend = FakeAccountBackend(autoVerify: false);
     final store = await prepare(tester, backend, loggedOut: true);
     await tester.pumpWidget(MaterialApp(home: LoginPageV2(store: store)));
+    await tester.tap(find.text('이메일로 로그인하기'));
+    await tester.pumpAndSettle();
     await tester.enterText(
       find.byType(TextFormField).at(0),
       'minji@example.com',
@@ -148,13 +150,19 @@ void main() {
       ),
     );
     // 실패를 숨기지 않고 이유를 보여 주며, 바로 다시 보낼 수 있습니다.
-    expect(find.textContaining('인증 메일을 보내지 못했어요: 인증 메일을 너무 자주'), findsOneWidget);
+    expect(
+      find.textContaining('인증 메일을 보내지 못했어요: 인증 메일을 너무 자주'),
+      findsOneWidget,
+    );
 
     await tester.tap(find.text('메일 다시 보내기'));
     await tester.pump();
     await tester.pump();
     expect(backend.verificationsSent, 0);
-    expect(find.textContaining('인증 메일을 보내지 못했어요: 인증 메일을 너무 자주'), findsOneWidget);
+    expect(
+      find.textContaining('인증 메일을 보내지 못했어요: 인증 메일을 너무 자주'),
+      findsOneWidget,
+    );
     await clearSnackBars(tester);
 
     backend.failSendVerification = false;
@@ -174,6 +182,8 @@ void main() {
     final backend = FakeAccountBackend();
     final store = await prepare(tester, backend, loggedOut: true);
     await tester.pumpWidget(MaterialApp(home: LoginPageV2(store: store)));
+    await tester.tap(find.text('이메일로 로그인하기'));
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('비밀번호 찾기'));
     await tester.tap(find.text('비밀번호 찾기'));
     await tester.pumpAndSettle();
@@ -195,7 +205,11 @@ void main() {
     final store = await prepare(tester, FakeAccountBackend(), loggedOut: true);
     await tester.pumpWidget(
       MaterialApp(
-        home: AccountPage(name: '박서준', email: 'seojun@example.com', store: store),
+        home: AccountPage(
+          name: '박서준',
+          email: 'seojun@example.com',
+          store: store,
+        ),
       ),
     );
     Future<void> fill(String id) async {

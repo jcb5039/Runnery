@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:runnery_new/account/account_store.dart';
 import 'package:runnery_new/login/auth_ui/auth_ui.dart';
+import 'package:runnery_new/login/login.dart';
 import 'package:runnery_new/login/sign_up/account.dart';
 import 'package:runnery_new/login/sign_up/basic_info.dart';
 import 'package:runnery_new/login/sign_up/sign_up_choice.dart';
@@ -166,5 +167,33 @@ void main() {
   test('네이버 로그인 화면을 닫으면 아무 일도 없어요', () async {
     backend.naverId = null;
     expect(await open().loginWithNaver(), SocialLoginResult.cancelled);
+  });
+
+  testWidgets('로그인 첫 화면: 소셜 버튼 4개, 카카오는 처음이면 가입 단계로, Apple은 준비 중', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = await tester.runAsync(() async => open());
+    await tester.pumpWidget(MaterialApp(home: LoginPageV2(store: store)));
+
+    for (final label in ['Apple로 로그인', '카카오로 로그인', '네이버로 로그인', 'Google로 로그인']) {
+      expect(find.text(label), findsOneWidget);
+    }
+    expect(find.text('이메일로 로그인하기'), findsOneWidget);
+    expect(find.text('회원가입'), findsOneWidget);
+    // 이메일·비밀번호 칸은 이메일 로그인 화면으로 옮겼어요.
+    expect(find.byType(TextFormField), findsNothing);
+
+    await tester.tap(find.text('Apple로 로그인'));
+    await tester.pump();
+    expect(find.text('Apple 로그인은 준비 중이에요'), findsOneWidget);
+
+    await tester.tap(find.text('카카오로 로그인'));
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pumpAndSettle();
+    expect(find.byType(BasicInfoPage), findsOneWidget);
   });
 }

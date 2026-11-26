@@ -31,77 +31,12 @@ class SignUpChoicePage extends StatefulWidget {
 }
 
 class _SignUpChoicePageState extends State<SignUpChoicePage> {
-  late final AccountStore _store = widget.store ?? AccountStore.instance;
-  bool _busy = false;
-
-  /// 아직 연결 전인 소셜 로그인은 안내만 띄웁니다.
-  void _notReady(BuildContext context, String name) =>
-      _message(context, '$name 로그인은 준비 중이에요');
-
-  void _message(BuildContext context, String text) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
-
   Future<void> _email(BuildContext context) async {
     final result = await Navigator.push<RegistrationData>(
       context,
       MaterialPageRoute(builder: (_) => BasicInfoPage(store: widget.store)),
     );
     if (context.mounted && result != null) Navigator.pop(context, result);
-  }
-
-  /// 카카오·구글로 시작하기: 이미 가입한 계정이면 바로 로그인, 처음이면 가입 단계를 받습니다.
-  Future<void> _social(
-    BuildContext context,
-    String name,
-    Future<SocialLoginResult> Function() login,
-  ) async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    try {
-      final result = await login();
-      if (!context.mounted) return;
-      switch (result) {
-        case SocialLoginResult.cancelled:
-          return;
-        case SocialLoginResult.loggedIn:
-          Navigator.pop(context, const SocialSignedIn());
-        case SocialLoginResult.needsProfile:
-          await _socialProfile(context);
-      }
-    } on AuthException catch (e) {
-      if (context.mounted) _message(context, e.message);
-    } catch (_) {
-      if (context.mounted) _message(context, '$name 로그인을 하지 못했어요. 다시 시도해주세요');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  /// 소셜 로그인으로 처음 들어온 사람: 이름 → 아이디 → 나이·성별·체중을 받고 프로필을 만듭니다.
-  /// 중간에 나가거나 저장하지 못하면 로그인을 풀어 처음 상태로 돌립니다.
-  Future<void> _socialProfile(BuildContext context) async {
-    final data = await Navigator.push<RegistrationData>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => BasicInfoPage(store: widget.store, social: true),
-      ),
-    );
-    if (data == null) {
-      await _store.cancelSocialSignUp();
-      return;
-    }
-    try {
-      await _store.completeSocialProfile(data);
-      if (context.mounted) Navigator.pop(context, const SocialSignedIn());
-    } catch (e) {
-      await _store.cancelSocialSignUp();
-      if (context.mounted) {
-        _message(
-          context,
-          e is AuthException ? e.message : '가입하지 못했어요. 다시 시도해주세요',
-        );
-      }
-    }
   }
 
   @override
@@ -146,43 +81,14 @@ class _SignUpChoicePageState extends State<SignUpChoicePage> {
       ],
     ),
     actions: Builder(
-      // 안내 메시지를 띄울 때 이 화면의 Scaffold를 찾도록 안쪽 context를 씁니다.
+      // 이메일 가입 화면을 띄울 때 이 화면의 Navigator를 쓰도록 안쪽 context를 씁니다.
       builder: (inner) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _SocialButton(
-            label: 'Apple로 시작하기',
-            icon: Icon(Icons.apple, size: 20, color: AppColors.textPrimary),
-            onPressed: () => _notReady(inner, 'Apple'),
-          ),
-          const SizedBox(height: 12),
-          _SocialButton(
-            label: '카카오로 시작하기',
-            icon: const Icon(Icons.chat_bubble, size: 18, color: _kakaoText),
-            background: _kakaoYellow,
-            foreground: _kakaoText,
-            onPressed: () => _social(inner, '카카오', _store.loginWithKakao),
-          ),
-          const SizedBox(height: 12),
-          _SocialButton(
-            label: '네이버로 시작하기',
-            icon: const Text(
-              'N',
-              style: TextStyle(
-                fontFamily: 'Archivo',
-                fontSize: 18,
-                height: 1,
-                fontWeight: FontWeight.w900,
-                color: _naverGreen,
-              ),
-            ),
-            onPressed: () => _social(inner, '네이버', _store.loginWithNaver),
-          ),
-          const SizedBox(height: 12),
-          _SocialButton(
-            label: 'Google로 시작하기',
-            icon: const CustomPaint(size: Size(18, 18), painter: _GoogleLogo()),
-            onPressed: () => _social(inner, '구글', _store.loginWithGoogle),
+          SocialLoginButtons(
+            verb: '시작하기',
+            store: widget.store,
+            onSignedIn: () => Navigator.pop(inner, const SocialSignedIn()),
           ),
           const SizedBox(height: 20),
           Center(
@@ -204,6 +110,132 @@ class _SignUpChoicePageState extends State<SignUpChoicePage> {
         ],
       ),
     ),
+  );
+}
+
+/// Apple·카카오·네이버·Google 버튼 4개. 로그인 화면('~로 로그인')과 회원가입 화면('~로 시작하기')이 함께 씁니다.
+/// 이미 가입한 계정이면 바로 로그인하고, 처음이면 이름·아이디·신체 정보를 받아 가입한 뒤 [onSignedIn]을 부릅니다.
+class SocialLoginButtons extends StatefulWidget {
+  const SocialLoginButtons({
+    super.key,
+    required this.verb,
+    required this.onSignedIn,
+    this.store,
+  });
+
+  /// 버튼 문구 끝말. 예: '로그인' → 'Apple로 로그인'.
+  final String verb;
+
+  /// 소셜 계정으로 로그인(또는 가입)을 마쳤을 때.
+  final VoidCallback onSignedIn;
+
+  /// 기본값은 AccountStore.instance.
+  final AccountStore? store;
+
+  @override
+  State<SocialLoginButtons> createState() => _SocialLoginButtonsState();
+}
+
+class _SocialLoginButtonsState extends State<SocialLoginButtons> {
+  late final AccountStore _store = widget.store ?? AccountStore.instance;
+  bool _busy = false;
+
+  /// 아직 연결 전인 소셜 로그인은 안내만 띄웁니다.
+  void _notReady(String name) => _message('$name 로그인은 준비 중이에요');
+
+  void _message(String text) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+
+  /// 이미 가입한 계정이면 바로 로그인, 처음이면 가입 단계를 받습니다.
+  Future<void> _social(
+    String name,
+    Future<SocialLoginResult> Function() login,
+  ) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final result = await login();
+      if (!mounted) return;
+      switch (result) {
+        case SocialLoginResult.cancelled:
+          return;
+        case SocialLoginResult.loggedIn:
+          widget.onSignedIn();
+        case SocialLoginResult.needsProfile:
+          await _socialProfile();
+      }
+    } on AuthException catch (e) {
+      if (mounted) _message(e.message);
+    } catch (_) {
+      if (mounted) _message('$name 로그인을 하지 못했어요. 다시 시도해주세요');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// 소셜 로그인으로 처음 들어온 사람: 이름 → 아이디 → 나이·성별·체중을 받고 프로필을 만듭니다.
+  /// 중간에 나가거나 저장하지 못하면 로그인을 풀어 처음 상태로 돌립니다.
+  Future<void> _socialProfile() async {
+    final data = await Navigator.push<RegistrationData>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BasicInfoPage(store: widget.store, social: true),
+      ),
+    );
+    if (data == null) {
+      await _store.cancelSocialSignUp();
+      return;
+    }
+    try {
+      await _store.completeSocialProfile(data);
+      if (mounted) widget.onSignedIn();
+    } catch (e) {
+      await _store.cancelSocialSignUp();
+      if (mounted) {
+        _message(e is AuthException ? e.message : '가입하지 못했어요. 다시 시도해주세요');
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _SocialButton(
+        label: 'Apple로 ${widget.verb}',
+        icon: Icon(Icons.apple, size: 20, color: AppColors.textPrimary),
+        onPressed: () => _notReady('Apple'),
+      ),
+      const SizedBox(height: 12),
+      _SocialButton(
+        label: '카카오로 ${widget.verb}',
+        icon: const Icon(Icons.chat_bubble, size: 18, color: _kakaoText),
+        background: _kakaoYellow,
+        foreground: _kakaoText,
+        onPressed: () => _social('카카오', _store.loginWithKakao),
+      ),
+      const SizedBox(height: 12),
+      _SocialButton(
+        label: '네이버로 ${widget.verb}',
+        icon: const Text(
+          'N',
+          style: TextStyle(
+            fontFamily: 'Archivo',
+            fontSize: 18,
+            height: 1,
+            fontWeight: FontWeight.w900,
+            color: _naverGreen,
+          ),
+        ),
+        onPressed: () => _social('네이버', _store.loginWithNaver),
+      ),
+      const SizedBox(height: 12),
+      _SocialButton(
+        label: 'Google로 ${widget.verb}',
+        icon: const CustomPaint(size: Size(18, 18), painter: _GoogleLogo()),
+        onPressed: () => _social('구글', _store.loginWithGoogle),
+      ),
+    ],
   );
 }
 
