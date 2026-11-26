@@ -4,6 +4,7 @@ import 'package:runnery_new/friends/data/friend_store.dart';
 import 'package:runnery_new/friends/data/together_store.dart';
 import 'package:runnery_new/friends/friends_feature.dart';
 import 'package:runnery_new/hamster/hamster_room_page.dart';
+import 'package:runnery_new/hamster/roommate_feature.dart';
 import 'package:runnery_new/home/home_page.dart';
 import 'package:runnery_new/home/main_tabs.dart';
 import 'package:runnery_new/record/list/record_list_page.dart';
@@ -55,7 +56,26 @@ void main() {
     expect(find.byType(HomePageV2), findsNothing);
     expect(find.byType(HamsterRoomPage), findsNothing);
     expect(tester.takeException(), isNull);
-  }, skip: FriendsFeature.available);
+  }, skip: FriendsFeature.available || !RoommateFeature.available);
+
+  testWidgets('roommate tab is hidden while the feature is off', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(const MaterialApp(home: MainTabs()));
+    await tester.pump();
+
+    expect(find.text('룸메이트'), findsNothing);
+    expect(find.byType(HamsterRoomPage, skipOffstage: false), findsNothing);
+    // 마지막 탭인 내 정보로 가면 홈은 그려지지 않습니다.
+    await tester.tap(find.text('내 정보').last);
+    await tester.pump();
+    expect(find.byType(HomePageV2), findsNothing);
+    expect(tester.takeException(), isNull);
+  }, skip: RoommateFeature.available);
 
   testWidgets(
     'friend tab shows how many invites wait for an answer',
