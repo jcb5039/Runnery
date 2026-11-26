@@ -187,6 +187,10 @@ void main() {
     String password,
     Finder until,
   ) async {
+    // 로그인 첫 화면에서 '이메일로 로그인하기'를 눌러 이메일 로그인 화면으로 갑니다.
+    await tester.ensureVisible(find.text('이메일로 로그인하기'));
+    await tester.tap(find.text('이메일로 로그인하기'));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextFormField).at(0), email);
     await tester.enterText(find.byType(TextFormField).at(1), password);
     await tester.ensureVisible(find.text('로그인'));
@@ -227,7 +231,7 @@ void main() {
     );
     expect(find.text('이메일 또는 비밀번호가 맞지 않아요'), findsOneWidget);
     expect(find.byType(HomePageV2), findsNothing);
-    expect(find.byType(LoginPageV2), findsOneWidget);
+    expect(find.byType(EmailLoginPage), findsOneWidget);
     expect(store.isLoggedIn, isFalse);
   });
 }

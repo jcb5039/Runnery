@@ -6,13 +6,14 @@ import '../friends/friends_feature.dart';
 import '../friends/friends_page.dart';
 import '../friends/together/together_invite.dart';
 import '../hamster/hamster_room_page.dart';
+import '../hamster/roommate_feature.dart';
 import '../profile/profile_main_page.dart';
 import '../record/list/record_list_page.dart';
 import 'home_page.dart';
 
 /// 홈·기록·(친구)·룸메이트·내 정보 탭을 한 번만 만들어 두고 효과 없이 바로 바꿉니다.
-/// 룸메이트(캐릭터 탭)는 지금 시안 미리보기입니다.
-/// 친구 탭은 [FriendsFeature.available]이 켜져 있을 때만 있습니다(1차 출시는 꺼짐).
+/// 룸메이트(캐릭터 탭)는 시안 미리보기이고, [RoommateFeature.available]이 켜져 있을 때만 있습니다(지금은 숨김).
+/// 친구 탭은 [FriendsFeature.available]이 켜져 있을 때만 있습니다(지금은 켜짐, 탭 5개).
 /// 탭을 누를 때마다 화면(기록 읽기·지도)을 새로 만들지 않아 끊기지 않고,
 /// 안 보이는 탭은 그리지 않아 이전 탭의 지도가 남아 보이지 않습니다.
 /// 친구 기능이 켜져 있으면, 앱을 켜 둔 동안 친구가 함께 달리기 약속을 보낼 때 어느 탭에서든 창을 띄우고,
@@ -20,7 +21,7 @@ import 'home_page.dart';
 class MainTabs extends StatefulWidget {
   const MainTabs({super.key, this.initialIndex = 0});
 
-  /// 0 홈, 1 기록, 2 친구, 3 룸메이트, 4 내 정보. 친구 기능이 꺼져 있으면 0 홈, 1 기록, 2 룸메이트, 3 내 정보.
+  /// 0 홈, 1 기록, 2 친구, 3 룸메이트, 4 내 정보 순서이고, 꺼진 탭(친구·룸메이트)은 빠지며 뒤 번호가 당겨집니다.
   final int initialIndex;
 
   @override
@@ -34,7 +35,8 @@ class _MainTabsState extends State<MainTabs> {
     ('홈', Icons.home_outlined, null),
     ('기록', Icons.format_align_left, null),
     if (FriendsFeature.available) ('친구', Icons.people_outline, null),
-    ('룸메이트', Icons.meeting_room_outlined, 'assets/hamster/tab_room.png'),
+    if (RoommateFeature.available)
+      ('룸메이트', Icons.meeting_room_outlined, 'assets/hamster/tab_room.png'),
     ('내 정보', Icons.person_outline, null),
   ];
   static const _home = 0;
@@ -42,7 +44,10 @@ class _MainTabsState extends State<MainTabs> {
 
   /// 친구 탭 번호. 친구 기능이 꺼져 있으면 없는 번호(-1)입니다.
   static const _friends = FriendsFeature.available ? 2 : -1;
-  static const _profile = FriendsFeature.available ? 4 : 3;
+  static const _profile =
+      2 +
+      (FriendsFeature.available ? 1 : 0) +
+      (RoommateFeature.available ? 1 : 0);
 
   late int _index = widget.initialIndex;
 
@@ -61,7 +66,7 @@ class _MainTabsState extends State<MainTabs> {
       onProfile: () => _go(_profile),
     ),
     if (FriendsFeature.available) const FriendsPage(),
-    const HamsterRoomPage(),
+    if (RoommateFeature.available) const HamsterRoomPage(),
     ProfileMainPage(
       showNavigation: false,
       onHome: () => _go(_home),
