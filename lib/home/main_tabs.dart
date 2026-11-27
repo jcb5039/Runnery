@@ -4,6 +4,7 @@ import '../design_system/app_colors.dart';
 import '../friends/data/together_store.dart';
 import '../friends/friends_feature.dart';
 import '../friends/friends_page.dart';
+import '../friends/notifications/friend_request_banner.dart';
 import '../friends/together/together_invite.dart';
 import '../hamster/hamster_room_page.dart';
 import '../hamster/roommate_feature.dart';
@@ -109,7 +110,7 @@ class _MainTabsState extends State<MainTabs> {
             )
           : _TabBar(index: _index, onTap: _go),
       body: FriendsFeature.available
-          ? TogetherInviteListener(child: pages)
+          ? TogetherInviteListener(child: FriendRequestListener(child: pages))
           : pages,
     );
   }

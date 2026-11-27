@@ -11,6 +11,7 @@ import 'data/friend_store.dart';
 import 'feed/feed_card.dart';
 import 'feed/feed_menu.dart';
 import 'list/friend_list_page.dart';
+import 'notifications/friend_notifications_page.dart';
 import '../record/record_stats_page.dart' show PillTabs;
 import 'data/together_store.dart';
 import 'together/together_tab.dart';
@@ -46,6 +47,7 @@ enum _Tab {
 
 class _FriendsPageState extends State<FriendsPage> {
   FriendStore get _store => widget.store ?? FriendStore.instance;
+  TogetherStore get _together => widget.together ?? TogetherStore.instance;
 
   _Tab _tab = _Tab.feed;
 
@@ -56,6 +58,8 @@ class _FriendsPageState extends State<FriendsPage> {
   void initState() {
     super.initState();
     unawaited(_store.refresh());
+    // 알림 종의 빨간 점에 쓰는 함께 달리기 초대도 불러옵니다.
+    unawaited(_together.refresh());
   }
 
   Future<void> _open(Widget page) async {
@@ -63,6 +67,7 @@ class _FriendsPageState extends State<FriendsPage> {
         .push(MaterialPageRoute<void>(builder: (_) => page));
     // 다른 화면에서 수락·삭제한 결과를 다시 맞춥니다.
     unawaited(_store.refresh());
+    unawaited(_together.refresh());
   }
 
   Future<void> _cheer(FeedItem item, CheerType type) async {
@@ -75,6 +80,10 @@ class _FriendsPageState extends State<FriendsPage> {
 
   void _openAdd() => _open(FriendAddPage(store: widget.store));
   void _openList() => _open(FriendListPage(store: widget.store));
+
+  void _openNotifications() => _open(
+    FriendNotificationsPage(friends: widget.store, together: widget.together),
+  );
 
   void _openCalendar(FeedItem item) =>
       _open(FriendCalendarPage(friend: item.friend, store: widget.store));
@@ -151,7 +160,7 @@ class _FriendsPageState extends State<FriendsPage> {
     body: SafeArea(
       bottom: false,
       child: ListenableBuilder(
-        listenable: _store,
+        listenable: Listenable.merge([_store, _together]),
         builder: (context, _) => RefreshIndicator(
           onRefresh: _store.refresh,
           child: ListView(
@@ -214,6 +223,10 @@ class _FriendsPageState extends State<FriendsPage> {
             tooltip: '내 친구 목록',
             icon: const Icon(Icons.people_outline),
             onPressed: _openList,
+          ),
+          FriendNotificationBell(
+            count: _store.incoming.length + _together.requests.length,
+            onPressed: _openNotifications,
           ),
           IconButton(
             tooltip: '친구 추가',

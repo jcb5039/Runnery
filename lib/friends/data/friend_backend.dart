@@ -41,6 +41,9 @@ abstract class FriendBackend {
   /// 내가 친구 요청을 보낸 사람들의 uid.
   Future<List<String>> outgoing(String uid);
 
+  /// 나에게 친구 요청을 보낸 사람들의 uid를 계속 지켜봅니다. 앱을 켜 둔 동안 새 요청을 바로 알 수 있습니다.
+  Stream<List<String>> watchIncoming(String uid);
+
   Future<void> sendRequest(String from, String to);
   Future<void> cancelRequest(String from, String to);
 
@@ -254,6 +257,18 @@ class FirebaseFriendBackend implements FriendBackend {
 
   @override
   Future<List<String>> outgoing(String uid) => _requests('from', uid, 'to');
+
+  @override
+  Stream<List<String>> watchIncoming(String uid) => _db
+      .collection('friendRequests')
+      .where('to', isEqualTo: uid)
+      .snapshots()
+      .map(
+        (snapshot) => [
+          for (final doc in snapshot.docs)
+            if (doc.data()['from'] case final String id) id,
+        ],
+      );
 
   @override
   Future<void> sendRequest(String from, String to) => _run(
