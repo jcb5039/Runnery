@@ -15,8 +15,12 @@ class FakeFriendBackend implements FriendBackend {
   final Set<(String, String)> requests = {};
   final Map<String, Set<String>> friends = {};
   final Map<String, ShareSettings> shareSettings = {};
-  final Map<String, WeeklyGoal> goals = {};
-  final Map<String, RunStats> statsByUid = {};
+
+  /// 차단한 사람 uid → 그 사람이 차단한 uid.
+  final Map<String, Set<String>> blocks = {};
+
+  /// 올라온 신고.
+  final List<FriendReport> reports = [];
   final Map<String, Together> togetherById = {};
   final Map<String, StreamController<Together?>> _watchers = {};
   final _togethersChanged = StreamController<void>.broadcast();
@@ -88,10 +92,12 @@ class FakeFriendBackend implements FriendBackend {
   @override
   Future<void> sendRequest(String from, String to) async {
     _check();
-    // 서버 규칙처럼 이미 친구이거나 찾을 수 없는 사람에게는 보낼 수 없습니다.
+    // 서버 규칙처럼 이미 친구이거나 찾을 수 없거나, 어느 한쪽이 차단한 사람에게는 보낼 수 없습니다.
     if (from == to ||
         !profilesByUid.containsKey(to) ||
-        (friends[from]?.contains(to) ?? false)) {
+        (friends[from]?.contains(to) ?? false) ||
+        (blocks[to]?.contains(from) ?? false) ||
+        (blocks[from]?.contains(to) ?? false)) {
       throw const FriendException('권한이 없어요. 잠시 후 다시 시도해주세요');
     }
     requests.add((from, to));
@@ -171,6 +177,19 @@ class FakeFriendBackend implements FriendBackend {
   }
 
   @override
+  Future<List<FeedPost>> postsBetween(
+    String ownerUid,
+    DateTime from,
+    DateTime to,
+  ) async {
+    _check();
+    return [
+      for (final p in [...?postsByOwner[ownerUid]?.values])
+        if (!p.startedAt.isBefore(from) && p.startedAt.isBefore(to)) p,
+    ]..sort((a, b) => b.startedAt.compareTo(a.startedAt));
+  }
+
+  @override
   Future<Map<String, Set<CheerType>>> cheers(
     String ownerUid,
     String recordId,
@@ -196,27 +215,42 @@ class FakeFriendBackend implements FriendBackend {
   }
 
   @override
-  Future<WeeklyGoal?> readGoal(String uid) async {
+  Future<List<String>> blockedIds(String uid) async {
     _check();
-    return goals[uid];
+    return [...?blocks[uid]];
   }
 
   @override
-  Future<void> writeGoal(String uid, WeeklyGoal goal) async {
+  Future<void> block(
+    String me,
+    String other, {
+    bool incoming = false,
+    bool outgoing = false,
+  }) async {
     _check();
-    goals[uid] = goal;
+    // 서버 규칙처럼 없는 친구 요청을 지우려 하면 막힙니다.
+    if (incoming && !requests.contains((other, me)) ||
+        outgoing && !requests.contains((me, other))) {
+      throw const FriendException('권한이 없어요. 잠시 후 다시 시도해주세요');
+    }
+    (blocks[me] ??= {}).add(other);
+    friends[me]?.remove(other);
+    friends[other]?.remove(me);
+    requests
+      ..remove((other, me))
+      ..remove((me, other));
   }
 
   @override
-  Future<void> publishStats(String uid, RunStats stats) async {
+  Future<void> unblock(String me, String other) async {
     _check();
-    statsByUid[uid] = stats;
+    blocks[me]?.remove(other);
   }
 
   @override
-  Future<Map<String, RunStats>> stats(List<String> uids) async {
+  Future<void> report(FriendReport report) async {
     _check();
-    return {for (final uid in uids) uid: ?statsByUid[uid]};
+    reports.add(report);
   }
 
   /// 약속을 바꾸고, 지켜보는 대기실에 알립니다(다른 폰에서 바꾼 것처럼 테스트에서도 씁니다).

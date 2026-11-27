@@ -11,7 +11,7 @@ void main() {
 
   late FakeFriendBackend server;
   FriendStore storeFor(PublicProfile me) =>
-      FriendStore(backend: server, me: () => me, records: () async => const []);
+      FriendStore(backend: server, me: () => me);
 
   setUp(() => server = FakeFriendBackend());
 
@@ -95,11 +95,7 @@ void main() {
   });
 
   test('logged out store does nothing', () async {
-    final store = FriendStore(
-      backend: server,
-      me: () => null,
-      records: () async => const [],
-    );
+    final store = FriendStore(backend: server, me: () => null);
     await store.refresh();
     expect(store.friends, isEmpty);
     expect(server.profilesByUid, isEmpty);

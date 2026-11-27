@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import '../../design_system/app_colors.dart';
 import '../../design_system/app_spacing.dart';
-import '../../home/running/running_start_page.dart' show runningNumberStyle;
 import '../add/friend_add_page.dart';
 import '../data/friend_store.dart';
 import '../together/together_new_page.dart';
@@ -12,7 +11,8 @@ import '../widgets/friend_widgets.dart';
 
 enum _MenuAction { together, delete }
 
-/// 18-1 내 친구: 친구 목록과 이번 주 거리. 줄 오른쪽 버튼으로 친구를 삭제합니다(18-2).
+/// 18-1 내 친구: 친구 목록. 줄 오른쪽 버튼으로 친구를 삭제합니다(18-2).
+/// 아래쪽에 차단한 사람이 있으면 보여 주고, 차단을 풀 수 있습니다.
 class FriendListPage extends StatefulWidget {
   const FriendListPage({super.key, this.store});
 
@@ -69,6 +69,15 @@ class _FriendListPageState extends State<FriendListPage> {
     }
   }
 
+  Future<void> _unblock(PublicProfile person) async {
+    try {
+      await _store.unblock(person.uid);
+      if (mounted) showFriendMessage(context, '${person.name} 님 차단을 풀었어요');
+    } on FriendException catch (e) {
+      if (mounted) showFriendMessage(context, e.message);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: AppColors.background,
@@ -101,10 +110,7 @@ class _FriendListPageState extends State<FriendListPage> {
                 AppSpacing.space6,
               ),
               children: [
-                FriendSectionHeader(
-                  title: '친구 ${friends.length}명',
-                  meta: '이번 주 거리',
-                ),
+                FriendSectionHeader(title: '친구 ${friends.length}명'),
                 const SizedBox(height: 6),
                 if (friends.isEmpty)
                   _empty()
@@ -113,22 +119,39 @@ class _FriendListPageState extends State<FriendListPage> {
                     FriendRow(
                       person: person,
                       divider: i > 0,
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _WeekDistance(
-                            km: _store
-                                .statsOf(person.uid)
-                                ?.weekKmAt(_store.now),
-                          ),
-                          IconButton(
-                            tooltip: '${person.name} 님 관리',
-                            icon: const Icon(Icons.more_horiz),
-                            onPressed: () => _manage(person),
-                          ),
-                        ],
+                      trailing: IconButton(
+                        tooltip: '${person.name} 님 관리',
+                        icon: const Icon(Icons.more_horiz),
+                        onPressed: () => _manage(person),
                       ),
                     ),
+                if (_store.blocked.isNotEmpty) ...[
+                  const SizedBox(height: 32),
+                  FriendSectionHeader(
+                    title: '차단한 사람 ${_store.blocked.length}명',
+                  ),
+                  const SizedBox(height: 6),
+                  for (final (i, person) in _store.blocked.indexed)
+                    FriendRow(
+                      person: person,
+                      divider: i > 0,
+                      trailing: FriendPillButton(
+                        label: '차단 풀기',
+                        filled: false,
+                        semanticLabel: '${person.name} 님 차단 풀기',
+                        onPressed: () => _unblock(person),
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '차단을 풀어도 친구로 돌아오지 않아요. 다시 친구가 되려면 친구 요청을 보내 주세요.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.5,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                ],
               ],
             ),
           );
@@ -159,35 +182,6 @@ class _FriendListPageState extends State<FriendListPage> {
       ),
     );
   }
-}
-
-/// 친구의 이번 주 거리. 합계를 올린 적이 없으면 '–'.
-class _WeekDistance extends StatelessWidget {
-  const _WeekDistance({required this.km});
-
-  final double? km;
-
-  @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    crossAxisAlignment: CrossAxisAlignment.baseline,
-    textBaseline: TextBaseline.alphabetic,
-    children: [
-      Text(
-        km == null ? '–' : km!.toStringAsFixed(1),
-        style: runningNumberStyle(17, weight: FontWeight.w600),
-      ),
-      const SizedBox(width: 3),
-      Text(
-        'km',
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: AppColors.textSecondary,
-        ),
-      ),
-    ],
-  );
 }
 
 /// 친구를 눌렀을 때 뜨는 메뉴.
@@ -306,7 +300,7 @@ class _DeleteSheet extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            '상대에게 알림은 가지 않아요. 삭제하면 서로의 피드와 랭킹, 목표 비교에서 보이지 않아요.',
+            '상대에게 알림은 가지 않아요. 삭제하면 서로의 피드에서 보이지 않아요.',
             style: TextStyle(
               fontSize: 15,
               height: 1.5,
