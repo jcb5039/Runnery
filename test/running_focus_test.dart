@@ -39,6 +39,8 @@ void main() {
     // 시속 10.8km로 10초 넘게 달리면 집중 화면이에요.
     move(3, const Duration(seconds: 12));
     expect(session.runningFast, isTrue);
+    // 집중 화면의 '시속'은 최근 10초 동안 달린 거리로 계산해요.
+    expect(session.recentSpeedKmh, closeTo(10.8, 0.5));
 
     // 멈춰도 5초 동안은 그대로(깜빡임 방지)...
     move(0, const Duration(seconds: 7));
@@ -52,5 +54,6 @@ void main() {
     expect(session.runningFast, isTrue);
     session.pause();
     expect(session.runningFast, isFalse);
+    expect(session.recentSpeedKmh, isNull);
   });
 }
