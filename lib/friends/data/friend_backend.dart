@@ -18,6 +18,8 @@ class FriendException implements Exception {
 /// - `profiles/{uid}`: 친구 찾기용 공개 정보(이름·아이디·검색어). 인증을 마친 사람은 누구나 읽습니다.
 /// - `friendRequests/{보낸 uid}_{받는 uid}`: 친구 요청. 보낸 사람과 받는 사람만 봅니다.
 /// - `users/{uid}/friends/{친구 uid}`: 친구 목록. 수락할 때 양쪽에 함께 적고, 삭제할 때 함께 지웁니다.
+/// - `users/{uid}/blocks/{차단한 uid}`: 내가 차단한 사람. 나만 봅니다. 차단한 사람과는 친구 요청을 주고받지 못합니다.
+/// - `reports/{번호}`: 신고. 올리기만 하고 앱에서는 아무도 읽지 못합니다(Firebase 관리 화면에서 확인).
 /// - `together/{번호}/live/{uid}`: 함께 달리는 동안의 거리·시간·위치·지나간 길. 그 약속의 참여자만 보고,
 ///   달리기가 끝나면 본인이 지웁니다.
 abstract class FriendBackend {
@@ -49,6 +51,24 @@ abstract class FriendBackend {
   /// 양쪽 친구 목록에서 서로를 지웁니다. 상대에게 알림은 가지 않습니다.
   Future<void> removeFriend(String me, String friend);
 
+  /// 내가 차단한 사람들의 uid.
+  Future<List<String>> blockedIds(String uid);
+
+  /// [other]를 차단합니다. 친구였다면 양쪽 친구 목록에서 지우고, 주고받은 친구 요청도 지웁니다.
+  /// [incoming]은 [other]가 나에게 보낸 요청이, [outgoing]은 내가 보낸 요청이 있다는 뜻입니다.
+  Future<void> block(
+    String me,
+    String other, {
+    bool incoming = false,
+    bool outgoing = false,
+  });
+
+  /// 차단을 풉니다. 친구 관계는 돌아오지 않습니다.
+  Future<void> unblock(String me, String other);
+
+  /// 신고를 올립니다. 상대에게는 알려지지 않습니다.
+  Future<void> report(FriendReport report);
+
   /// 내 기록 공유 설정. 저장한 적이 없으면 기본값(자동 공유 꺼짐, 모든 항목 보임).
   Future<ShareSettings> readShareSettings(String uid);
   Future<void> writeShareSettings(String uid, ShareSettings settings);
@@ -65,6 +85,13 @@ abstract class FriendBackend {
   /// 한 사람이 공유한 기록. 최근에 달린 순서입니다.
   Future<List<FeedPost>> posts(String ownerUid, {int limit = 10});
 
+  /// 한 사람이 [from] 이후, [to] 전에 시작한 공유 기록(친구 달력). 최근에 달린 순서입니다.
+  Future<List<FeedPost>> postsBetween(
+    String ownerUid,
+    DateTime from,
+    DateTime to,
+  );
+
   /// 기록 하나에 받은 응원. 응원한 사람의 uid → 보낸 응원.
   Future<Map<String, Set<CheerType>>> cheers(String ownerUid, String recordId);
 
@@ -75,16 +102,6 @@ abstract class FriendBackend {
     String me,
     Set<CheerType> types,
   );
-
-  /// 내 주간 목표. 정한 적이 없으면 null. 나만 봅니다.
-  Future<WeeklyGoal?> readGoal(String uid);
-  Future<void> writeGoal(String uid, WeeklyGoal goal);
-
-  /// 랭킹·목표 비교용 합계를 올립니다. 친구만 읽습니다.
-  Future<void> publishStats(String uid, RunStats stats);
-
-  /// 여러 사람의 합계. 올린 적이 없는 사람은 빠집니다.
-  Future<Map<String, RunStats>> stats(List<String> uids);
 
   /// 내가 참여한 함께 달리기 약속들.
   Future<List<Together>> togethers(String uid);
@@ -148,17 +165,14 @@ class FirebaseFriendBackend implements FriendBackend {
   DocumentReference<Map<String, dynamic>> _shareSettings(String uid) =>
       _db.collection('users').doc(uid).collection('settings').doc('share');
 
-  DocumentReference<Map<String, dynamic>> _goal(String uid) =>
-      _db.collection('users').doc(uid).collection('settings').doc('goal');
+  CollectionReference<Map<String, dynamic>> _blocks(String uid) =>
+      _db.collection('users').doc(uid).collection('blocks');
 
   CollectionReference<Map<String, dynamic>> get _togethers =>
       _db.collection('together');
 
   CollectionReference<Map<String, dynamic>> _live(String id) =>
       _togethers.doc(id).collection('live');
-
-  DocumentReference<Map<String, dynamic>> _stats(String uid) =>
-      _db.collection('users').doc(uid).collection('stats').doc('summary');
 
   /// 서버 오류를 화면에 보여 줄 한국어 안내로 바꿉니다.
   static FriendException _error(Object e, String fallback) {
@@ -277,6 +291,46 @@ class FirebaseFriendBackend implements FriendBackend {
               ..delete(_friends(friend).doc(me)))
             .commit(),
     '삭제하지 못했어요. 다시 시도해주세요',
+  );
+
+  @override
+  Future<List<String>> blockedIds(String uid) => _run(() async {
+    final snapshot = await _blocks(uid).get();
+    return [for (final doc in snapshot.docs) doc.id];
+  }, '차단 목록을 불러오지 못했어요');
+
+  @override
+  Future<void> block(
+    String me,
+    String other, {
+    bool incoming = false,
+    bool outgoing = false,
+  }) => _run(() {
+    final batch = _db.batch()
+      ..set(_blocks(me).doc(other), {'since': FieldValue.serverTimestamp()})
+      ..delete(_friends(me).doc(other))
+      ..delete(_friends(other).doc(me));
+    // 없는 요청을 지우면 서버 규칙에 막히므로, 있는 것만 지웁니다.
+    if (incoming) batch.delete(_request(other, me));
+    if (outgoing) batch.delete(_request(me, other));
+    return batch.commit();
+  }, '차단하지 못했어요. 다시 시도해주세요');
+
+  @override
+  Future<void> unblock(String me, String other) =>
+      _run(() => _blocks(me).doc(other).delete(), '차단을 풀지 못했어요');
+
+  @override
+  Future<void> report(FriendReport report) => _run(
+    () => _db.collection('reports').add({
+      'reporter': report.reporter,
+      'target': report.target,
+      'reason': report.reason.name,
+      if (report.detail.trim().isNotEmpty) 'detail': report.detail.trim(),
+      'recordId': ?report.recordId,
+      'createdAt': FieldValue.serverTimestamp(),
+    }),
+    '신고하지 못했어요. 다시 시도해주세요',
   );
 
   @override
@@ -406,6 +460,22 @@ class FirebaseFriendBackend implements FriendBackend {
   );
 
   @override
+  Future<List<FeedPost>> postsBetween(
+    String ownerUid,
+    DateTime from,
+    DateTime to,
+  ) => _run(() async {
+    final snapshot = await _posts(ownerUid)
+        .where('startedAt', isGreaterThanOrEqualTo: Timestamp.fromDate(from))
+        .where('startedAt', isLessThan: Timestamp.fromDate(to))
+        .orderBy('startedAt', descending: true)
+        .get();
+    return [
+      for (final doc in snapshot.docs) ?_toPost(ownerUid, doc.id, doc.data()),
+    ];
+  }, '친구 기록을 불러오지 못했어요');
+
+  @override
   Future<Map<String, Set<CheerType>>> cheers(
     String ownerUid,
     String recordId,
@@ -437,55 +507,6 @@ class FirebaseFriendBackend implements FriendBackend {
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }, '응원을 보내지 못했어요');
-
-  @override
-  Future<WeeklyGoal?> readGoal(String uid) => _run(() async {
-    final data = (await _goal(uid).get()).data();
-    final km = data?['km'];
-    if (km is! num) return null;
-    return WeeklyGoal(km: km.toInt(), public: data?['public'] != false);
-  }, '목표를 불러오지 못했어요');
-
-  @override
-  Future<void> writeGoal(String uid, WeeklyGoal goal) => _run(
-    () => _goal(uid).set({'km': goal.km, 'public': goal.public}),
-    '목표를 저장하지 못했어요',
-  );
-
-  @override
-  Future<void> publishStats(String uid, RunStats stats) => _run(
-    () => _stats(uid).set({
-      'weekStart': stats.weekStart,
-      'weekKm': stats.weekKm,
-      'weekRuns': stats.weekRuns,
-      'monthKey': stats.monthKey,
-      'monthKm': stats.monthKm,
-      'goalKm': ?stats.goalKm,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }),
-    '랭킹 정보를 올리지 못했어요',
-  );
-
-  static RunStats? _toStats(Map<String, dynamic>? d) {
-    final week = d?['weekStart'], month = d?['monthKey'];
-    if (week is! String || month is! String) return null;
-    return RunStats(
-      weekStart: week,
-      monthKey: month,
-      weekKm: (d?['weekKm'] as num?)?.toDouble() ?? 0,
-      weekRuns: (d?['weekRuns'] as num?)?.toInt() ?? 0,
-      monthKm: (d?['monthKm'] as num?)?.toDouble() ?? 0,
-      goalKm: (d?['goalKm'] as num?)?.toInt(),
-    );
-  }
-
-  @override
-  Future<Map<String, RunStats>> stats(List<String> uids) => _run(() async {
-    final docs = await Future.wait(uids.map((uid) => _stats(uid).get()));
-    return {
-      for (final (i, doc) in docs.indexed) uids[i]: ?_toStats(doc.data()),
-    };
-  }, '랭킹 정보를 불러오지 못했어요');
 
   static Together? _toTogether(String id, Map<String, dynamic>? d) {
     final host = d?['host'], startsAt = d?['startsAt'];

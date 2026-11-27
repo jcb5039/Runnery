@@ -13,17 +13,21 @@ import '../widgets/friend_widgets.dart';
 
 /// 17 친구 피드 카드: 친구, 달린 시각·장소, 경로 모양, 거리와 고른 항목, 응원 버튼.
 /// 내가 공유한 기록은 [onCheer] 없이 받은 응원 수와 응원한 친구만 보여 줍니다(내 기록에는 응원할 수 없음).
+/// 친구 기록은 이름을 누르면 친구 달력([onOpenFriend])이, '더보기'를 누르면 신고·차단([onMore])이 열립니다.
 class FeedCard extends StatelessWidget {
   const FeedCard({
     super.key,
     required this.item,
     required this.onCheer,
+    this.onOpenFriend,
+    this.onMore,
     this.divider = true,
     this.now,
   });
 
   final FeedItem item;
   final ValueChanged<CheerType>? onCheer;
+  final VoidCallback? onOpenFriend, onMore;
   final bool divider;
 
   /// 테스트에서만 넣습니다. '오늘·어제'를 정하는 기준 시각.
@@ -53,33 +57,59 @@ class FeedCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                FriendAvatar(initial: item.friend.initial),
-                const SizedBox(width: 12),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.friend.name,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                        ),
+                  child: Semantics(
+                    container: true,
+                    button: onOpenFriend != null,
+                    label: onOpenFriend == null
+                        ? null
+                        : '${item.friend.name} 님 러닝 달력 보기',
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: onOpenFriend,
+                      child: Row(
+                        children: [
+                          FriendAvatar(initial: item.friend.initial),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item.friend.name,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  meta,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppColors.textTertiary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        meta,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: AppColors.textTertiary,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
+                if (onMore case final more?)
+                  IconButton(
+                    tooltip: '${item.friend.name} 님 더보기 · 신고 · 차단',
+                    icon: Icon(
+                      Icons.more_horiz,
+                      color: AppColors.textSecondary,
+                    ),
+                    onPressed: more,
+                  ),
               ],
             ),
             const SizedBox(height: 14),
@@ -419,11 +449,16 @@ class FeedSection extends StatelessWidget {
     super.key,
     required this.items,
     required this.onCheer,
+    this.onOpenFriend,
+    this.onMore,
     this.error,
   });
 
   final List<FeedItem> items;
   final void Function(FeedItem, CheerType)? onCheer;
+
+  /// 친구 이름을 눌렀을 때(친구 달력)와 '더보기'를 눌렀을 때(신고·차단). 내 피드에는 없습니다.
+  final ValueChanged<FeedItem>? onOpenFriend, onMore;
   final String? error;
 
   @override
@@ -450,6 +485,14 @@ class FeedSection extends StatelessWidget {
             divider: i > 0,
             onCheer: switch (onCheer) {
               final cheer? => (type) => cheer(item, type),
+              null => null,
+            },
+            onOpenFriend: switch (onOpenFriend) {
+              final open? => () => open(item),
+              null => null,
+            },
+            onMore: switch (onMore) {
+              final more? => () => more(item),
               null => null,
             },
           ),

@@ -634,6 +634,12 @@ class RunningSession extends ChangeNotifier {
   /// 일시정지·자동 일시정지 중에는 항상 false입니다.
   bool get runningFast =>
       _runningFast && _status == RunningStatus.running && !_autoPaused;
+
+  /// 지금 시속(km/h). 최근 [RunningConfig.speedWindow] 동안 늘어난 거리로 계산해 GPS 흔들림에 덜 튑니다.
+  /// 시작·다시 시작 직후 창이 덜 찼거나 멈춘 동안은 null입니다. 집중 화면의 '시속' 줄에 씁니다.
+  double? get recentSpeedKmh =>
+      _status == RunningStatus.running && !_autoPaused ? _recentSpeedKmh : null;
+  double? _recentSpeedKmh;
   DateTime? get startedAt => _startedAt;
 
   /// 정확도와 무관한 최신 좌표. 지도·GPS 칩용.
@@ -707,6 +713,7 @@ class RunningSession extends ChangeNotifier {
       _distanceSamples.clear();
       _runningFast = false;
       _slowSince = null;
+      _recentSpeedKmh = null;
       return;
     }
     _distanceSamples.add((now, _meters));
@@ -718,10 +725,14 @@ class RunningSession extends ChangeNotifier {
     final (since, meters) = _distanceSamples.first;
     final span = now.difference(since);
     // 시작하거나 다시 시작한 지 얼마 안 돼 창이 덜 찼으면 판단하지 않습니다.
-    if (span < RunningConfig.speedWindow) return;
+    if (span < RunningConfig.speedWindow) {
+      _recentSpeedKmh = null;
+      return;
+    }
     final metersPerMinute =
         (_meters - meters) /
         (span.inMilliseconds / Duration.millisecondsPerMinute);
+    _recentSpeedKmh = metersPerMinute * 60 / 1000;
     if (metersPerMinute >= RunningConfig.walkRunThresholdMetersPerMinute) {
       _runningFast = true;
       _slowSince = null;
@@ -995,7 +1006,7 @@ class _RunningStartPageState extends State<RunningStartPage>
   bool _ending = false;
   bool _goalReached = false;
 
-  /// 0이면 원래 화면, 1이면 집중 화면(달리기 속도일 때 숫자를 크게, 지도는 흐리게).
+  /// 0이면 원래 화면, 1이면 집중 화면(달리기 속도일 때 숫자를 외곽선으로 크게, 지도는 선명하게).
   late final _focus = AnimationController(
     vsync: this,
     duration: AppMotion.runningTransition,
@@ -1335,7 +1346,8 @@ class _RunningStartPageState extends State<RunningStartPage>
     );
   }
 
-  /// 달리기 속도가 되면 집중 화면으로, 걷거나 멈추면 원래 화면으로 바꿉니다.
+  /// 달리기 속도(시속 7km 이상)가 되면 집중 화면으로, 걷거나 멈추면(5초 뒤) 원래 화면으로 바꿉니다.
+  /// 일시정지하면 바로 원래 화면입니다.
   void _checkFocus() {
     final fast = _session.runningFast;
     if (fast == _focused) return;
@@ -1483,12 +1495,6 @@ class _RunningStartPageState extends State<RunningStartPage>
               listenable: Listenable.merge([_session, ?_live]),
               builder: (context, _) => _buildMap(context),
             ),
-            Positioned.fill(
-              child: AnimatedBuilder(
-                animation: _focus,
-                builder: (context, _) => _FocusMapBlur(value: _focus.value),
-              ),
-            ),
             // 넘기는 동안 매 프레임 다시 그리므로 지도와 따로 둡니다.
             ListenableBuilder(
               listenable: Listenable.merge([_session, _focus, ?_live]),
@@ -1536,6 +1542,9 @@ class _RunningStartPageState extends State<RunningStartPage>
             point ?? widget.initialCenter ?? const LatLng(37.5665, 126.9780),
         initialZoom: _zoom,
         routeWidth: RouteWidth.running,
+        // 집중 모드에서는 지명·도로 이름·장소(지하철역 등) 글자를 숨겨 숫자와 경로만 보이게 합니다.
+        // 친구 이름표와 내 위치 표시는 그대로 둡니다. 일시정지해 원래 화면이 되면 다시 보입니다.
+        showLabels: !_focused,
         // 경로가 1초마다 늘어날 때마다 다시 그리면 지명·도로명이 깜빡여 5초마다 그립니다(기록은 그대로 1초마다).
         routeUpdateInterval: const Duration(seconds: 5),
         route: [
@@ -2037,30 +2046,6 @@ class _RunningCard extends StatelessWidget {
   }
 }
 
-/// 집중 화면에서 지도 위에 바탕색을 옅게 덮는 막. 지도를 만져도 움직이지 않게 누르기도 막습니다.
-/// 번지게 하지는 않아서 길·경로·길 이름이 그대로 보이고 색만 옅어집니다.
-class _FocusMapBlur extends StatelessWidget {
-  const _FocusMapBlur({required this.value});
-
-  /// 0이면 덮개 없음, 1이면 집중 화면.
-  final double value;
-
-  /// 덮개 진하기(0~1). 0.5면 지도가 50% 보입니다.
-  /// 폰에서 보고 더 흐리게·선명하게 하려면 이 값만 바꾸면 됩니다.
-  static const strength = 0.5;
-
-  @override
-  Widget build(BuildContext context) {
-    if (value == 0) return const SizedBox.shrink();
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      child: ColoredBox(
-        color: AppColors.background.withValues(alpha: value * strength),
-      ),
-    );
-  }
-}
-
 /// 집중 화면: 달리기 속도일 때 거리·시간·페이스·칼로리를 크게, 그 아래 칼로리 퀘스트.
 class _FocusStats extends StatelessWidget {
   const _FocusStats({
@@ -2077,45 +2062,62 @@ class _FocusStats extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 지도가 비쳐 보여도 숫자가 묻히지 않게 바탕색으로 옅은 그림자를 둡니다.
+    // 지도가 선명하게 보여도 라벨·단위가 묻히지 않게 바탕색으로 옅은 그림자를 둡니다.
     final shadows = [
       Shadow(
         color: AppColors.background.withValues(alpha: 0.8),
         blurRadius: 16,
       ),
     ];
-    final label = TextStyle(
-      fontSize: 15,
-      fontWeight: FontWeight.w600,
-      color: AppColors.textSecondary,
-      shadows: shadows,
+    // 라벨·단위는 지도가 선명하게 보여도 읽히도록 크고 진하게, 바탕색 테두리를 둘러 그립니다([_HaloText]).
+    const label = TextStyle(fontSize: 18, fontWeight: FontWeight.w900);
+    const unit = TextStyle(fontSize: 19, fontWeight: FontWeight.w700);
+    // 숫자는 안을 비운 굵은 외곽선(다크 흰색, 라이트 검정)이라, 숫자 뒤의 지도·친구 경로가 비쳐 보입니다.
+    // 그림자를 넣으면 글자 안이 바탕색으로 채워져 경로가 가려지므로 숫자에는 넣지 않습니다.
+    // 글자색(color)과 외곽선(foreground)은 함께 쓸 수 없어 스타일을 직접 만듭니다.
+    final number = TextStyle(
+      fontFamily: AppTextStyles.numberFontFamily,
+      fontVariations: const [AppTextStyles.numberWidth],
+      fontFeatures: const [FontFeature.tabularFigures()],
+      fontSize: 84,
+      fontWeight: FontWeight.w800,
+      height: 1,
+      foreground: Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.6
+        ..strokeJoin = StrokeJoin.round
+        // 외곽선 색(사용자 결정): 다크 모드는 흰색, 라이트 모드는 검정.
+        ..color = AppColors.pick(Colors.white, Colors.black),
     );
-    final unit = TextStyle(
-      fontSize: 17,
-      fontWeight: FontWeight.w600,
-      color: AppColors.textSecondary,
-      shadows: shadows,
-    );
-    final number = runningNumberStyle(
-      84,
-      weight: FontWeight.w800,
-    ).copyWith(shadows: shadows);
     Widget row(String name, String value, [String? unitText]) => Padding(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.space1),
+      // 라벨은 큰 숫자 높이의 가운데에, 숫자 쪽(오른쪽)으로 붙여 둡니다. 단위는 숫자 밑줄에 맞춥니다.
       child: Row(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.baseline,
-        textBaseline: TextBaseline.alphabetic,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           SizedBox(
             width: AppSpacing.space10,
-            child: Text(name, style: label),
+            child: Padding(
+              padding: const EdgeInsets.only(right: AppSpacing.space3),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: _HaloText(name, style: label),
+              ),
+            ),
           ),
-          Text(value, style: number),
-          if (unitText != null) ...[
-            const SizedBox(width: AppSpacing.space1),
-            Text(unitText, style: unit),
-          ],
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(value, style: number),
+              if (unitText != null) ...[
+                const SizedBox(width: AppSpacing.space1),
+                _HaloText(unitText, style: unit),
+              ],
+            ],
+          ),
         ],
       ),
     );
@@ -2133,24 +2135,39 @@ class _FocusStats extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Flexible(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                // 숫자가 바뀌어도 묶음이 좌우로 흔들리지 않게 왼쪽에 붙입니다.
-                alignment: Alignment.centerLeft,
-                child: Padding(
-                  padding: const EdgeInsets.only(left: AppSpacing.space8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      row('거리', RunningFormat.km(session.distanceMeters), 'km'),
-                      row('시간', RunningFormat.clock(session.elapsed)),
-                      row(
-                        '페이스',
-                        RunningFormat.livePace(session.paceSecondsPerKm),
-                        '/km',
-                      ),
-                      row('칼로리', RunningFormat.kcal(session.calories), 'kcal'),
-                    ],
+              // 숫자 위를 밀어도 지도가 움직이도록 숫자는 손가락 입력을 받지 않습니다.
+              child: IgnorePointer(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  // 숫자가 바뀌어도 묶음이 좌우로 흔들리지 않게 왼쪽에 붙입니다.
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: AppSpacing.space8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        row(
+                          '거리',
+                          RunningFormat.km(session.distanceMeters),
+                          'km',
+                        ),
+                        row('시간', RunningFormat.clock(session.elapsed)),
+                        row(
+                          '페이스',
+                          RunningFormat.livePace(session.paceSecondsPerKm),
+                          '/km',
+                        ),
+                        row('시속', switch (session.recentSpeedKmh) {
+                          final kmh? => RunningFormat.speed(kmh),
+                          null => '-.-',
+                        }, 'km/h'),
+                        row(
+                          '칼로리',
+                          RunningFormat.kcal(session.calories),
+                          'kcal',
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -2173,6 +2190,30 @@ class _FocusStats extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 집중 화면 라벨·단위: 진한 글자 뒤에 바탕색 테두리를 둘러, 선명한 지도 위에서도 읽히게 합니다.
+class _HaloText extends StatelessWidget {
+  const _HaloText(this.text, {required this.style});
+  final String text;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    children: [
+      Text(
+        text,
+        style: style.copyWith(
+          foreground: Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 4
+            ..strokeJoin = StrokeJoin.round
+            ..color = AppColors.background,
+        ),
+      ),
+      Text(text, style: style.copyWith(color: AppColors.textPrimary)),
+    ],
+  );
 }
 
 /// 러닝 중 아래 둥근 버튼: 종료(흰색)·일시정지(검정)·다시 시작(주황).

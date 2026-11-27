@@ -292,106 +292,37 @@ String feedTimeLabel(DateTime time, DateTime now) {
   };
 }
 
-/// 이번 주 목표 거리. [public]이면 친구 목표 비교에 내 달성률이 보입니다.
-@immutable
-class WeeklyGoal {
-  const WeeklyGoal({required this.km, this.public = true});
-  final int km;
-  final bool public;
+/// 신고 사유(시안 17-17).
+enum ReportReason {
+  abuse('욕설 · 괴롭힘'),
+  inappropriate('부적절한 사진 · 글'),
+  fakeRecord('거짓 러닝 기록'),
+  spam('스팸 · 광고'),
+  other('기타');
 
-  static const minKm = 1, maxKm = 100;
-
-  @override
-  bool operator ==(Object other) =>
-      other is WeeklyGoal && other.km == km && other.public == public;
-
-  @override
-  int get hashCode => Object.hash(km, public);
+  const ReportReason(this.label);
+  final String label;
 }
 
-/// 친구 랭킹·목표 비교에 쓰는 합계. 기록 하나하나가 아닌 이번 주·이번 달 합계만 담습니다.
-/// 주는 월요일부터, 기간은 그 사람 폰의 날짜 기준입니다.
+/// 신고 한 건. [recordId]는 피드 카드에서 신고했을 때 그 기록 번호입니다.
 @immutable
-class RunStats {
-  const RunStats({
-    required this.weekStart,
-    required this.monthKey,
-    this.weekKm = 0,
-    this.weekRuns = 0,
-    this.monthKm = 0,
-    this.goalKm,
+class FriendReport {
+  const FriendReport({
+    required this.reporter,
+    required this.target,
+    required this.reason,
+    this.detail = '',
+    this.recordId,
   });
+  final String reporter, target;
+  final ReportReason reason;
 
-  /// 이번 주 월요일(예: 2026-10-26)과 이번 달(예: 2026-10).
-  final String weekStart, monthKey;
-  final double weekKm, monthKm;
-  final int weekRuns;
+  /// 신고 내용. 300자까지입니다.
+  final String detail;
+  final String? recordId;
 
-  /// 친구에게 공개한 이번 주 목표. 공개하지 않았으면 null.
-  final int? goalKm;
-
-  /// 폰에 있는 기록으로 [now]가 속한 주·달의 합계를 냅니다.
-  factory RunStats.from(
-    Iterable<(DateTime, double)> runs,
-    DateTime now, {
-    int? goalKm,
-  }) {
-    final week = weekOf(now), month = DateTime(now.year, now.month);
-    var weekKm = 0.0, monthKm = 0.0, weekRuns = 0;
-    for (final (startedAt, km) in runs) {
-      if (!startedAt.isBefore(week) &&
-          startedAt.isBefore(week.add(const Duration(days: 7)))) {
-        weekKm += km;
-        weekRuns++;
-      }
-      if (startedAt.year == month.year && startedAt.month == month.month) {
-        monthKm += km;
-      }
-    }
-    double round(double v) => (v * 100).round() / 100;
-    return RunStats(
-      weekStart: dayKey(week),
-      monthKey: monthKeyOf(now),
-      weekKm: round(weekKm),
-      weekRuns: weekRuns,
-      monthKm: round(monthKm),
-      goalKm: goalKm,
-    );
-  }
-
-  /// [now]가 속한 주의 값. 지난주에 올린 합계면 0으로 봅니다.
-  double weekKmAt(DateTime now) =>
-      weekStart == dayKey(weekOf(now)) ? weekKm : 0;
-  int weekRunsAt(DateTime now) =>
-      weekStart == dayKey(weekOf(now)) ? weekRuns : 0;
-  double monthKmAt(DateTime now) => monthKey == monthKeyOf(now) ? monthKm : 0;
-
-  @override
-  bool operator ==(Object other) =>
-      other is RunStats &&
-      other.weekStart == weekStart &&
-      other.monthKey == monthKey &&
-      other.weekKm == weekKm &&
-      other.weekRuns == weekRuns &&
-      other.monthKm == monthKm &&
-      other.goalKm == goalKm;
-
-  @override
-  int get hashCode =>
-      Object.hash(weekStart, monthKey, weekKm, weekRuns, monthKm, goalKm);
+  static const maxDetail = 300;
 }
-
-/// [time]이 속한 주의 월요일 0시.
-DateTime weekOf(DateTime time) {
-  final day = DateTime(time.year, time.month, time.day);
-  return day.subtract(Duration(days: day.weekday - 1));
-}
-
-String dayKey(DateTime day) =>
-    '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
-
-String monthKeyOf(DateTime time) =>
-    '${time.year}-${time.month.toString().padLeft(2, '0')}';
 
 /// 함께 달리기 약속에서 한 사람의 답.
 enum TogetherStatus { pending, accepted, declined }
@@ -459,7 +390,9 @@ class Together {
   static const readyFor = Duration(seconds: 60);
 
   static const kmOptions = [3, 5, 7, 10];
-  static const maxMembers = 6;
+
+  /// 나를 포함한 최대 인원. 서버 보안 규칙도 같은 수로 막습니다.
+  static const maxMembers = 5;
 
   /// '지금 바로 같이 뛰기'로 만든 약속인지(목표 없음).
   bool get isQuick => goalKm == 0;

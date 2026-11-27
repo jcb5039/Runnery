@@ -102,11 +102,7 @@ void main() {
     await share.share(run('r1', DateTime(2026, 10, 29, 7)));
     expect(share.isShared('r1'), isTrue);
 
-    final friend = FriendStore(
-      backend: server,
-      me: () => haeun,
-      records: () async => const [],
-    );
+    final friend = FriendStore(backend: server, me: () => haeun);
     await friend.refresh();
     expect(friend.feed, hasLength(1));
     final item = friend.feed.single;
@@ -134,11 +130,7 @@ void main() {
       backend: server,
       me: () => minji,
     ).share(run('r1', DateTime(2026, 10, 29, 7)));
-    final friend = FriendStore(
-      backend: server,
-      me: () => haeun,
-      records: () async => const [],
-    );
+    final friend = FriendStore(backend: server, me: () => haeun);
     await friend.refresh();
     server.offline = true;
     await expectLater(

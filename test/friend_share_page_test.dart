@@ -52,11 +52,7 @@ void main() {
       backend: server,
       me: () => haeun,
     ).share(run('r1', DateTime.now()), fields: const ShareFields(kcal: false));
-    final store = FriendStore(
-      backend: server,
-      me: () => minji,
-      records: () async => const [],
-    );
+    final store = FriendStore(backend: server, me: () => minji);
     await tester.pumpWidget(MaterialApp(home: FriendsPage(store: store)));
     await tester.pumpAndSettle();
 
@@ -87,11 +83,7 @@ void main() {
       CheerType.clap,
       CheerType.fire,
     });
-    final store = FriendStore(
-      backend: server,
-      me: () => minji,
-      records: () async => const [],
-    );
+    final store = FriendStore(backend: server, me: () => minji);
     await tester.pumpWidget(MaterialApp(home: FriendsPage(store: store)));
     await tester.pumpAndSettle();
     // 친구 탭에는 내 기록이 없습니다.

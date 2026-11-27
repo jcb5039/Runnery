@@ -18,11 +18,7 @@ void main() {
       ..profilesByUid[haeun.uid] = haeun
       ..profilesByUid[seojun.uid] = seojun
       ..requests.add((haeun.uid, minji.uid));
-    store = FriendStore(
-      backend: server,
-      me: () => minji,
-      records: () async => const [],
-    );
+    store = FriendStore(backend: server, me: () => minji);
   });
 
   Future<void> open(WidgetTester tester) async {

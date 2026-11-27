@@ -1,8 +1,6 @@
 import 'package:flutter/foundation.dart';
 
 import '../../account/account_store.dart';
-import '../../record/data/running_record_store.dart';
-import '../../record/models/running_record.dart';
 import 'friend_backend.dart';
 import 'friend_models.dart';
 
@@ -13,20 +11,18 @@ export 'friend_models.dart'
         FeedItem,
         FeedPost,
         FriendRelation,
+        FriendReport,
         PublicProfile,
-        RunStats,
-        WeeklyGoal;
+        ReportReason;
 
 /// 친구 탭이 보여 주는 친구 목록과 친구 요청. 서버가 원본이고, 이 기기에는 저장하지 않습니다.
 class FriendStore extends ChangeNotifier {
   FriendStore({
     FriendBackend? backend,
     PublicProfile? Function()? me,
-    Future<List<RunningRecord>> Function()? records,
     DateTime Function()? clock,
   }) : _backend = backend,
        _me = me ?? loggedIn,
-       _records = records ?? (() => RunningRecordStore.instance.load()),
        _clock = clock ?? DateTime.now;
 
   /// 앱 전체가 쓰는 저장소. 테스트에서만 교체합니다.
@@ -34,9 +30,6 @@ class FriendStore extends ChangeNotifier {
 
   FriendBackend? _backend;
   final PublicProfile? Function() _me;
-
-  /// 랭킹·목표 합계를 내는 데 쓰는 폰의 러닝 기록.
-  final Future<List<RunningRecord>> Function() _records;
   final DateTime Function() _clock;
 
   /// 처음 쓸 때 실제 서버 연결을 만듭니다(테스트는 가짜를 넣어 두므로 만들지 않습니다).
@@ -57,12 +50,12 @@ class FriendStore extends ChangeNotifier {
   Set<String> _outgoing = const {};
   List<FeedItem> _feed = const [];
   List<FeedItem> _myFeed = const [];
+  List<PublicProfile> _blocked = const [];
+
+  /// 차단하기를 눌렀지만 '되돌리기'를 기다리는 동안 피드에서 감춰 둔 사람.
+  Set<String> _hiding = const {};
   bool _loading = false;
-  String? _error, _feedError, _statsError;
-  WeeklyGoal? _goal;
-  bool _goalLoaded = false;
-  RunStats? _myStats, _publishedStats;
-  Map<String, RunStats> _friendStats = const {};
+  String? _error, _feedError;
 
   /// 이름순 친구 목록.
   List<PublicProfile> get friends => _friends;
@@ -76,7 +69,13 @@ class FriendStore extends ChangeNotifier {
   String? get error => _error;
 
   /// 친구들이 공유한 최근 러닝. 최근에 달린 순서입니다.
-  List<FeedItem> get feed => _feed;
+  List<FeedItem> get feed => [
+    for (final item in _feed)
+      if (!_hiding.contains(item.post.ownerUid)) item,
+  ];
+
+  /// 내가 차단한 사람들(이름순).
+  List<PublicProfile> get blocked => _blocked;
 
   /// 내가 공유한 기록과 친구들에게 받은 응원.
   List<FeedItem> get myFeed => _myFeed;
@@ -87,25 +86,8 @@ class FriendStore extends ChangeNotifier {
   /// 로그인한 계정의 공개 정보. 로그아웃 상태면 null.
   PublicProfile? get me => _me();
 
-  /// 지금 시각. 랭킹·목표의 주·달을 정합니다.
+  /// 지금 시각. 함께 달리기 약속 시간을 정할 때 씁니다.
   DateTime get now => _clock();
-
-  /// 내 주간 목표. 정한 적이 없으면 null.
-  WeeklyGoal? get goal => _goal;
-
-  /// 폰의 기록으로 낸 내 합계(서버에 올리는 것과 같습니다).
-  RunStats get myStats => _myStats ?? RunStats.from(const [], now);
-
-  /// 친구가 올린 합계. 올린 적이 없으면 null.
-  RunStats? statsOf(String uid) => _friendStats[uid];
-
-  /// 친구 → 합계. 랭킹·목표 비교에 씁니다.
-  Map<PublicProfile, RunStats?> get friendStats => {
-    for (final f in _friends) f: _friendStats[f.uid],
-  };
-
-  /// 랭킹 정보를 불러오지 못했다면 그 이유.
-  String? get statsError => _statsError;
 
   FriendRelation relation(String uid) {
     if (uid == _owner) return FriendRelation.me;
@@ -134,14 +116,10 @@ class FriendStore extends ChangeNotifier {
     _outgoing = const {};
     _feed = const [];
     _myFeed = const [];
+    _blocked = const [];
+    _hiding = const {};
     _error = null;
     _feedError = null;
-    _statsError = null;
-    _goal = null;
-    _goalLoaded = false;
-    _myStats = null;
-    _publishedStats = null;
-    _friendStats = const {};
   }
 
   /// 서버에서 친구 목록과 요청을 새로 읽어 옵니다. 실패하면 [error]에 이유를 남깁니다.
@@ -167,18 +145,21 @@ class FriendStore extends ChangeNotifier {
         backend.friendIds(me.uid),
         backend.incoming(me.uid),
         backend.outgoing(me.uid),
+        backend.blockedIds(me.uid),
       ]);
-      final [friendIds, incomingIds, outgoing] = lists;
+      final [friendIds, incomingIds, outgoing, blockedIds] = lists;
       final people = await backend.profiles(
-        {...friendIds, ...incomingIds}.toList(),
+        {...friendIds, ...incomingIds, ...blockedIds}.toList(),
       );
       if (me.uid != _owner) throw const FriendException('계정이 바뀌었어요');
       _friends = _sorted([for (final id in friendIds) ?people[id]]);
+      // 차단한 사람의 요청은 보여 주지 않습니다(예전에 받아 둔 요청이 남아 있을 때).
       _incoming = [
         for (final id in incomingIds)
-          if (!friendIds.contains(id)) ?people[id],
+          if (!friendIds.contains(id) && !blockedIds.contains(id)) ?people[id],
       ];
       _outgoing = outgoing.toSet();
+      _blocked = _sorted([for (final id in blockedIds) ?people[id]]);
       _error = null;
     } on FriendException catch (e) {
       _error = e.message;
@@ -186,8 +167,7 @@ class FriendStore extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    // 피드와 랭킹은 따로 불러와, 한쪽이 실패해도 다른 쪽은 보이게 합니다.
-    await Future.wait([_refreshFeed(me), _refreshStats(me)]);
+    await _refreshFeed(me);
     _loading = false;
     notifyListeners();
   }
@@ -205,71 +185,6 @@ class FriendStore extends ChangeNotifier {
     } on FriendException catch (e) {
       _feedError = e.message;
     }
-  }
-
-  Future<void> _refreshStats(PublicProfile me) async {
-    try {
-      await _publishMyStats(me);
-      final stats = await backend.stats([for (final f in _friends) f.uid]);
-      if (me.uid != _owner) return;
-      _friendStats = stats;
-      _statsError = null;
-    } on FriendException catch (e) {
-      _statsError = e.message;
-    }
-  }
-
-  /// 폰의 기록으로 내 합계를 다시 내고, 바뀌었으면 서버에 올립니다.
-  Future<void> _publishMyStats(PublicProfile me) async {
-    if (!_goalLoaded) {
-      _goal = await backend.readGoal(me.uid);
-      _goalLoaded = true;
-    }
-    List<RunningRecord> records;
-    try {
-      records = await _records();
-    } catch (_) {
-      // 기록을 못 읽으면 합계를 올리지 않습니다(0으로 덮어쓰지 않게).
-      return;
-    }
-    final goal = _goal;
-    final stats = RunStats.from(
-      [for (final r in records) (r.startedAt, r.distanceKm)],
-      now,
-      goalKm: goal != null && goal.public ? goal.km : null,
-    );
-    _myStats = stats;
-    if (stats == _publishedStats) return;
-    await backend.publishStats(me.uid, stats);
-    _publishedStats = stats;
-  }
-
-  /// 러닝 기록을 저장하거나 지운 뒤 부릅니다. 친구 랭킹에 바로 반영되게 합계를 올립니다.
-  /// 로그아웃 상태거나 인터넷이 없으면 조용히 넘어갑니다(친구 탭을 열 때 다시 올립니다).
-  Future<void> recordsChanged() async {
-    final me = _me();
-    if (me == null) return;
-    try {
-      _require();
-      await _publishMyStats(me);
-    } on FriendException {
-      // 다음에 다시 올립니다.
-    }
-    notifyListeners();
-  }
-
-  /// 주간 목표를 저장하고, 공개 여부에 맞춰 내 합계도 다시 올립니다.
-  Future<void> saveGoal(WeeklyGoal goal) async {
-    final me = _require();
-    await backend.writeGoal(me.uid, goal);
-    _goal = goal;
-    _goalLoaded = true;
-    try {
-      await _publishMyStats(me);
-    } on FriendException {
-      // 목표는 저장됐습니다. 합계는 다음에 다시 올립니다.
-    }
-    notifyListeners();
   }
 
   /// [friends]마다 최근 공유 기록을 읽어 합친 뒤, 카드마다 응원을 읽습니다.
@@ -345,7 +260,12 @@ class FriendStore extends ChangeNotifier {
     final found = await backend.search(
       text.startsWith('@') ? text.substring(1) : text,
     );
-    return _sorted([...found]);
+    // 차단한 사람은 찾아도 나오지 않습니다(차단 풀기는 내 친구 화면에서).
+    final blocked = {for (final p in _blocked) p.uid};
+    return _sorted([
+      for (final p in found)
+        if (!blocked.contains(p.uid)) p,
+    ]);
   }
 
   /// 친구 요청을 보냅니다. 상대가 이미 나에게 요청했다면 바로 수락합니다.
@@ -392,5 +312,68 @@ class FriendStore extends ChangeNotifier {
     _friends = [..._friends]..removeWhere((f) => f.uid == uid);
     _feed = [..._feed]..removeWhere((f) => f.post.ownerUid == uid);
     notifyListeners();
+  }
+
+  /// 친구 달력: [uid]가 [month]에 공유한 기록. 최근에 달린 순서입니다.
+  Future<List<FeedPost>> monthPosts(String uid, DateTime month) {
+    _require();
+    final from = DateTime(month.year, month.month);
+    return backend.postsBetween(uid, from, DateTime(from.year, from.month + 1));
+  }
+
+  /// '되돌리기'를 기다리는 동안 [uid]의 카드를 피드에서 감추거나([hide]) 다시 보입니다.
+  void hideFromFeed(String uid, {required bool hide}) {
+    _hiding = hide ? {..._hiding, uid} : ({..._hiding}..remove(uid));
+    notifyListeners();
+  }
+
+  /// [person]을 차단합니다. 친구에서 지우고, 주고받은 친구 요청도 지웁니다.
+  Future<void> block(PublicProfile person) async {
+    final me = _require();
+    await backend.block(
+      me.uid,
+      person.uid,
+      incoming: _incoming.any((p) => p.uid == person.uid),
+      outgoing: _outgoing.contains(person.uid),
+    );
+    _friends = [..._friends]..removeWhere((f) => f.uid == person.uid);
+    _incoming = [..._incoming]..removeWhere((p) => p.uid == person.uid);
+    _outgoing = {..._outgoing}..remove(person.uid);
+    _feed = [..._feed]..removeWhere((f) => f.post.ownerUid == person.uid);
+    _hiding = {..._hiding}..remove(person.uid);
+    if (!_blocked.any((p) => p.uid == person.uid)) {
+      _blocked = _sorted([..._blocked, person]);
+    }
+    notifyListeners();
+  }
+
+  /// 차단을 풉니다. 다시 친구가 되려면 친구 요청을 새로 보내야 합니다.
+  Future<void> unblock(String uid) async {
+    final me = _require();
+    await backend.unblock(me.uid, uid);
+    _blocked = [..._blocked]..removeWhere((p) => p.uid == uid);
+    notifyListeners();
+  }
+
+  /// [person]을 신고합니다. 상대에게는 알려지지 않습니다.
+  Future<void> report(
+    PublicProfile person,
+    ReportReason reason, {
+    String detail = '',
+    String? recordId,
+  }) async {
+    final me = _require();
+    final text = detail.trim();
+    await backend.report(
+      FriendReport(
+        reporter: me.uid,
+        target: person.uid,
+        reason: reason,
+        detail: text.length > FriendReport.maxDetail
+            ? text.substring(0, FriendReport.maxDetail)
+            : text,
+        recordId: recordId,
+      ),
+    );
   }
 }

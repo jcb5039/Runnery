@@ -23,10 +23,10 @@ void main() {
   setUp(() {
     server = FakeFriendBackend()
       ..clock = (() => now)
-        ..friends[minji.uid] = {haeun.uid}
-        ..friends[haeun.uid] = {minji.uid}
-        ..profilesByUid[minji.uid] = minji
-        ..profilesByUid[haeun.uid] = haeun;
+      ..friends[minji.uid] = {haeun.uid}
+      ..friends[haeun.uid] = {minji.uid}
+      ..profilesByUid[minji.uid] = minji
+      ..profilesByUid[haeun.uid] = haeun;
   });
 
   TogetherStore storeFor(
@@ -265,7 +265,6 @@ void main() {
     final friends = FriendStore(
       backend: server,
       me: () => minji,
-      records: () async => const [],
       clock: () => now,
     );
     await tester.pumpWidget(
@@ -377,7 +376,6 @@ void main() {
     final friends = FriendStore(
       backend: server,
       me: () => haeun,
-      records: () async => const [],
       clock: () => now,
     );
     await tester.pumpWidget(

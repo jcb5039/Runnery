@@ -69,25 +69,6 @@ service cloud.firestore {
         && (!('showRoute' in d) || d.showRoute is bool);
     }
 
-    function validGoal(d) {
-      return d.keys().hasOnly(['km', 'public'])
-        && d.keys().hasAll(['km', 'public'])
-        && d.km is int && d.km >= 1 && d.km <= 100
-        && d.public is bool;
-    }
-
-    function validStats(d) {
-      return d.keys().hasOnly(['weekStart', 'weekKm', 'weekRuns', 'monthKey', 'monthKm', 'goalKm', 'updatedAt'])
-        && d.keys().hasAll(['weekStart', 'weekKm', 'weekRuns', 'monthKey', 'monthKm', 'updatedAt'])
-        && d.weekStart is string && d.weekStart.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
-        && d.monthKey is string && d.monthKey.matches('^[0-9]{4}-[0-9]{2}$')
-        && d.weekKm is number && d.weekKm >= 0 && d.weekKm <= 10000
-        && d.weekRuns is int && d.weekRuns >= 0 && d.weekRuns <= 1000
-        && d.monthKm is number && d.monthKm >= 0 && d.monthKm <= 50000
-        && (!('goalKm' in d) || (d.goalKm is int && d.goalKm >= 1 && d.goalKm <= 100))
-        && d.updatedAt == request.time;
-    }
-
     // 러닝 기록 문서의 모양. 기록 본문(경로 등)은 압축한 덩어리(payload) 하나로 올라오고,
     // 지운 기록은 문서를 지우지 않고 deleted 표시만 남깁니다.
     function validRecordDoc(d) {
@@ -177,26 +158,28 @@ service cloud.firestore {
         }
       }
 
-      // 본인만 읽고 쓰는 설정: 기록 공유 설정(share)과 주간 목표(goal).
+      // 본인만 읽고 쓰는 설정: 기록 공유 설정(share).
+      // 예전 주간 목표(goal)·랭킹 합계(stats)는 2026-11-27에 기능을 없애 더 이상 쓰지 못합니다.
       match /settings/{name} {
         allow get: if isOwner(uid) && verified();
         allow list: if false;
         allow create, update: if isOwner(uid)
           && verified()
-          && ((name == 'share' && validShareSettings(request.resource.data))
-            || (name == 'goal' && validGoal(request.resource.data)));
+          && name == 'share'
+          && validShareSettings(request.resource.data);
         allow delete: if isOwner(uid);
       }
 
-      // 랭킹·목표 비교용 합계(이번 주·이번 달). 기록 하나하나는 없고 합계만 있습니다.
-      // 본인과 친구만 읽고, 본인만 씁니다.
-      match /stats/{name} {
-        allow get: if (isOwner(uid) || isFriendOf(uid)) && verified();
-        allow list: if false;
-        allow create, update: if isOwner(uid)
+      // 내가 차단한 사람. 본인만 읽고 쓰며, 내용은 차단한 시각뿐입니다.
+      // 차단한 사람과는 친구 요청을 주고받지 못합니다(friendRequests 규칙).
+      match /blocks/{otherUid} {
+        allow get, list: if isOwner(uid) && verified();
+        allow create: if isOwner(uid)
           && verified()
-          && name == 'summary'
-          && validStats(request.resource.data);
+          && otherUid != uid
+          && request.resource.data.keys().hasOnly(['since'])
+          && request.resource.data.since == request.time;
+        allow update: if false;
         allow delete: if isOwner(uid);
       }
 
@@ -263,14 +246,14 @@ service cloud.firestore {
         && request.resource.data.host == request.auth.uid
         && request.resource.data.members is list
         && request.resource.data.members.size() >= 2
-        && request.resource.data.members.size() <= 6
+        // 나를 포함해 5명까지(앱의 Together.maxMembers와 같습니다).
+        && request.resource.data.members.size() <= 5
         && request.auth.uid in request.resource.data.members
         && memberOk(request.resource.data.members, 0)
         && memberOk(request.resource.data.members, 1)
         && memberOk(request.resource.data.members, 2)
         && memberOk(request.resource.data.members, 3)
         && memberOk(request.resource.data.members, 4)
-        && memberOk(request.resource.data.members, 5)
         && request.resource.data.statuses is map
         && request.resource.data.statuses.size() == request.resource.data.members.size()
         && request.resource.data.statuses.keys().hasOnly(request.resource.data.members)
@@ -348,7 +331,7 @@ service cloud.firestore {
     }
 
     // 친구 요청. 문서 이름은 '보낸 uid_받는 uid'이고, 보낸 사람과 받는 사람만 읽고 지울 수 있습니다.
-    // 이미 친구이거나, 찾을 수 없는(공개 정보가 없는) 사람에게는 보낼 수 없습니다.
+    // 이미 친구이거나, 찾을 수 없는(공개 정보가 없는) 사람, 어느 한쪽이 차단한 사람에게는 보낼 수 없습니다.
     match /friendRequests/{requestId} {
       allow get, list: if signedIn()
         && verified()
@@ -363,10 +346,32 @@ service cloud.firestore {
         && requestId == request.auth.uid + '_' + request.resource.data.to
         && request.resource.data.createdAt == request.time
         && exists(/databases/$(database)/documents/profiles/$(request.resource.data.to))
-        && !exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(request.resource.data.to));
+        && !exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(request.resource.data.to))
+        && !exists(/databases/$(database)/documents/users/$(request.resource.data.to)/blocks/$(request.auth.uid))
+        && !exists(/databases/$(database)/documents/users/$(request.auth.uid)/blocks/$(request.resource.data.to));
       allow update: if false;
       allow delete: if signedIn()
         && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+    }
+
+    // 신고. 인증을 마친 사람이 자기 이름으로 올리기만 하고, 앱에서는 아무도 읽거나 고치지 못합니다
+    // (Firebase 관리 화면에서 확인). 사유는 앱의 ReportReason 이름, 내용은 300자까지입니다.
+    match /reports/{reportId} {
+      allow get, list, update, delete: if false;
+      allow create: if signedIn()
+        && verified()
+        && request.resource.data.keys().hasOnly(['reporter', 'target', 'reason', 'detail', 'recordId', 'createdAt'])
+        && request.resource.data.keys().hasAll(['reporter', 'target', 'reason', 'createdAt'])
+        && request.resource.data.reporter == request.auth.uid
+        && request.resource.data.target is string
+        && request.resource.data.target.size() >= 1 && request.resource.data.target.size() <= 128
+        && request.resource.data.target != request.auth.uid
+        && request.resource.data.reason in ['abuse', 'inappropriate', 'fakeRecord', 'spam', 'other']
+        && (!('detail' in request.resource.data)
+          || (request.resource.data.detail is string && request.resource.data.detail.size() <= 300))
+        && (!('recordId' in request.resource.data)
+          || (request.resource.data.recordId is string && request.resource.data.recordId.size() <= 100))
+        && request.resource.data.createdAt == request.time;
     }
 
     // 아이디 중복 확인용. 아이디 하나당 문서 하나이고 주인(uid)만 적혀 있습니다.
