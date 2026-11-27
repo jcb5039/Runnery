@@ -268,6 +268,47 @@ class FriendStore extends ChangeNotifier {
     ]);
   }
 
+  /// 앱을 켜 둔 동안 받은 친구 요청을 실시간으로 받습니다. 받은 요청 목록([incoming])도 바꿔 두므로
+  /// 알림 종의 빨간 점이 바로 바뀝니다. 차단한 사람과 이미 친구인 사람의 요청은 빠집니다.
+  Stream<List<PublicProfile>> watchIncoming() {
+    final PublicProfile me;
+    try {
+      me = _require();
+    } on FriendException {
+      return const Stream.empty();
+    }
+    final people = <String, PublicProfile>{};
+    return backend.watchIncoming(me.uid).asyncMap((ids) async {
+      if (me.uid != _owner) return const <PublicProfile>[];
+      final skip = {
+        for (final p in _blocked) p.uid,
+        for (final f in _friends) f.uid,
+      };
+      final wanted = [
+        for (final id in ids)
+          if (!skip.contains(id)) id,
+      ];
+      for (final p in _incoming) {
+        people[p.uid] = p;
+      }
+      final unknown = [
+        for (final id in wanted)
+          if (!people.containsKey(id)) id,
+      ];
+      if (unknown.isNotEmpty) {
+        try {
+          people.addAll(await backend.profiles(unknown));
+        } on FriendException {
+          // 이름을 못 가져오면 다음 변경 때 다시 가져옵니다.
+        }
+      }
+      if (me.uid != _owner) return const <PublicProfile>[];
+      _incoming = [for (final id in wanted) ?people[id]];
+      notifyListeners();
+      return _incoming;
+    });
+  }
+
   /// 친구 요청을 보냅니다. 상대가 이미 나에게 요청했다면 바로 수락합니다.
   Future<void> sendRequest(PublicProfile person) async {
     final me = _require();

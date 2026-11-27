@@ -76,7 +76,6 @@ class _TogetherTabState extends State<TogetherTab> {
     builder: (context, _) {
       final me = _store.me;
       if (me == null) return const SizedBox.shrink();
-      final now = _store.now;
       final requests = _store.requests;
       final active = _store.active;
       final past = _store.past;
@@ -93,8 +92,20 @@ class _TogetherTabState extends State<TogetherTab> {
               title: '받은 요청',
               meta: requests.isEmpty ? '확인 완료' : '${requests.length}개',
             ),
-            for (final t in requests) _requestCard(t, now),
-            for (final (t, status) in answered) _answeredCard(t, status),
+            for (final t in requests)
+              TogetherRequestCard(
+                together: t,
+                store: _store,
+                busy: _busy.contains(t.id),
+                onAnswer: (status) => _answer(t, status),
+              ),
+            for (final (t, status) in answered)
+              TogetherAnsweredCard(
+                together: t,
+                store: _store,
+                status: status,
+                onUndo: () => _answer(t, TogetherStatus.pending),
+              ),
           ],
           const SizedBox(height: 30),
           FriendSectionHeader(
@@ -223,181 +234,6 @@ class _TogetherTabState extends State<TogetherTab> {
         ),
       ),
     ),
-  );
-
-  Widget _requestCard(Together t, DateTime now) {
-    final host = _store.person(t.host);
-    final others = [
-      for (final m in t.members)
-        if (m != t.host && m != _store.me?.uid) _store.person(m)?.name ?? '친구',
-    ];
-    final busy = _busy.contains(t.id);
-    return Container(
-      margin: const EdgeInsets.only(top: 14),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: const BorderRadius.all(Radius.circular(20)),
-        border: Border.all(color: AppColors.divider),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              FriendAvatar(initial: host?.initial ?? '친'),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${host?.name ?? '친구'} 님이 함께 달리자고 해요',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      agoLabel(t.createdAt ?? now, now),
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.textTertiary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          _infoLine(
-            Icons.calendar_today_outlined,
-            '${t.startsAt.month}월 ${t.startsAt.day}일 (${weekdayLetter(t.startsAt)}) '
-            '${clockText(t.startsAt)}',
-          ),
-          const SizedBox(height: 10),
-          _infoLine(Icons.flag_outlined, t.goalLabel),
-          if (others.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            _infoLine(Icons.people_outline, '함께: ${others.join(', ')}'),
-          ],
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: FriendSheetButton(
-                  label: '거절',
-                  height: 44,
-                  onPressed: busy
-                      ? null
-                      : () => _answer(t, TogetherStatus.declined),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: FriendSheetButton(
-                  label: '수락',
-                  filled: true,
-                  height: 44,
-                  onPressed: busy
-                      ? null
-                      : () => _answer(t, TogetherStatus.accepted),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _answeredCard(Together t, TogetherStatus status) {
-    final host = _store.person(t.host)?.name ?? '친구';
-    final accepted = status == TogetherStatus.accepted;
-    return Container(
-      margin: const EdgeInsets.only(top: 14),
-      constraints: const BoxConstraints(minHeight: 64),
-      padding: EdgeInsets.fromLTRB(16, 12, accepted ? 16 : 4, 12),
-      decoration: BoxDecoration(
-        borderRadius: const BorderRadius.all(Radius.circular(20)),
-        border: Border.all(color: AppColors.divider),
-      ),
-      child: Row(
-        children: [
-          if (accepted) ...[
-            Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.textPrimary,
-              ),
-              child: Icon(Icons.check, size: 16, color: AppColors.background),
-            ),
-            const SizedBox(width: 12),
-          ],
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  accepted ? '$host 님과의 약속을 수락했어요' : '$host 님의 요청을 거절했어요',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: accepted ? FontWeight.w700 : FontWeight.w500,
-                    color: accepted
-                        ? AppColors.textPrimary
-                        : AppColors.textSecondary,
-                  ),
-                ),
-                if (accepted) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    '진행 중인 약속에 추가됐어요',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.textTertiary,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          if (!accepted)
-            TextButton(
-              onPressed: () => _answer(t, TogetherStatus.pending),
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.textPrimary,
-              ),
-              child: const Text(
-                '되돌리기',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  decoration: TextDecoration.underline,
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _infoLine(IconData icon, String text) => Row(
-    children: [
-      Icon(icon, size: 16, color: AppColors.textSecondary),
-      const SizedBox(width: 8),
-      Expanded(
-        child: Text(
-          text,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-        ),
-      ),
-    ],
   );
 
   Widget _note(String text) => Padding(
@@ -550,4 +386,219 @@ class _TogetherRow extends StatelessWidget {
     fontWeight: FontWeight.w600,
     color: AppColors.textSecondary,
   );
+}
+
+/// 받은 함께 달리기 요청 카드: 보낸 사람, 날짜·시간, 목표, 함께하는 친구, 거절·수락.
+/// 함께 달리기 탭과 알림 화면이 같이 씁니다.
+class TogetherRequestCard extends StatelessWidget {
+  const TogetherRequestCard({
+    super.key,
+    required this.together,
+    required this.store,
+    required this.onAnswer,
+    this.busy = false,
+  });
+
+  final Together together;
+  final TogetherStore store;
+  final ValueChanged<TogetherStatus> onAnswer;
+
+  /// 답을 보내는 중이면 버튼을 막습니다.
+  final bool busy;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = together, now = store.now;
+    final host = store.person(t.host);
+    final others = [
+      for (final m in t.members)
+        if (m != t.host && m != store.me?.uid) store.person(m)?.name ?? '친구',
+    ];
+    return Container(
+      margin: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: const BorderRadius.all(Radius.circular(20)),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              FriendAvatar(initial: host?.initial ?? '친'),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${host?.name ?? '친구'} 님이 함께 달리자고 해요',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      agoLabel(t.createdAt ?? now, now),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          TogetherRequestCard._infoLine(
+            Icons.calendar_today_outlined,
+            '${t.startsAt.month}월 ${t.startsAt.day}일 (${weekdayLetter(t.startsAt)}) '
+            '${clockText(t.startsAt)}',
+          ),
+          const SizedBox(height: 10),
+          TogetherRequestCard._infoLine(Icons.flag_outlined, t.goalLabel),
+          if (others.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            TogetherRequestCard._infoLine(
+              Icons.people_outline,
+              '함께: ${others.join(', ')}',
+            ),
+          ],
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: FriendSheetButton(
+                  label: '거절',
+                  height: 44,
+                  onPressed: busy
+                      ? null
+                      : () => onAnswer(TogetherStatus.declined),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FriendSheetButton(
+                  label: '수락',
+                  filled: true,
+                  height: 44,
+                  onPressed: busy
+                      ? null
+                      : () => onAnswer(TogetherStatus.accepted),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Widget _infoLine(IconData icon, String text) => Row(
+    children: [
+      Icon(icon, size: 16, color: AppColors.textSecondary),
+      const SizedBox(width: 8),
+      Expanded(
+        child: Text(
+          text,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+        ),
+      ),
+    ],
+  );
+}
+
+/// 답한 요청: 수락했으면 '진행 중인 약속에 추가됐어요', 거절했으면 '되돌리기'.
+class TogetherAnsweredCard extends StatelessWidget {
+  const TogetherAnsweredCard({
+    super.key,
+    required this.together,
+    required this.store,
+    required this.status,
+    required this.onUndo,
+  });
+
+  final Together together;
+  final TogetherStore store;
+  final TogetherStatus status;
+  final VoidCallback onUndo;
+
+  @override
+  Widget build(BuildContext context) {
+    final host = store.person(together.host)?.name ?? '친구';
+    final accepted = status == TogetherStatus.accepted;
+    return Container(
+      margin: const EdgeInsets.only(top: 14),
+      constraints: const BoxConstraints(minHeight: 64),
+      padding: EdgeInsets.fromLTRB(16, 12, accepted ? 16 : 4, 12),
+      decoration: BoxDecoration(
+        borderRadius: const BorderRadius.all(Radius.circular(20)),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Row(
+        children: [
+          if (accepted) ...[
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.textPrimary,
+              ),
+              child: Icon(Icons.check, size: 16, color: AppColors.background),
+            ),
+            const SizedBox(width: 12),
+          ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  accepted ? '$host 님과의 약속을 수락했어요' : '$host 님의 요청을 거절했어요',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: accepted ? FontWeight.w700 : FontWeight.w500,
+                    color: accepted
+                        ? AppColors.textPrimary
+                        : AppColors.textSecondary,
+                  ),
+                ),
+                if (accepted) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    '진행 중인 약속에 추가됐어요',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (!accepted)
+            TextButton(
+              onPressed: onUndo,
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.textPrimary,
+              ),
+              child: const Text(
+                '되돌리기',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  decoration: TextDecoration.underline,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }

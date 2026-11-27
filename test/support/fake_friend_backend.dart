@@ -11,8 +11,12 @@ class FakeFriendBackend implements FriendBackend {
 
   final Map<String, PublicProfile> profilesByUid = {};
 
-  /// '보낸 uid_받는 uid' 묶음.
+  /// '보낸 uid_받는 uid' 묶음. 바꾼 뒤 [requestsChanged]를 부르면 지켜보는 쪽에 알립니다.
   final Set<(String, String)> requests = {};
+  final _requestsChanged = StreamController<void>.broadcast();
+
+  /// 다른 폰에서 친구 요청을 보낸 것처럼, 지켜보는 쪽에 요청 목록이 바뀌었다고 알립니다.
+  void requestsChanged() => _requestsChanged.add(null);
   final Map<String, Set<String>> friends = {};
   final Map<String, ShareSettings> shareSettings = {};
 
@@ -81,6 +85,18 @@ class FakeFriendBackend implements FriendBackend {
   }
 
   @override
+  Stream<List<String>> watchIncoming(String uid) async* {
+    List<String> now() => [
+      for (final (from, to) in requests)
+        if (to == uid) from,
+    ];
+    yield now();
+    await for (final _ in _requestsChanged.stream) {
+      yield now();
+    }
+  }
+
+  @override
   Future<List<String>> outgoing(String uid) async {
     _check();
     return [
@@ -101,6 +117,7 @@ class FakeFriendBackend implements FriendBackend {
       throw const FriendException('권한이 없어요. 잠시 후 다시 시도해주세요');
     }
     requests.add((from, to));
+    requestsChanged();
   }
 
   @override
