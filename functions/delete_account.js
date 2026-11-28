@@ -110,7 +110,15 @@ async function deleteUserData(db, uid, FieldValue) {
     const run = await runRef.get();
     if (run.exists && run.get('status') === 'open') {
       if (run.get('host') === uid) {
-        await runRef.update({ status: 'closed' });
+        // 모집을 닫으면 모집 문서와 채팅방의 그 카드를 지웁니다(대기실의 다른 사람에게는 '모집이 닫혔어요').
+        await runRef.delete();
+        const cards = await db
+          .collection('crews')
+          .doc(lock.get('crewId'))
+          .collection('messages')
+          .where('runId', '==', runRef.id)
+          .get();
+        await deleteRefs(db, cards.docs.map((d) => d.ref));
         await deleteRefs(db, (run.get('members') || []).map((m) => db.collection('crewRunners').doc(m)));
       } else {
         await runRef.update({

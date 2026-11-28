@@ -1,17 +1,28 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
+import 'package:geolocator/geolocator.dart' show Geolocator, Position;
+import 'package:maplibre_gl/maplibre_gl.dart' show LatLng;
 
 import '../../design_system/app_colors.dart';
 import '../../design_system/inline_notice.dart';
 import '../../home/running/running_home_page.dart'
     show
-        RunningCountdownView,
+        GpsStatusChip,
+        MapCircleButton,
+        MapUserLocation,
+        MapZoom,
+        RunneryMap,
+        RunneryMapController,
         RunningLocationState,
         RunningMode,
         RunningStartOptions,
+        StatusChip,
         checkRunningLocation,
         runningLocationActive;
+import '../../record/list/detail/record_detail_page.dart' show RecordRouteMap;
 import '../../home/running/running_start_page.dart';
 import '../../profile/setting/profile_setting.dart';
 import '../../record/models/running_record.dart' show clockText;
@@ -22,22 +33,42 @@ import '../widgets/friend_widgets.dart';
 /// 대기실 이름표 색 16가지(시안 17-12-1). 번호는 서버의 색 번호와 같습니다.
 /// 두 화면 모드에서 같은 색을 씁니다(이름표는 사람을 구분하는 표시라서).
 const crewRunColors = [
-  Color(0xFFF2F2F2),
-  Color(0xFFFF7A00),
-  Color(0xFFFF9A52),
-  Color(0xFFF5C400),
-  Color(0xFFDCCB2E),
-  Color(0xFF4CC38A),
-  Color(0xFF2FA4FF),
-  Color(0xFF8E5B3B),
-  Color(0xFFC4573A),
-  Color(0xFFA33456),
-  Color(0xFFD13FC2),
-  Color(0xFFFF4F8B),
-  Color(0xFFFF9EC8),
-  Color(0xFFA05CF0),
-  Color(0xFFB994FF),
-  Color(0xFF7342CF),
+  Color(0xFFFF7A00), // 주황
+  Color(0xFFFF9A52), // 살구
+  Color(0xFFF5C400), // 노랑
+  Color(0xFFDCCB2E), // 레몬
+  Color(0xFFCFA86E), // 모래
+  Color(0xFFB9822E), // 갈색
+  Color(0xFF8E5B3B), // 밤색
+  Color(0xFFC4573A), // 벽돌
+  Color(0xFFA33456), // 와인
+  Color(0xFFF27BB6), // 분홍
+  Color(0xFFFF4F8B), // 핫핑크
+  Color(0xFFFF9EC8), // 연분홍
+  Color(0xFFA05CF0), // 보라
+  Color(0xFFB994FF), // 라벤더
+  Color(0xFF7342CF), // 진보라
+  Color(0xFFD13FC2), // 자홍
+];
+
+/// 색 이름(시안 17-12-1). 화면 읽기 기능이 읽어 줍니다.
+const crewRunColorNames = [
+  '주황',
+  '살구',
+  '노랑',
+  '레몬',
+  '모래',
+  '갈색',
+  '밤색',
+  '벽돌',
+  '와인',
+  '분홍',
+  '핫핑크',
+  '연분홍',
+  '보라',
+  '라벤더',
+  '진보라',
+  '자홍',
 ];
 
 Color crewRunColor(int i) =>
@@ -80,24 +111,35 @@ class CrewRunTag extends StatelessWidget {
   }
 }
 
-/// 17-9 함께 달리기 만들기: 제목을 정하면 크루 채팅방에 모집 카드가 올라가고 대기실로 갑니다.
-class CrewRunTitlePage extends StatefulWidget {
-  const CrewRunTitlePage({
-    super.key,
-    required this.crewId,
-    required this.friends,
-    this.store,
-  });
+/// 17-9 함께 달리기 만들기(채팅방 위로 올라오는 창): 제목을 정하면 크루 채팅방에 모집 카드가 올라갑니다.
+/// 만들면 모집 번호를 돌려주며 닫히고, 채팅방이 대기실을 엽니다.
+Future<String?> showCrewRunTitleSheet(
+  BuildContext context, {
+  required String crewId,
+  CrewStore? store,
+}) => showModalBottomSheet<String>(
+  context: context,
+  isScrollControlled: true,
+  backgroundColor: AppColors.card,
+  barrierColor: const Color(0xA8000000),
+  shape: RoundedRectangleBorder(
+    side: BorderSide(color: AppColors.borderDefault),
+    borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+  ),
+  builder: (_) => _CrewRunTitleSheet(crewId: crewId, store: store),
+);
+
+class _CrewRunTitleSheet extends StatefulWidget {
+  const _CrewRunTitleSheet({required this.crewId, this.store});
 
   final String crewId;
-  final FriendStore friends;
   final CrewStore? store;
 
   @override
-  State<CrewRunTitlePage> createState() => _CrewRunTitlePageState();
+  State<_CrewRunTitleSheet> createState() => _CrewRunTitleSheetState();
 }
 
-class _CrewRunTitlePageState extends State<CrewRunTitlePage> {
+class _CrewRunTitleSheetState extends State<_CrewRunTitleSheet> {
   CrewStore get _store => widget.store ?? CrewStore.instance;
   final _title = TextEditingController();
   bool _sending = false;
@@ -119,19 +161,7 @@ class _CrewRunTitlePageState extends State<CrewRunTitlePage> {
     });
     try {
       final id = await _store.openRun(widget.crewId, _title.text);
-      if (!mounted) return;
-      await Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(
-          builder: (_) => CrewLobbyPage(
-            crewId: widget.crewId,
-            runId: id,
-            friends: widget.friends,
-            store: widget.store,
-            // 팀을 만들자마자 색 고르는 화면을 띄웁니다.
-            pickColorOnOpen: true,
-          ),
-        ),
-      );
+      if (mounted) Navigator.pop(context, id);
     } on FriendException catch (e) {
       if (mounted) {
         setState(() {
@@ -143,71 +173,145 @@ class _CrewRunTitlePageState extends State<CrewRunTitlePage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: AppColors.background,
-    appBar: friendAppBar(context, '함께 달리기 만들기'),
-    body: SafeArea(
-      top: false,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-        children: [
-          Text(
-            '제목을 정하면 크루 채팅방에 올라가고, 크루원들이 보고 참여해요.',
-            style: TextStyle(
-              fontSize: 14,
-              height: 1.5,
-              color: AppColors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            '제목',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _title,
-            autofocus: true,
-            maxLength: CrewRun.maxTitle,
-            onChanged: (_) => setState(() {}),
-            onSubmitted: (_) => _create(),
-            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w500),
-            cursorColor: AppColors.textPrimary,
-            decoration: InputDecoration(
-              hintText: '제목을 입력해 주세요',
-              hintStyle: TextStyle(color: AppColors.textTertiary),
-              helperText: '20자까지 쓸 수 있어요',
-              enabledBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: AppColors.borderControl),
-              ),
-              focusedBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: AppColors.textPrimary),
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+    child: SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 10, 24, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.borderDefault,
+                  borderRadius: BorderRadius.circular(999),
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Icon(
-                Icons.groups_outlined,
-                size: 18,
+            const SizedBox(height: 26),
+            const Text(
+              '함께 달리기 만들기',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                height: 1.3,
+                letterSpacing: -0.44,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              '제목을 정하면 크루 채팅방에 올라가고, 크루원들이 보고 참여해요.',
+              style: TextStyle(
+                fontSize: 15,
+                height: 1.5,
+                letterSpacing: -0.15,
                 color: AppColors.textSecondary,
               ),
-              const SizedBox(width: 8),
-              Text(
-                '최대 ${CrewRun.maxRunners}명까지 함께 달릴 수 있어요',
-                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 26),
+            Text(
+              '제목',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                height: 1,
+                color: AppColors.textSecondary,
               ),
-            ],
-          ),
-          const SizedBox(height: 32),
-          FriendSheetButton(
-            label: _sending ? '만드는 중…' : '만들기',
-            filled: true,
-            onPressed: _title.text.trim().isEmpty || _sending ? null : _create,
-          ),
-          InlineNotice(_error, textAlign: TextAlign.center),
-        ],
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _title,
+              autofocus: true,
+              maxLength: CrewRun.maxTitle,
+              buildCounter: (
+                _, {
+                required currentLength,
+                required isFocused,
+                maxLength,
+              }) => null,
+              onChanged: (_) => setState(() {}),
+              onSubmitted: (_) => _create(),
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w500,
+                letterSpacing: -0.17,
+              ),
+              cursorColor: AppColors.textPrimary,
+              decoration: InputDecoration(
+                hintText: '제목을 입력해 주세요',
+                hintStyle: TextStyle(color: AppColors.textTertiary),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                enabledBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(
+                    color: AppColors.textPrimary,
+                    width: 2,
+                  ),
+                ),
+                focusedBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(
+                    color: AppColors.textPrimary,
+                    width: 2,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              '20자까지 쓸 수 있어요',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                height: 1,
+                color: AppColors.textTertiary,
+              ),
+            ),
+            const SizedBox(height: 22),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                border: Border.all(color: AppColors.divider),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                children: [
+                  FriendIcon(
+                    FriendIconKind.people,
+                    size: 18,
+                    color: AppColors.textSecondary,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '최대 ${CrewRun.maxRunners}명까지 함께 달릴 수 있어요',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        height: 1.4,
+                        letterSpacing: -0.14,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 22),
+            FriendSheetButton(
+              label: _sending ? '만드는 중…' : '만들기',
+              filled: true,
+              height: 56,
+              onPressed: _title.text.trim().isEmpty || _sending
+                  ? null
+                  : _create,
+            ),
+            InlineNotice(_error, textAlign: TextAlign.center),
+          ],
+        ),
       ),
     ),
   );
@@ -226,6 +330,7 @@ class CrewRunCard extends StatelessWidget {
     required this.onJoin,
     required this.onOpen,
     this.onRecord,
+    this.mine = false,
   });
 
   final String crewId, runId, title;
@@ -241,6 +346,9 @@ class CrewRunCard extends StatelessWidget {
   /// 기록 보기(팀 달리기가 끝났을 때). 없으면 버튼을 숨깁니다.
   final ValueChanged<CrewRun>? onRecord;
 
+  /// 내가 연 모집이면 true(오른쪽 말풍선 모양).
+  final bool mine;
+
   @override
   Widget build(BuildContext context) => StreamBuilder<CrewRun?>(
     stream: store.watchRun(crewId, runId),
@@ -248,34 +356,59 @@ class CrewRunCard extends StatelessWidget {
       final run = snapshot.data;
       final me = store.me?.uid ?? '';
       final joined = run != null && run.members.contains(me);
-      final (status, action) = switch (run) {
-        null => ('불러오는 중', null),
-        _ when run.status == CrewRunStatus.closed => ('모집이 닫혔어요', null),
+      // (상태 글자, 버튼, 상태 점이 주황인지)
+      final (status, action, live) = switch (run) {
+        null => ('불러오는 중', null, false),
+        _ when run.status == CrewRunStatus.closed => ('모집이 닫혔어요', null, false),
         // 출발한 뒤에는 누구도 새로 들어갈 수 없어 버튼을 두지 않습니다.
-        _ when run.isStarted => ('러닝 진행 중', null),
-        _ when run.isEnded => ('함께 달렸어요', onRecord == null ? null : '기록 보기'),
-        _ when joined => ('모으는 중', '대기실로 가기'),
-        _ when run.isFull => ('자리가 다 찼어요', null),
-        _ => ('모으는 중', '참여'),
+        _ when run.isStarted => ('러닝 진행 중', null, true),
+        _ when run.isEnded => (
+          '함께 달렸어요',
+          onRecord == null ? null : '기록 보기',
+          false,
+        ),
+        _ when joined => ('모으는 중', '대기실로 가기', true),
+        _ when run.isFull => ('자리가 다 찼어요', null, false),
+        _ => ('모으는 중', '참여', true),
       };
       final running = run == null || !run.isStarted
           ? 0
           : run.stillRunning.length;
+      final caption = TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w500,
+        height: 1.45,
+        letterSpacing: -0.06,
+        color: AppColors.textTertiary,
+      );
+      // 17-10: 폭 260의 말풍선 카드(연 사람 쪽 모서리만 4).
       return Container(
-        margin: const EdgeInsets.symmetric(vertical: 10),
+        width: 260,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: const BorderRadius.all(Radius.circular(20)),
+          color: AppColors.card,
           border: Border.all(color: AppColors.divider),
+          borderRadius: mine
+              ? const BorderRadius.only(
+                  topLeft: Radius.circular(16),
+                  topRight: Radius.circular(4),
+                  bottomLeft: Radius.circular(16),
+                  bottomRight: Radius.circular(16),
+                )
+              : const BorderRadius.only(
+                  topLeft: Radius.circular(4),
+                  topRight: Radius.circular(16),
+                  bottomLeft: Radius.circular(16),
+                  bottomRight: Radius.circular(16),
+                ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.directions_run,
+                FriendIcon(
+                  FriendIconKind.people,
                   size: 16,
                   color: AppColors.primaryText,
                 ),
@@ -285,6 +418,8 @@ class CrewRunCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
+                    height: 1,
+                    letterSpacing: -0.06,
                     color: AppColors.primaryText,
                   ),
                 ),
@@ -293,12 +428,17 @@ class CrewRunCard extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               title,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                height: 1.3,
+                letterSpacing: -0.36,
+              ),
             ),
             const SizedBox(height: 6),
             Text(
               '${run == null ? '' : '${store.nameOf(run.host)} 님이 열었어요 · '}${clockText(at)}',
-              style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+              style: caption.copyWith(height: 1.4),
             ),
             if (run != null) ...[
               const SizedBox(height: 14),
@@ -306,68 +446,100 @@ class CrewRunCard extends StatelessWidget {
                 children: [
                   for (final (i, uid) in run.members.take(5).indexed)
                     Transform.translate(
-                      offset: Offset(-6.0 * i, 0),
+                      offset: Offset(-8.0 * i, 0),
                       child: Container(
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          border: Border.all(
-                            color: AppColors.surface,
-                            width: 2,
-                          ),
+                          boxShadow: [
+                            BoxShadow(color: AppColors.card, spreadRadius: 2),
+                          ],
                         ),
-                        child: CrewRunTag(
+                        child: FriendAvatar(
                           initial: store.person(uid)?.initial ?? '·',
-                          color: run.colorOf(uid),
-                          size: 26,
+                          size: 28,
                         ),
                       ),
                     ),
-                  const SizedBox(width: 4),
+                  SizedBox(width: 8 - 8.0 * (run.members.take(5).length - 1)),
                   Expanded(
                     child: Text(
                       '${run.members.length}/${CrewRun.maxRunners}명 참여',
+                      maxLines: 1,
                       style: const TextStyle(
                         fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w700,
+                        height: 1,
+                        letterSpacing: -0.13,
                       ),
                     ),
                   ),
-                  FriendChip(label: status, muted: action == null),
+                  Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: live ? AppColors.primary : AppColors.textTertiary,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    status,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      height: 1,
+                      color: live
+                          ? AppColors.primaryText
+                          : AppColors.textTertiary,
+                    ),
+                  ),
                 ],
               ),
               if (running > 0) ...[
                 const SizedBox(height: 10),
-                Text(
-                  '$running명이 함께 달리고 있어요',
-                  style: TextStyle(
-                    fontSize: 12,
-                    height: 1.5,
-                    color: AppColors.textTertiary,
-                  ),
-                ),
+                Text('$running명이 함께 달리고 있어요', style: caption),
               ],
             ],
             if (run != null && action != null) ...[
               const SizedBox(height: 14),
-              FriendSheetButton(
-                label: action,
-                filled: true,
+              SizedBox(
+                width: double.infinity,
                 height: 44,
-                onPressed: () => run.isEnded
-                    ? onRecord?.call(run)
-                    : joined
-                    ? onOpen(run)
-                    : onJoin(run),
+                child: run.isEnded
+                    ? OutlinedButton(
+                        onPressed: () => onRecord?.call(run),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.textPrimary,
+                          side: BorderSide(color: AppColors.borderDefault),
+                          shape: const StadiumBorder(),
+                          textStyle: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.15,
+                          ),
+                        ),
+                        child: Text(action),
+                      )
+                    : FilledButton(
+                        onPressed: () => joined ? onOpen(run) : onJoin(run),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: const Color(0xFF0B0B0B),
+                          shape: const StadiumBorder(),
+                          textStyle: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.15,
+                          ),
+                        ),
+                        child: Text(action),
+                      ),
               ),
               if (!joined && run.isOpen) ...[
                 const SizedBox(height: 10),
                 Text(
                   '참여하면 대기실로 들어가요. ${store.nameOf(run.host)} 님이 러닝 시작을 누르면 다 같이 카운트다운해요.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    height: 1.5,
-                    color: AppColors.textTertiary,
-                  ),
+                  style: caption,
                 ),
               ],
             ],
@@ -427,6 +599,10 @@ class _CrewLobbyPageState extends State<CrewLobbyPage> {
   /// 들어오자마자 색 고르는 화면을 이미 띄웠으면 true(한 번만 띄웁니다).
   bool _autoPicked = false;
 
+  /// 지도 바탕에 쓸 마지막 위치(위치 권한이 있을 때).
+  Position? _position;
+  final _map = RunneryMapController();
+
   /// 안 되면 누른 곳 가까이에 빨간 글씨로 알립니다.
   /// 자리: 'top' 뒤로 가기가 있는 제목 줄 아래, 'me' 내 이름 줄 아래, 'actions' 맨 아래 버튼 바로 위.
   final _notices = Notices();
@@ -452,6 +628,14 @@ class _CrewLobbyPageState extends State<CrewLobbyPage> {
     }
     if (mounted) setState(() => _locationOk = ok);
     _autoPickColor();
+    if (ok) {
+      try {
+        final last = await Geolocator.getLastKnownPosition();
+        if (mounted && last != null) setState(() => _position = last);
+      } catch (_) {
+        // 위치를 못 받으면 지도는 기본 자리에서 보여 줍니다.
+      }
+    }
   }
 
   /// [CrewLobbyPage.pickColorOnOpen]이면 모집 정보와 위치 권한을 확인한 뒤 색 고르는 화면을 한 번 띄웁니다.
@@ -474,12 +658,14 @@ class _CrewLobbyPageState extends State<CrewLobbyPage> {
   void dispose() {
     _sub?.cancel();
     _notices.dispose();
+    _map.dispose();
     super.dispose();
   }
 
   void _onRun(CrewRun? run) {
     if (!mounted) return;
-    setState(() => _run = run);
+    // 모집이 닫히면 서버에서 지워져 null이 옵니다. 안내를 띄우는 동안 마지막 모습을 그대로 둡니다.
+    setState(() => _run = run ?? _run);
     if (run != null) unawaited(_store.loadPeople(run.members));
     _autoPickColor();
     // 팀장이 러닝 시작을 누르면 대기실의 모두가 함께 셉니다.
@@ -677,8 +863,13 @@ class _CrewLobbyPageState extends State<CrewLobbyPage> {
     }
     final picked = await showModalBottomSheet<int>(
       context: context,
-      backgroundColor: AppColors.sheet,
-      showDragHandle: true,
+      isScrollControlled: true,
+      backgroundColor: AppColors.card,
+      barrierColor: const Color(0xA8000000),
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: AppColors.borderDefault),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      ),
       builder: (context) => _ColorSheet(
         run: run,
         me: _me,
@@ -693,152 +884,246 @@ class _CrewLobbyPageState extends State<CrewLobbyPage> {
     }, at: at);
   }
 
+  /// 지도 바탕(시안 17-9-1). 테스트처럼 지도를 끈 곳에서는 바탕색만 둡니다.
+  Widget _mapBackground() {
+    if (!RecordRouteMap.basemapEnabled) {
+      return ColoredBox(color: AppColors.mapLand);
+    }
+    final p = _position;
+    final point = p == null ? null : LatLng(p.latitude, p.longitude);
+    return IgnorePointer(
+      child: RunneryMap(
+        controller: _map,
+        initialCenter: point ?? const LatLng(37.5665, 126.9780),
+        initialZoom: MapZoom.basic,
+        interactive: false,
+        userLocation: point == null
+            ? null
+            : MapUserLocation(point, p!.accuracy.clamp(8, 80)),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final run = _run;
-    // 함께 세는 동안은 누구도 먼저 출발하거나 나가지 않게, 눌러 건너뛸 수 없는 카운트다운을 띄웁니다.
-    if (_counting) {
-      return PopScope(
-        canPop: false,
-        child: Scaffold(
-          backgroundColor: AppColors.background,
-          body: RunningCountdownView(
-            seconds: CrewLobbyPage.countdownSeconds,
-            title: '함께 출발해요',
-            subtitle: '같은 모집 사람들이 다 같이 시작해요',
-            skippable: false,
-            onFinished: _launch,
-          ),
-        ),
-      );
-    }
+    final voice = ProfileSettings.instance.voice;
     final locked =
         run != null && run.isOpen && run.host != _me && run.ready.contains(_me);
     return PopScope(
       // 직접 나가기를 처리합니다(준비 완료면 막고, 팀장이면 확인).
-      canPop: run == null || !run.isOpen || !run.members.contains(_me),
+      // 함께 세는 동안(17-12-3)은 누구도 먼저 나가지 않게 막습니다.
+      canPop:
+          !_counting &&
+          (run == null || !run.isOpen || !run.members.contains(_me)),
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) unawaited(_tryLeave());
+        if (!didPop && !_counting) unawaited(_tryLeave());
       },
       child: Scaffold(
-        backgroundColor: AppColors.background,
-        appBar: AppBar(
-          backgroundColor: AppColors.background,
-          surfaceTintColor: Colors.transparent,
-          leading: IconButton(
-            tooltip: locked ? '준비 취소를 누른 뒤 나갈 수 있어요' : '대기실 나가기',
-            icon: Icon(
-              Icons.arrow_back_ios_new,
-              size: 18,
-              color: locked ? AppColors.textTertiary : null,
+        backgroundColor: AppColors.mapLand,
+        body: Stack(
+          children: [
+            Positioned.fill(child: _mapBackground()),
+            // 지도 위 글자가 잘 읽히도록 바탕색을 반쯤 덮습니다(카운트다운 화면과 같음).
+            Positioned.fill(
+              child: ColoredBox(
+                color: AppColors.background.withValues(alpha: 0.55),
+              ),
             ),
-            onPressed: _tryLeave,
-          ),
-          title: const Text(
-            '대기실',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-          ),
-          centerTitle: true,
-        ),
-        body: SafeArea(
-          top: false,
-          child: run == null
-              ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    NoticeSlot(
-                      notices: _notices,
-                      id: 'top',
-                      textAlign: TextAlign.center,
-                      padding: const EdgeInsets.fromLTRB(24, 4, 24, 4),
-                    ),
-                    Expanded(child: _content(run)),
-                  ],
-                ),
+            SafeArea(
+              child: run == null
+                  ? const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : _content(run, voice: voice, locked: locked),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _content(CrewRun run) {
+  /// 17-9-1·17-12-2 대기실: 위쪽 나가기·음성·GPS, 가운데 '준비 완료 N/M' 고리, 제목·이름표, 아래 버튼.
+  Widget _content(CrewRun run, {required bool voice, required bool locked}) {
     final host = run.host == _me;
     final ready = run.ready.contains(_me);
     final order = [run.host, ...run.members.where((m) => m != run.host)];
     final hostName = host ? '내가' : '${_store.nameOf(run.host)} 님이';
+    final note = TextStyle(
+      fontSize: 14,
+      fontWeight: FontWeight.w500,
+      height: 1.4,
+      color: AppColors.textTertiary,
+    );
+    final ringSize = math.min(MediaQuery.sizeOf(context).width * 0.7, 272.0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+          child: Row(
+            children: [
+              MapCircleButton(
+                icon: Icons.arrow_back_ios_new,
+                tooltip: locked ? '준비 취소를 누른 뒤 나갈 수 있어요' : '대기실 나가기',
+                onPressed: () {
+                  if (!_counting) unawaited(_tryLeave());
+                },
+              ),
+              const SizedBox(width: 8),
+              // 화면이 좁으면 칩을 통째로 줄입니다.
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: StatusChip(
+                    label: voice ? '음성 안내 켜짐' : '음성 안내 꺼짐',
+                    icon: voice
+                        ? Icons.volume_up_outlined
+                        : Icons.volume_off_outlined,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: GpsStatusChip(
+                    locationState: _locationOk == false
+                        ? RunningLocationState.denied
+                        : RunningLocationState.ready,
+                    position: _position,
+                    compact: true,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        NoticeSlot(
+          notices: _notices,
+          id: 'top',
+          textAlign: TextAlign.center,
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+        ),
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
             children: [
               Center(
-                child: Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: '${run.readyCount}',
-                        style: runningNumberStyle(64, weight: FontWeight.w700),
-                      ),
-                      TextSpan(
-                        text: ' /${run.members.length}',
-                        style: runningNumberStyle(
-                          28,
-                          weight: FontWeight.w600,
-                          color: AppColors.textTertiary,
+                child: SizedBox.square(
+                  dimension: ringSize,
+                  child: _counting
+                      // 17-12-3: 같은 고리 안에서 3·2·1을 세고, 끝나면 모두 함께 러닝을 시작합니다.
+                      ? _LobbyCountdown(
+                          seconds: CrewLobbyPage.countdownSeconds,
+                          size: ringSize,
+                          onFinished: _launch,
+                        )
+                      : CustomPaint(
+                          painter: _LobbyRing(AppColors.divider),
+                          child: Semantics(
+                            label:
+                                '${run.members.length}명 중 ${run.readyCount}명 준비 완료',
+                            excludeSemantics: true,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text.rich(
+                                  TextSpan(
+                                    children: [
+                                      TextSpan(
+                                        text: '${run.readyCount}',
+                                        style: runningNumberStyle(
+                                          ringSize * 0.47,
+                                          weight: FontWeight.w600,
+                                        ).copyWith(height: 0.8),
+                                      ),
+                                      TextSpan(
+                                        text: '/${run.members.length}',
+                                        style: runningNumberStyle(
+                                          ringSize * 0.22,
+                                          weight: FontWeight.w600,
+                                          color: AppColors.textTertiary,
+                                        ).copyWith(height: 0.8),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 18),
+                                Text(
+                                  '준비 완료',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                    height: 1,
+                                    letterSpacing: -0.15,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
                 ),
               ),
-              Center(
-                child: Text(
-                  '준비 완료',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 28),
               Text(
                 run.title,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  height: 1.3,
+                  letterSpacing: -0.44,
                 ),
               ),
               const SizedBox(height: 8),
               Text(
                 '$hostName 열었어요 · ${run.members.length}/${CrewRun.maxRunners}명',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 24),
-              for (final (i, uid) in order.indexed) ...[
-                _MemberRow(
-                  run: run,
-                  uid: uid,
-                  me: _me,
-                  store: _store,
-                  divider: i > 0,
-                  onTap: uid == _me && run.isOpen && !_busy
-                      ? () => _pickColor(at: 'me')
-                      : null,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  height: 1,
+                  letterSpacing: -0.065,
+                  color: AppColors.textTertiary,
                 ),
-                if (uid == _me) NoticeSlot(notices: _notices, id: 'me'),
-              ],
-              const SizedBox(height: 12),
-              if (run.isOpen && !(ready && !host))
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final uid in order)
+                    _MemberChip(
+                      run: run,
+                      uid: uid,
+                      me: _me,
+                      store: _store,
+                      onTap: uid == _me && run.isOpen && !_busy
+                          ? () => _pickColor(at: 'me')
+                          : null,
+                    ),
+                ],
+              ),
+              NoticeSlot(
+                notices: _notices,
+                id: 'me',
+                textAlign: TextAlign.center,
+              ),
+              if (run.isOpen && !(ready && !host)) ...[
+                const SizedBox(height: 14),
                 Text(
                   '내 이름을 눌러 색을 고를 수 있어요',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+                  style: note,
                 ),
-              const SizedBox(height: 20),
+              ],
+              const SizedBox(height: 14),
               Text(
                 host
                     ? (run.canStart
@@ -846,28 +1131,20 @@ class _CrewLobbyPageState extends State<CrewLobbyPage> {
                           : '모두 준비하면 러닝 시작을 누를 수 있어요')
                     : '$hostName 러닝 시작을 누르면 다 같이 카운트가 시작돼요',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  height: 1.5,
-                  color: AppColors.textSecondary,
-                ),
+                style: note,
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 6),
               Text(
                 '카운트가 끝나면 모두 함께 기록이 시작돼요',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+                style: note,
               ),
               if (_locationOk == false) ...[
                 const SizedBox(height: 16),
                 Text(
                   '위치 권한을 켜야 함께 출발할 수 있어요. 설정에서 위치를 허용해 주세요.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.5,
-                    color: AppColors.error,
-                  ),
+                  style: note.copyWith(color: AppColors.error),
                 ),
               ],
             ],
@@ -879,19 +1156,39 @@ class _CrewLobbyPageState extends State<CrewLobbyPage> {
           textAlign: TextAlign.center,
           padding: const EdgeInsets.fromLTRB(24, 6, 24, 0),
         ),
+        // 세는 동안에는 버튼을 숨깁니다(높이는 그대로 둬 화면이 흔들리지 않게).
         Padding(
           padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-          child: host
-              ? FriendSheetButton(
-                  label: '러닝 시작',
-                  filled: true,
+          child: _counting
+              ? const SizedBox(height: 56)
+              : host
+              ? FilledButton.icon(
                   onPressed: run.canStart && !_busy && _locationOk == true
                       ? () => _act(() => _store.startRun(run))
                       : null,
+                  icon: const FriendIcon(
+                    FriendIconKind.play,
+                    size: 18,
+                    color: Color(0xFF0B0B0B),
+                  ),
+                  label: const Text('러닝 시작'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(56),
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: const Color(0xFF0B0B0B),
+                    disabledBackgroundColor: AppColors.borderDefault,
+                    shape: const StadiumBorder(),
+                    textStyle: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.19,
+                    ),
+                  ),
                 )
               : ready
               ? FriendSheetButton(
                   label: '준비 취소',
+                  height: 56,
                   onPressed: _busy
                       ? null
                       : () => _act(() => _store.setRunReady(run, ready: false)),
@@ -899,6 +1196,7 @@ class _CrewLobbyPageState extends State<CrewLobbyPage> {
               : FriendSheetButton(
                   label: '준비 완료',
                   filled: true,
+                  height: 56,
                   onPressed: _busy || _locationOk != true
                       ? null
                       : () => _pickColor(),
@@ -909,92 +1207,205 @@ class _CrewLobbyPageState extends State<CrewLobbyPage> {
   }
 }
 
-/// 대기실의 한 사람: 이름표 색, 이름(나·팀장 표시), 준비 상태.
-class _MemberRow extends StatelessWidget {
-  const _MemberRow({
+/// 17-12-3 함께 세기: 고리가 매 초 12시 방향부터 주황으로 한 바퀴 차고, 가운데 숫자가 3·2·1로 바뀝니다.
+/// 건너뛸 수 없고, 다 세면 [onFinished]를 부릅니다.
+class _LobbyCountdown extends StatefulWidget {
+  const _LobbyCountdown({
+    required this.seconds,
+    required this.size,
+    required this.onFinished,
+  });
+
+  final int seconds;
+  final double size;
+  final VoidCallback onFinished;
+
+  @override
+  State<_LobbyCountdown> createState() => _LobbyCountdownState();
+}
+
+class _LobbyCountdownState extends State<_LobbyCountdown>
+    with SingleTickerProviderStateMixin {
+  late final _controller = AnimationController(
+    vsync: this,
+    duration: Duration(seconds: widget.seconds),
+  )..forward().whenComplete(_finish);
+  bool _done = false;
+
+  void _finish() {
+    if (_done || !mounted) return;
+    _done = true;
+    HapticFeedback.mediumImpact();
+    widget.onFinished();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _controller,
+    builder: (context, _) {
+      final t = _controller.value * widget.seconds;
+      final number = (widget.seconds - t.floor()).clamp(1, widget.seconds);
+      final progress = _controller.isCompleted ? 1.0 : t % 1;
+      return Semantics(
+        liveRegion: true,
+        label: '$number',
+        excludeSemantics: true,
+        child: CustomPaint(
+          painter: _LobbyRing(AppColors.divider, progress: progress),
+          child: Center(
+            child: Text(
+              '$number',
+              style: runningNumberStyle(
+                widget.size * 0.8,
+                weight: FontWeight.w600,
+              ).copyWith(height: 0.8),
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+/// 대기실 가운데 고리(두께 2, 구분선 색). [progress]가 있으면 그만큼 주황(두께 3)으로 채웁니다.
+class _LobbyRing extends CustomPainter {
+  _LobbyRing(this.color, {this.progress});
+
+  final Color color;
+  final double? progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final r = size.shortestSide / 2 - 4;
+    canvas.drawCircle(
+      center,
+      r,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2,
+    );
+    final p = progress;
+    if (p == null || p <= 0) return;
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: r),
+      -math.pi / 2,
+      2 * math.pi * p,
+      false,
+      Paint()
+        ..color = AppColors.primary
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3
+        ..strokeCap = StrokeCap.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_LobbyRing old) =>
+      old.color != color || old.progress != progress;
+}
+
+/// 17-9-1 이름표: 고른 색 테두리의 둥근 칩(높이 32). 나는 '나 · 팀장'과 ⌄(눌러서 색 고르기),
+/// 다른 사람은 준비하면 ✓가 붙습니다.
+class _MemberChip extends StatelessWidget {
+  const _MemberChip({
     required this.run,
     required this.uid,
     required this.me,
     required this.store,
-    required this.divider,
     required this.onTap,
   });
 
   final CrewRun run;
   final String uid, me;
   final CrewStore store;
-  final bool divider;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final isMe = uid == me, isHost = uid == run.host;
     final ready = run.isReady(uid);
-    return Semantics(
-      button: onTap != null,
-      label:
-          '${isMe ? '나' : store.nameOf(uid)}${isHost ? ', 팀장' : ''}, '
-          '${ready ? '준비 완료' : '준비 중'}${onTap != null ? ', 눌러서 색 고르기' : ''}',
-      excludeSemantics: true,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 60),
-          decoration: BoxDecoration(
-            border: Border(
-              top: BorderSide(
-                color: divider ? AppColors.divider : Colors.transparent,
+    final color = crewRunColor(run.colorOf(uid));
+    final name = isMe ? (store.me?.name ?? '나') : store.nameOf(uid);
+    final chip = Container(
+      height: 32,
+      padding: const EdgeInsets.fromLTRB(3, 0, 10, 0),
+      decoration: BoxDecoration(
+        color: AppColors.background.withValues(alpha: 0.78),
+        border: Border.all(color: color),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.background,
+              border: Border.all(color: color, width: 2),
+            ),
+            child: Text(
+              store.person(uid)?.initial ?? (isMe ? '나' : '·'),
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                height: 1,
               ),
             ),
           ),
-          child: Row(
-            children: [
-              CrewRunTag(
-                initial: store.person(uid)?.initial ?? '·',
-                color: run.colorOf(uid),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        isMe ? '나' : store.nameOf(uid),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    if (isHost) ...[
-                      const SizedBox(width: 6),
-                      const FriendChip(label: '팀장'),
-                    ],
-                    if (onTap != null) ...[
-                      const SizedBox(width: 6),
-                      Icon(
-                        Icons.palette_outlined,
-                        size: 16,
-                        color: AppColors.textTertiary,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              if (ready)
-                const FriendChip(
-                  label: '준비 완료',
-                  filled: true,
-                  icon: Icons.check,
-                )
-              else
-                const FriendChip(label: '준비 중', muted: true),
-            ],
+          const SizedBox(width: 6),
+          Text(
+            name,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              height: 1,
+              letterSpacing: -0.13,
+            ),
           ),
-        ),
+          if (isMe || isHost) ...[
+            const SizedBox(width: 4),
+            Text(
+              [if (isMe) '나', if (isHost) '팀장'].join(' · '),
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                height: 1,
+                color: AppColors.textTertiary,
+              ),
+            ),
+          ],
+          if (onTap != null) ...[
+            const SizedBox(width: 6),
+            Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 14,
+              color: AppColors.textSecondary,
+            ),
+          ] else if (ready && !isHost) ...[
+            const SizedBox(width: 6),
+            Icon(Icons.check_rounded, size: 14, color: AppColors.textPrimary),
+          ],
+        ],
       ),
+    );
+    return Semantics(
+      button: onTap != null,
+      label:
+          '$name${isMe ? ', 나' : ''}${isHost ? ', 팀장' : ''}, '
+          '${ready ? '준비 완료' : '준비 중'}${onTap != null ? ', 눌러서 색 고르기' : ''}',
+      excludeSemantics: true,
+      child: GestureDetector(onTap: onTap, child: chip),
     );
   }
 }
@@ -1026,53 +1437,128 @@ class _ColorSheetState extends State<_ColorSheet> {
       for (final MapEntry(:key, :value) in widget.run.colors.entries)
         if (key != widget.me && widget.run.members.contains(key)) value: key,
     };
+    final mine = crewRunColor(_color);
+    final host = widget.run.host == widget.me;
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 4, 24, 24),
+        padding: const EdgeInsets.fromLTRB(24, 10, 24, 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.borderDefault,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+            const SizedBox(height: 26),
             Row(
               children: [
-                CrewRunTag(
-                  initial: widget.store.me?.initial ?? '나',
-                  color: _color,
-                  size: 44,
+                const Expanded(
+                  child: Text(
+                    '내 색상',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      height: 1.3,
+                      letterSpacing: -0.44,
+                    ),
+                  ),
                 ),
-                const SizedBox(width: 12),
-                const Text(
-                  '내 색상',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                // 고르는 색이 내 이름표에 어떻게 보이는지 미리 보여 줍니다.
+                Container(
+                  height: 32,
+                  padding: const EdgeInsets.fromLTRB(3, 0, 10, 0),
+                  decoration: BoxDecoration(
+                    color: AppColors.background.withValues(alpha: 0.78),
+                    border: Border.all(color: mine),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 24,
+                        height: 24,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppColors.background,
+                          border: Border.all(color: mine, width: 2),
+                        ),
+                        child: Text(
+                          widget.store.me?.initial ?? '나',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            height: 1,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        widget.store.me?.name ?? '나',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          height: 1,
+                          letterSpacing: -0.13,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        host ? '나 · 팀장' : '나',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          height: 1,
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Text(
               '함께 달리는 사람들에게 내 이름표가 이 색으로 보여요.',
-              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              style: TextStyle(
+                fontSize: 15,
+                height: 1.5,
+                letterSpacing: -0.15,
+                color: AppColors.textSecondary,
+              ),
             ),
-            const SizedBox(height: 18),
-            GridView.count(
-              crossAxisCount: 8,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
+            const SizedBox(height: 16),
+            Wrap(
+              alignment: WrapAlignment.center,
               children: [
                 for (var i = 0; i < CrewRun.colorCount; i++)
                   _swatch(i, taken[i]),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Text(
-              '이니셜이 있는 색은 다른 사람이 골랐어요',
-              style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+              '흐리게 보이는 색은 다른 사람이 골라서 고를 수 없어요',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                height: 1.45,
+                letterSpacing: -0.06,
+                color: AppColors.textTertiary,
+              ),
             ),
             const SizedBox(height: 22),
             FriendSheetButton(
               label: widget.actionLabel,
               filled: true,
+              height: 56,
               onPressed: () => Navigator.pop(context, _color),
             ),
           ],
@@ -1081,40 +1567,47 @@ class _ColorSheetState extends State<_ColorSheet> {
     );
   }
 
+  /// 색 하나(누르는 자리 56, 동그라미 40). 고른 색은 ✓, 다른 사람이 고른 색은 테두리와 흐린 바탕에 그 사람 첫 글자.
   Widget _swatch(int i, String? takenBy) {
     final c = crewRunColor(i);
     final selected = _color == i;
+    final name = crewRunColorNames[i % crewRunColorNames.length];
     return Semantics(
       button: takenBy == null,
       selected: selected,
       label: takenBy == null
-          ? '색 ${i + 1}${selected ? ', 고름' : ''}'
-          : '색 ${i + 1}, ${widget.store.nameOf(takenBy)} 님이 고름',
+          ? '$name${selected ? ', 고름' : ''}'
+          : '$name · ${widget.store.nameOf(takenBy)} 님이 골랐어요',
       excludeSemantics: true,
       child: GestureDetector(
         onTap: takenBy == null ? () => setState(() => _color = i) : null,
-        child: Container(
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: c,
-            border: Border.all(
-              color: selected ? AppColors.textPrimary : Colors.transparent,
-              width: 3,
+        child: SizedBox.square(
+          dimension: 56,
+          child: Center(
+            child: Container(
+              width: 40,
+              height: 40,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: takenBy == null ? c : c.withValues(alpha: 0.28),
+                border: takenBy == null ? null : Border.all(color: c, width: 2),
+              ),
+              child: takenBy != null
+                  ? Text(
+                      widget.store.person(takenBy)?.initial ?? '·',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        height: 1,
+                        color: AppColors.textPrimary,
+                      ),
+                    )
+                  : selected
+                  ? Icon(Icons.check_rounded, size: 20, color: _onColor(c))
+                  : null,
             ),
           ),
-          child: takenBy != null
-              ? Text(
-                  widget.store.person(takenBy)?.initial ?? '·',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: _onColor(c),
-                  ),
-                )
-              : selected
-              ? Icon(Icons.check, size: 16, color: _onColor(c))
-              : null,
         ),
       ),
     );

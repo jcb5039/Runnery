@@ -4,6 +4,9 @@ import '../../design_system/app_colors.dart';
 import '../../design_system/app_component_metrics.dart';
 import '../../design_system/app_radius.dart';
 import '../data/friend_models.dart';
+import 'friend_icons.dart';
+
+export 'friend_icons.dart';
 
 /// 이름 첫 글자를 담은 동그라미.
 class FriendAvatar extends StatelessWidget {
@@ -31,6 +34,8 @@ class FriendAvatar extends StatelessWidget {
     alignment: Alignment.center,
     decoration: BoxDecoration(
       shape: BoxShape.circle,
+      // 시안: 바탕색 원에 회색 테두리(겹쳐 놓아도 뒤가 비치지 않게).
+      color: AppColors.background,
       border: Border.all(color: borderColor ?? AppColors.borderControl),
     ),
     child: Text(
@@ -398,18 +403,35 @@ AppBar friendAppBar(
   BuildContext context,
   String title, {
   List<Widget>? actions,
+  Widget? titleWidget,
+  String backTooltip = '뒤로',
 }) => AppBar(
+  // 시안: 높이 53, 아래 구분선, 얇은 '<' 아이콘(44×44), 제목 16 굵게.
+  toolbarHeight: 53,
   backgroundColor: AppColors.background,
   surfaceTintColor: Colors.transparent,
-  leading: IconButton(
-    tooltip: '뒤로',
-    icon: const Icon(Icons.arrow_back_ios_new, size: 18),
-    onPressed: () => Navigator.pop(context),
+  scrolledUnderElevation: 0,
+  shape: Border(bottom: BorderSide(color: AppColors.divider)),
+  leadingWidth: 56,
+  leading: Padding(
+    padding: const EdgeInsets.only(left: 12),
+    child: FriendIconButton(
+      icon: FriendIconKind.back,
+      tooltip: backTooltip,
+      onPressed: () => Navigator.pop(context),
+    ),
   ),
-  title: Text(
-    title,
-    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-  ),
+  title:
+      titleWidget ??
+      Text(
+        title,
+        style: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.24,
+          height: 1,
+        ),
+      ),
   centerTitle: true,
-  actions: actions,
+  actions: [...?actions, const SizedBox(width: 12)],
 );

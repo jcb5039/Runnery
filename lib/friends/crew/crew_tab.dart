@@ -67,25 +67,32 @@ class _CrewTabState extends State<CrewTab> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // 시안 17-7에 없는 두 버튼은 17-4의 거절·수락 버튼과 같은 모양(높이 44, 반반)으로 둡니다.
           Row(
             children: [
               Expanded(
-                child: FriendSectionHeader(
-                  title: '내 크루',
-                  meta: crews.isEmpty ? null : '${crews.length}개',
+                child: _CrewAction(
+                  label: '코드로 참가',
+                  semanticLabel: '초대 코드로 크루에 참가하기',
+                  onPressed: _openCode,
                 ),
               ),
-              const SizedBox(width: 12),
-              FriendPillButton(
-                label: '코드로 참가',
-                semanticLabel: '초대 코드로 크루에 참가하기',
-                onPressed: _openCode,
-              ),
               const SizedBox(width: 8),
-              FriendPillButton(label: '크루 만들기', onPressed: _openNew),
+              Expanded(
+                child: _CrewAction(
+                  label: '크루 만들기',
+                  filled: true,
+                  onPressed: _openNew,
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 24),
+          FriendSectionHeader(
+            title: '내 크루',
+            meta: crews.isEmpty ? null : '${crews.length}개',
+          ),
+          const SizedBox(height: 6),
           if (!_store.loaded)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 40),
@@ -158,7 +165,7 @@ class _CrewRow extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 14),
+          padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
             border: Border(
               top: BorderSide(
@@ -168,13 +175,15 @@ class _CrewRow extends StatelessWidget {
           ),
           child: Row(
             children: [
-              CrewFaces(crew: crew, store: store),
-              const SizedBox(width: 14),
+              CrewTile(crew: crew, store: store),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
                       children: [
                         Flexible(
                           child: Text(
@@ -184,6 +193,8 @@ class _CrewRow extends StatelessWidget {
                             style: const TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w700,
+                              height: 1.2,
+                              letterSpacing: -0.225,
                             ),
                           ),
                         ),
@@ -193,6 +204,7 @@ class _CrewRow extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
+                            height: 1,
                             color: AppColors.textTertiary,
                           ),
                         ),
@@ -206,29 +218,32 @@ class _CrewRow extends StatelessWidget {
                         ],
                       ],
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
                     Text(
                       preview,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 13,
-                        fontWeight: FontWeight.w500,
+                        fontWeight: FontWeight.w400,
+                        height: 1.3,
+                        letterSpacing: -0.13,
                         color: AppColors.textSecondary,
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
                     crewTimeLabel(crew.activeAt, store.now),
                     style: TextStyle(
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: FontWeight.w500,
+                      height: 1,
                       color: AppColors.textTertiary,
                     ),
                   ),
@@ -239,18 +254,20 @@ class _CrewRow extends StatelessWidget {
                       height: 20,
                       padding: const EdgeInsets.symmetric(horizontal: 6),
                       alignment: Alignment.center,
+                      // 시안: 흰 바탕 검정 숫자(알림을 끈 크루는 회색).
                       decoration: BoxDecoration(
                         color: muted
                             ? AppColors.borderDefault
-                            : AppColors.error,
-                        borderRadius: BorderRadius.circular(10),
+                            : AppColors.textPrimary,
+                        borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
                         unread > 99 ? '99+' : '$unread',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
-                          color: Colors.white,
+                          height: 1,
+                          color: AppColors.background,
                         ),
                       ),
                     )
@@ -266,47 +283,103 @@ class _CrewRow extends StatelessWidget {
   }
 }
 
-/// 크루 멤버 얼굴 최대 4개를 2×2로 겹쳐 그립니다.
-class CrewFaces extends StatelessWidget {
-  const CrewFaces({
-    super.key,
-    required this.crew,
-    required this.store,
-    this.size = 48,
-  });
+/// 크루 얼굴: 52×52 둥근 칸(모서리 18)에 멤버 얼굴을 2×2로(17-7 목록·17-11 서랍).
+class CrewTile extends StatelessWidget {
+  const CrewTile({super.key, required this.crew, required this.store});
 
   final Crew crew;
   final CrewStore store;
-  final double size;
 
   @override
   Widget build(BuildContext context) {
     final faces = crew.members.take(4).toList();
-    final small = size * 0.54;
-    return SizedBox.square(
-      dimension: size,
-      child: Stack(
+    return Container(
+      width: 52,
+      height: 52,
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: GridView.count(
+        crossAxisCount: 2,
+        mainAxisSpacing: 2,
+        crossAxisSpacing: 2,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: EdgeInsets.zero,
         children: [
-          for (final (i, uid) in faces.indexed)
-            Positioned(
-              left: faces.length == 1
-                  ? (size - small) / 2
-                  : (i % 2) * (size - small),
-              top: faces.length <= 2
-                  ? (size - small) / 2
-                  : (i ~/ 2) * (size - small),
-              child: Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.background,
-                ),
-                child: FriendAvatar(
-                  initial: store.person(uid)?.initial ?? '·',
-                  size: small,
+          for (final uid in faces)
+            Container(
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.background,
+                border: Border.all(color: AppColors.borderControl),
+              ),
+              child: Text(
+                store.person(uid)?.initial ?? '·',
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  height: 1,
                 ),
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// 크루 목록 위쪽 버튼(높이 44, 둥근). [filled]면 흰 바탕, 아니면 테두리만.
+class _CrewAction extends StatelessWidget {
+  const _CrewAction({
+    required this.label,
+    required this.onPressed,
+    this.filled = false,
+    this.semanticLabel,
+  });
+
+  final String label;
+  final VoidCallback onPressed;
+  final bool filled;
+  final String? semanticLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    const text = TextStyle(
+      fontSize: 15,
+      fontWeight: FontWeight.w700,
+      letterSpacing: -0.18,
+    );
+    final shape = const StadiumBorder();
+    return Semantics(
+      label: semanticLabel,
+      excludeSemantics: semanticLabel != null,
+      button: true,
+      child: SizedBox(
+        height: 44,
+        child: filled
+            ? FilledButton(
+                onPressed: onPressed,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.textPrimary,
+                  foregroundColor: AppColors.background,
+                  shape: shape,
+                  textStyle: text,
+                ),
+                child: Text(label),
+              )
+            : OutlinedButton(
+                onPressed: onPressed,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.textPrimary,
+                  side: BorderSide(color: AppColors.borderDefault),
+                  shape: shape,
+                  textStyle: text,
+                ),
+                child: Text(label),
+              ),
       ),
     );
   }
