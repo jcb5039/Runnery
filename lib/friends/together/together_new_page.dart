@@ -173,7 +173,7 @@ class _TogetherNewPageState extends State<TogetherNewPage> {
                 runSpacing: 8,
                 children: [
                   for (final f in friends)
-                    _FriendChoice(
+                    FriendChoice(
                       person: f,
                       selected: _selected.contains(f.uid),
                       onTap: () => _toggle(f.uid),
@@ -338,66 +338,6 @@ class _TogetherNewPageState extends State<TogetherNewPage> {
   Widget _title(String text) => Text(
     text,
     style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-  );
-}
-
-class _FriendChoice extends StatelessWidget {
-  const _FriendChoice({
-    required this.person,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final PublicProfile person;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    selected: selected,
-    button: true,
-    child: Material(
-      color: selected ? AppColors.textPrimary : Colors.transparent,
-      shape: StadiumBorder(
-        side: BorderSide(
-          color: selected ? AppColors.textPrimary : AppColors.borderDefault,
-        ),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          height: 40,
-          padding: EdgeInsets.fromLTRB(5, 0, selected ? 12 : 14, 0),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              FriendAvatar(
-                initial: person.initial,
-                size: 28,
-                borderColor: selected ? AppColors.background : null,
-                textColor: selected ? AppColors.background : null,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                person.name,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  color: selected
-                      ? AppColors.background
-                      : AppColors.textSecondary,
-                ),
-              ),
-              if (selected) ...[
-                const SizedBox(width: 4),
-                Icon(Icons.check, size: 16, color: AppColors.background),
-              ],
-            ],
-          ),
-        ),
-      ),
-    ),
   );
 }
 

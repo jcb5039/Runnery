@@ -36,15 +36,85 @@ class LiveFriend {
   final TogetherResult? result;
 }
 
-/// 함께 달리는 동안 내 거리·시간·위치·지나간 길을 친구들과 주고받습니다.
-/// 서버 `together/{번호}/live/{uid}`에 [interval]마다 올리고, 끝나면([close]) 지웁니다.
+/// 함께 달리는 동안 실시간 상태를 주고받는 곳. 친구 약속(`together/{번호}/live`)과
+/// 크루 모집(`crews/{크루}/runs/{모집}/live`)이 같은 방식으로 씁니다.
+abstract class LiveChannel {
+  /// 로그인한 나. 로그아웃 상태면 null.
+  String? get myUid;
+
+  /// 함께 달리는 사람의 이름.
+  String nameOf(String uid);
+
+  /// 나를 뺀 함께 달리는 사람들과, 이미 끝냈으면 그 결과.
+  List<(String, TogetherResult?)> others();
+
+  /// 함께 달리는 사람·결과가 바뀌면 알려 줍니다.
+  Stream<void> watchMembers();
+
+  Stream<List<LiveRun>> watchLive();
+  Future<void> send(LiveRun run, {required int sentPoints});
+  Future<void> delete(String uid);
+}
+
+/// 친구 약속의 실시간 상태(`together/{번호}/live/{uid}`).
+class _TogetherChannel implements LiveChannel {
+  _TogetherChannel(this.togetherId, this.store)
+    : _together = store.byId(togetherId);
+
+  final String togetherId;
+  final TogetherStore store;
+  Together? _together;
+
+  @override
+  String? get myUid => store.me?.uid;
+
+  @override
+  String nameOf(String uid) => store.person(uid)?.name ?? '친구';
+
+  @override
+  List<(String, TogetherResult?)> others() {
+    final t = _together, me = myUid;
+    if (t == null || me == null) return const [];
+    return [
+      for (final uid in t.others(me))
+        if (t.statusOf(uid) == TogetherStatus.accepted) (uid, t.results[uid]),
+    ];
+  }
+
+  @override
+  Stream<void> watchMembers() =>
+      store.watch(togetherId).where((t) => t != null).map((t) {
+        _together = t;
+      });
+
+  @override
+  Stream<List<LiveRun>> watchLive() =>
+      store.backend.watchTogetherLive(togetherId);
+
+  @override
+  Future<void> send(LiveRun run, {required int sentPoints}) =>
+      store.backend.setTogetherLive(togetherId, run, sentPoints: sentPoints);
+
+  @override
+  Future<void> delete(String uid) =>
+      store.backend.deleteTogetherLive(togetherId, uid);
+}
+
+/// 함께 달리는 동안 내 거리·시간·위치·지나간 길을 함께 달리는 사람들과 주고받습니다.
+/// [interval]마다 올리고, 끝나면([close]) 지웁니다. 친구 약속은 [TogetherLive.new],
+/// 크루 모집은 [TogetherLive.channel]로 만듭니다.
 class TogetherLive extends ChangeNotifier {
   TogetherLive(
-    this.togetherId, {
+    String togetherId, {
     TogetherStore? store,
     DateTime Function()? clock,
-  }) : _store = store ?? TogetherStore.instance,
+  }) : _channel = _TogetherChannel(togetherId, store ?? TogetherStore.instance),
        _clock = clock ?? DateTime.now;
+
+  /// 크루 모집처럼 다른 곳의 실시간 상태를 주고받을 때.
+  TogetherLive.channel(LiveChannel channel, {DateTime Function()? clock})
+    : _channel = channel,
+      _clock = clock ?? DateTime.now;
 
   /// 올리는 간격.
   static const interval = Duration(seconds: 5);
@@ -58,12 +128,11 @@ class TogetherLive extends ChangeNotifier {
   /// 지나간 길은 이만큼 움직일 때마다 점을 하나 더합니다.
   static const routeStepMeters = 15.0;
 
-  final String togetherId;
-  final TogetherStore _store;
+  final LiveChannel _channel;
   final DateTime Function() _clock;
 
   StreamSubscription<List<LiveRun>>? _liveSub;
-  StreamSubscription<Together?>? _togetherSub;
+  StreamSubscription<void>? _membersSub;
   Timer? _timer;
   bool _started = false, _closed = false, _sending = false;
 
@@ -75,7 +144,6 @@ class TogetherLive extends ChangeNotifier {
   DateTime? _sentAt;
 
   // 친구들.
-  Together? _together;
   Map<String, LiveRun> _runs = const {};
   final Map<String, DateTime> _heardAt = {};
 
@@ -83,13 +151,10 @@ class TogetherLive extends ChangeNotifier {
   void start() {
     if (_started || _closed) return;
     _started = true;
-    _together = _store.byId(togetherId);
-    _togetherSub = _store
-        .watch(togetherId)
-        .listen(_onTogether, onError: (Object _) {});
-    _liveSub = _store.backend
-        .watchTogetherLive(togetherId)
-        .listen(_onLive, onError: (Object _) {});
+    _membersSub = _channel.watchMembers().listen((_) {
+      if (!_closed) notifyListeners();
+    }, onError: (Object _) {});
+    _liveSub = _channel.watchLive().listen(_onLive, onError: (Object _) {});
     _timer = Timer.periodic(interval, (_) => _publish());
   }
 
@@ -102,7 +167,7 @@ class TogetherLive extends ChangeNotifier {
     (double, double)? position,
     (double, double)? routePoint,
   }) {
-    final me = _store.me;
+    final me = _channel.myUid;
     if (_closed || me == null) return;
     // 0.5초마다 불리므로 점이 늘 때만 새 목록을 만듭니다.
     if (routePoint != null &&
@@ -111,7 +176,7 @@ class TogetherLive extends ChangeNotifier {
       _route = List.unmodifiable([..._route, routePoint]);
     }
     _mine = LiveRun(
-      uid: me.uid,
+      uid: me,
       distanceKm: meters / 1000,
       movingSeconds: moving.inSeconds,
       paused: paused,
@@ -131,11 +196,7 @@ class TogetherLive extends ChangeNotifier {
     }
     _sending = true;
     try {
-      await _store.backend.setTogetherLive(
-        togetherId,
-        mine,
-        sentPoints: _sentPoints,
-      );
+      await _channel.send(mine, sentPoints: _sentPoints);
       _sent = mine;
       _sentAt = now;
       _sentPoints = mine.route.length;
@@ -153,12 +214,6 @@ class TogetherLive extends ChangeNotifier {
       a.paused == b.paused &&
       a.position == b.position;
 
-  void _onTogether(Together? t) {
-    if (t == null || _closed) return;
-    _together = t;
-    notifyListeners();
-  }
-
   void _onLive(List<LiveRun> runs) {
     if (_closed) return;
     final now = _clock();
@@ -174,35 +229,31 @@ class TogetherLive extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 나를 뺀, 약속을 수락한 친구들.
+  /// 나를 뺀, 함께 달리는 사람들(친구 약속은 수락한 친구, 크루는 같은 모집 사람).
   List<LiveFriend> get friends {
-    final t = _together;
-    final me = _store.me?.uid;
-    if (t == null || me == null) return const [];
     final now = _clock();
     return [
-      for (final uid in t.others(me))
-        if (t.statusOf(uid) == TogetherStatus.accepted)
-          () {
-            final run = _runs[uid], result = t.results[uid];
-            final heard = _heardAt[uid];
-            final state = result != null
-                ? LiveFriendState.finished
-                : run == null
-                ? LiveFriendState.waiting
-                : heard == null || now.difference(heard) > lostAfter
-                ? LiveFriendState.lost
-                : run.paused
-                ? LiveFriendState.paused
-                : LiveFriendState.running;
-            return LiveFriend(
-              uid: uid,
-              name: _store.person(uid)?.name ?? '친구',
-              state: state,
-              run: run,
-              result: result,
-            );
-          }(),
+      for (final (uid, result) in _channel.others())
+        () {
+          final run = _runs[uid];
+          final heard = _heardAt[uid];
+          final state = result != null
+              ? LiveFriendState.finished
+              : run == null
+              ? LiveFriendState.waiting
+              : heard == null || now.difference(heard) > lostAfter
+              ? LiveFriendState.lost
+              : run.paused
+              ? LiveFriendState.paused
+              : LiveFriendState.running;
+          return LiveFriend(
+            uid: uid,
+            name: _channel.nameOf(uid),
+            state: state,
+            run: run,
+            result: result,
+          );
+        }(),
     ];
   }
 
@@ -212,11 +263,11 @@ class TogetherLive extends ChangeNotifier {
     _closed = true;
     _timer?.cancel();
     unawaited(_liveSub?.cancel());
-    unawaited(_togetherSub?.cancel());
-    final me = _store.me;
+    unawaited(_membersSub?.cancel());
+    final me = _channel.myUid;
     if (!_started || me == null) return;
     try {
-      await _store.backend.deleteTogetherLive(togetherId, me.uid);
+      await _channel.delete(me);
     } on FriendException {
       // 결과를 올릴 때 한 번 더 지웁니다(TogetherStore).
     }

@@ -832,6 +832,13 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
                         '${clockText(r.startedAt)} - ${clockText(r.endedAt)}',
                         style: recordText(12, color: recordSecondary),
                       ),
+                      if (r.crewName case final crew?) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          '$crew 크루와 함께 달렸어요',
+                          style: recordText(12, color: recordOrangeText),
+                        ),
+                      ],
                       const SizedBox(height: 18),
                       Text(
                         '${r.durationLabel} 동안 ${r.distanceKm.toStringAsFixed(2)} km를 달렸어요.',

@@ -7,6 +7,8 @@ import '../design_system/app_radius.dart';
 import '../design_system/app_spacing.dart';
 import 'add/friend_add_page.dart';
 import 'calendar/friend_calendar_page.dart';
+import 'crew/crew_tab.dart';
+import 'data/crew_store.dart';
 import 'data/friend_store.dart';
 import 'feed/feed_card.dart';
 import 'feed/feed_menu.dart';
@@ -21,13 +23,14 @@ import 'widgets/friend_widgets.dart';
 /// 친구에서는 받은 친구 요청을 알려 주고, '친구' 탭에 친구들이 공유한 러닝과 응원 버튼을,
 /// '내 피드' 탭에 내가 공유한 러닝과 받은 응원(누가 응원했는지)을 보여 줍니다.
 /// 친구 카드의 이름을 누르면 친구 달력이, '더보기'를 누르면 신고·차단이 열립니다.
-/// 함께 달리기에서는 약속을 잡고, 대기실에서 친구와 함께 시작합니다. 크루는 아직 준비 중입니다.
+/// 함께 달리기에서는 약속을 잡고, 대기실에서 친구와 함께 시작합니다. 크루에서는 크루 채팅방에 모입니다.
 class FriendsPage extends StatefulWidget {
-  const FriendsPage({super.key, this.store, this.together});
+  const FriendsPage({super.key, this.store, this.together, this.crew});
 
   /// 테스트에서만 넣습니다. 없으면 앱 전체 저장소를 씁니다.
   final FriendStore? store;
   final TogetherStore? together;
+  final CrewStore? crew;
 
   @override
   State<FriendsPage> createState() => _FriendsPageState();
@@ -48,6 +51,7 @@ enum _Tab {
 class _FriendsPageState extends State<FriendsPage> {
   FriendStore get _store => widget.store ?? FriendStore.instance;
   TogetherStore get _together => widget.together ?? TogetherStore.instance;
+  CrewStore get _crew => widget.crew ?? CrewStore.instance;
 
   _Tab _tab = _Tab.feed;
 
@@ -60,6 +64,8 @@ class _FriendsPageState extends State<FriendsPage> {
     unawaited(_store.refresh());
     // 알림 종의 빨간 점에 쓰는 함께 달리기 초대도 불러옵니다.
     unawaited(_together.refresh());
+    // 크루 초대도 알림 종에 셉니다.
+    unawaited(_crew.refresh());
   }
 
   Future<void> _open(Widget page) async {
@@ -82,7 +88,11 @@ class _FriendsPageState extends State<FriendsPage> {
   void _openList() => _open(FriendListPage(store: widget.store));
 
   void _openNotifications() => _open(
-    FriendNotificationsPage(friends: widget.store, together: widget.together),
+    FriendNotificationsPage(
+      friends: widget.store,
+      together: widget.together,
+      crew: widget.crew,
+    ),
   );
 
   void _openCalendar(FeedItem item) =>
@@ -160,7 +170,7 @@ class _FriendsPageState extends State<FriendsPage> {
     body: SafeArea(
       bottom: false,
       child: ListenableBuilder(
-        listenable: Listenable.merge([_store, _together]),
+        listenable: Listenable.merge([_store, _together, _crew]),
         builder: (context, _) => RefreshIndicator(
           onRefresh: _store.refresh,
           child: ListView(
@@ -195,7 +205,7 @@ class _FriendsPageState extends State<FriendsPage> {
                         friends: _store,
                         store: widget.together,
                       ),
-                      _Tab.crew => const _CrewSoon(),
+                      _Tab.crew => CrewTab(friends: _store, store: widget.crew),
                     },
                   ],
                 ),
@@ -225,7 +235,10 @@ class _FriendsPageState extends State<FriendsPage> {
             onPressed: _openList,
           ),
           FriendNotificationBell(
-            count: _store.incoming.length + _together.requests.length,
+            count:
+                _store.incoming.length +
+                _together.requests.length +
+                _crew.invites.length,
             onPressed: _openNotifications,
           ),
           IconButton(
@@ -392,30 +405,4 @@ class _FriendsPageState extends State<FriendsPage> {
       onMore: _more,
     );
   }
-}
-
-/// 크루 탭 자리. 크루(채팅방·함께 모집)는 다음 단계에서 만듭니다.
-class _CrewSoon extends StatelessWidget {
-  const _CrewSoon();
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 48),
-    child: Column(
-      children: [
-        Icon(Icons.groups_outlined, size: 40, color: AppColors.textTertiary),
-        const SizedBox(height: 14),
-        const Text(
-          '크루는 준비 중이에요',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          '크루원들과 채팅하고 함께 달릴 수 있게 만들고 있어요',
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
-        ),
-      ],
-    ),
-  );
 }

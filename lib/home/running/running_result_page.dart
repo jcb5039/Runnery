@@ -10,6 +10,8 @@ import '../../design_system/app_component_metrics.dart';
 import '../../design_system/app_motion.dart';
 import '../../design_system/app_radius.dart';
 import '../../design_system/app_spacing.dart';
+import '../../friends/crew/crew_run_pages.dart' show CrewTeamBanner;
+import '../../friends/data/crew_models.dart' show CrewRunLink;
 import '../../friends/friends_feature.dart';
 import '../../friends/share/share_record_sheet.dart';
 import '../../record/data/record_from_session.dart';
@@ -21,9 +23,12 @@ import 'running_start_page.dart';
 // ═════════════════════════════════════════════════════
 
 class RunningResultPage extends StatelessWidget {
-  const RunningResultPage({super.key, required this.record});
+  const RunningResultPage({super.key, required this.record, this.crewRun});
 
   final RunningRecord record;
+
+  /// 크루로 함께 달렸으면 그 모집. 팀 기록 상태와(팀장이면) '팀 끝내기'를 보여 줍니다.
+  final CrewRunLink? crewRun;
 
   /// 결과→홈: 러닝 흐름 이전 화면까지 모두 닫습니다.
   void _done(BuildContext context) =>
@@ -109,6 +114,10 @@ class RunningResultPage extends StatelessWidget {
                                       color: AppColors.textSecondary,
                                     ),
                                   ),
+                                  if (crewRun case final crew?) ...[
+                                    const SizedBox(height: 12),
+                                    CrewTeamBanner(link: crew),
+                                  ],
                                 ],
                               ),
                             ),

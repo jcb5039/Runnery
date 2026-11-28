@@ -5,19 +5,26 @@ import 'package:flutter/material.dart';
 import '../../design_system/app_colors.dart';
 import '../../design_system/app_radius.dart';
 import '../../design_system/app_spacing.dart';
+import '../data/crew_store.dart';
 import '../data/friend_store.dart';
 import '../data/together_store.dart';
 import '../together/together_tab.dart'
     show TogetherAnsweredCard, TogetherRequestCard;
 import '../widgets/friend_widgets.dart';
 
-/// 친구 탭 오른쪽 위 알림 종: 받은 친구 요청과 함께 달리기 초대를 한곳에서 보고 답합니다.
+/// 친구 탭 오른쪽 위 알림 종: 받은 친구 요청, 함께 달리기 초대, 크루 초대를 한곳에서 보고 답합니다.
 class FriendNotificationsPage extends StatefulWidget {
-  const FriendNotificationsPage({super.key, this.friends, this.together});
+  const FriendNotificationsPage({
+    super.key,
+    this.friends,
+    this.together,
+    this.crew,
+  });
 
   /// 테스트에서만 넣습니다. 없으면 앱 전체 저장소를 씁니다.
   final FriendStore? friends;
   final TogetherStore? together;
+  final CrewStore? crew;
 
   @override
   State<FriendNotificationsPage> createState() =>
@@ -27,6 +34,10 @@ class FriendNotificationsPage extends StatefulWidget {
 class _FriendNotificationsPageState extends State<FriendNotificationsPage> {
   FriendStore get _friends => widget.friends ?? FriendStore.instance;
   TogetherStore get _together => widget.together ?? TogetherStore.instance;
+  CrewStore get _crew => widget.crew ?? CrewStore.instance;
+
+  /// 이 화면에서 답한 크루 초대(초대 번호 → 수락했는지).
+  final Map<String, (CrewInvite, bool)> _answeredCrews = {};
 
   /// 이 화면에서 답한 친구 요청(uid → 수락했는지). 답한 뒤에도 결과를 보여 줍니다.
   final Map<String, (PublicProfile, bool)> _answeredFriends = {};
@@ -40,6 +51,7 @@ class _FriendNotificationsPageState extends State<FriendNotificationsPage> {
     super.initState();
     unawaited(_friends.refresh());
     unawaited(_together.refresh());
+    unawaited(_crew.refresh());
   }
 
   /// 서버 작업을 하는 동안 그 줄의 버튼을 막고, 실패하면 이유를 알려 줍니다.
@@ -61,6 +73,12 @@ class _FriendNotificationsPageState extends State<FriendNotificationsPage> {
         _answeredFriends[person.uid] = (person, accept);
       });
 
+  Future<void> _answerCrew(CrewInvite invite, {required bool accept}) =>
+      _act(invite.id, () async {
+        accept ? await _crew.accept(invite) : await _crew.decline(invite);
+        _answeredCrews[invite.id] = (invite, accept);
+      });
+
   Future<void> _answerInvite(Together t, TogetherStatus status) =>
       _act(t.id, () async {
         await _together.answer(t, status);
@@ -76,10 +94,13 @@ class _FriendNotificationsPageState extends State<FriendNotificationsPage> {
     body: SafeArea(
       top: false,
       child: ListenableBuilder(
-        listenable: Listenable.merge([_friends, _together]),
+        listenable: Listenable.merge([_friends, _together, _crew]),
         builder: (context, _) => RefreshIndicator(
-          onRefresh: () =>
-              Future.wait([_friends.refresh(), _together.refresh()]),
+          onRefresh: () => Future.wait([
+            _friends.refresh(),
+            _together.refresh(),
+            _crew.refresh(),
+          ]),
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(
@@ -88,7 +109,11 @@ class _FriendNotificationsPageState extends State<FriendNotificationsPage> {
               AppSpacing.screenHorizontal,
               AppSpacing.space6,
             ),
-            children: [..._friendSection(), ..._inviteSection()],
+            children: [
+              ..._friendSection(),
+              ..._inviteSection(),
+              ..._crewSection(),
+            ],
           ),
         ),
       ),
@@ -225,6 +250,127 @@ class _FriendNotificationsPageState extends State<FriendNotificationsPage> {
           ),
       ],
     ];
+  }
+
+  List<Widget> _crewSection() {
+    final waiting = [
+      for (final i in _crew.invites)
+        if (!_answeredCrews.containsKey(i.id)) i,
+    ];
+    final answered = _answeredCrews.values.toList();
+    return [
+      const SizedBox(height: 30),
+      FriendSectionHeader(
+        title: '크루 초대',
+        meta: waiting.isNotEmpty
+            ? '${waiting.length}개'
+            : answered.isNotEmpty
+            ? '모두 확인했어요'
+            : null,
+      ),
+      const SizedBox(height: 6),
+      if (waiting.isEmpty && answered.isEmpty)
+        _note('받은 크루 초대가 없어요')
+      else ...[
+        for (final (i, invite) in waiting.indexed)
+          _crewRow(invite, divider: i > 0, trailing: _crewButtons(invite)),
+        for (final (i, (invite, accepted)) in answered.indexed)
+          _crewRow(
+            invite,
+            divider: waiting.isNotEmpty || i > 0,
+            trailing: accepted
+                ? const FriendChip(label: '들어갔어요', filled: true)
+                : Text(
+                    '거절했어요',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+          ),
+      ],
+    ];
+  }
+
+  Widget _crewRow(
+    CrewInvite invite, {
+    required bool divider,
+    required Widget trailing,
+  }) => Container(
+    constraints: const BoxConstraints(minHeight: 64),
+    padding: const EdgeInsets.symmetric(vertical: 12),
+    decoration: BoxDecoration(
+      border: Border(
+        top: BorderSide(
+          color: divider ? AppColors.divider : Colors.transparent,
+        ),
+      ),
+    ),
+    child: Row(
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: AppColors.borderControl),
+          ),
+          child: const Icon(Icons.groups_outlined, size: 20),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                invite.crewName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '${_crew.nameOf(invite.from)} 님이 초대했어요',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.textTertiary,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        trailing,
+      ],
+    ),
+  );
+
+  Widget _crewButtons(CrewInvite invite) {
+    final busy = _busy.contains(invite.id);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        FriendPillButton(
+          label: '거절',
+          filled: false,
+          semanticLabel: '${invite.crewName} 크루 초대 거절',
+          onPressed: busy ? null : () => _answerCrew(invite, accept: false),
+        ),
+        const SizedBox(width: 6),
+        FriendPillButton(
+          label: '수락',
+          semanticLabel: '${invite.crewName} 크루 초대 수락',
+          onPressed: busy ? null : () => _answerCrew(invite, accept: true),
+        ),
+      ],
+    );
   }
 
   Widget _note(String text) => Padding(

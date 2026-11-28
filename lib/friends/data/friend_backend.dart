@@ -666,25 +666,38 @@ class FirebaseFriendBackend implements FriendBackend {
 
   @override
   Future<void> setTogetherLive(String id, LiveRun run, {int sentPoints = 0}) =>
-      _run(() {
-        final position = run.position;
-        // 지나간 길은 '순서,위도,경도' 글자로 덧붙여(arrayUnion) 매번 전체를 다시 보내지 않습니다.
-        final points = [
-          for (final (i, (lat, lng)) in run.route.indexed.skip(sentPoints))
-            '$i,${_round5(lat)},${_round5(lng)}',
-        ];
-        return _live(id).doc(run.uid).set({
-          'distanceKm': (run.distanceKm * 100).round() / 100,
-          'movingSeconds': run.movingSeconds,
-          'paused': run.paused,
-          if (position != null) ...{
-            'lat': _round5(position.$1),
-            'lng': _round5(position.$2),
-          },
-          if (points.isNotEmpty) 'route': FieldValue.arrayUnion(points),
-          'updatedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-      }, '함께 달리는 정보를 올리지 못했어요');
+      _run(
+        () =>
+            _live(id)
+                .doc(run.uid)
+                .set(liveData(run, sentPoints), SetOptions(merge: true)),
+        '함께 달리는 정보를 올리지 못했어요',
+      );
+
+  /// 실시간 상태를 서버에 올릴 모양으로 바꿉니다(크루 모집도 같은 모양을 씁니다).
+  /// 지나간 길은 '순서,위도,경도' 글자로 덧붙여(arrayUnion) 매번 전체를 다시 보내지 않습니다.
+  static Map<String, Object> liveData(LiveRun run, int sentPoints) {
+    final position = run.position;
+    final points = [
+      for (final (i, (lat, lng)) in run.route.indexed.skip(sentPoints))
+        '$i,${_round5(lat)},${_round5(lng)}',
+    ];
+    return {
+      'distanceKm': (run.distanceKm * 100).round() / 100,
+      'movingSeconds': run.movingSeconds,
+      'paused': run.paused,
+      if (position != null) ...{
+        'lat': _round5(position.$1),
+        'lng': _round5(position.$2),
+      },
+      if (points.isNotEmpty) 'route': FieldValue.arrayUnion(points),
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+  }
+
+  /// 서버의 실시간 상태를 읽습니다(크루 모집도 같은 모양을 씁니다).
+  static LiveRun liveFrom(String uid, Map<String, dynamic> d) =>
+      _toLive(uid, d);
 
   static LiveRun _toLive(String uid, Map<String, dynamic> d) {
     final lat = d['lat'], lng = d['lng'];

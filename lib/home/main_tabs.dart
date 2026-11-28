@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../design_system/app_colors.dart';
+import '../friends/data/crew_store.dart';
+import '../friends/data/friend_store.dart';
 import '../friends/data/together_store.dart';
 import '../friends/friends_feature.dart';
 import '../friends/friends_page.dart';
@@ -101,11 +103,20 @@ class _MainTabsState extends State<MainTabs> {
       backgroundColor: AppColors.background,
       bottomNavigationBar: FriendsFeature.available
           ? ListenableBuilder(
-              listenable: TogetherStore.instance,
+              listenable: Listenable.merge([
+                TogetherStore.instance,
+                FriendStore.instance,
+                CrewStore.instance,
+              ]),
               builder: (context, _) => _TabBar(
                 index: _index,
                 onTap: _go,
-                friendBadge: TogetherStore.instance.requests.length,
+                // 크루 알림을 꺼 둔 크루의 안 읽은 채팅도 점으로 알립니다.
+                friendDot:
+                    TogetherStore.instance.requests.isNotEmpty ||
+                    FriendStore.instance.incoming.isNotEmpty ||
+                    CrewStore.instance.invites.isNotEmpty ||
+                    CrewStore.instance.hasUnread,
               ),
             )
           : _TabBar(index: _index, onTap: _go),
@@ -121,14 +132,14 @@ class _TabBar extends StatelessWidget {
   const _TabBar({
     required this.index,
     required this.onTap,
-    this.friendBadge = 0,
+    this.friendDot = false,
   });
 
   final int index;
   final ValueChanged<int> onTap;
 
-  /// 친구 탭에 표시할, 아직 답하지 않은 함께 달리기 약속 수. 0이면 숨깁니다.
-  final int friendBadge;
+  /// 친구 탭 아이콘 오른쪽 위 빨간 점: 안 읽은 크루 채팅, 받은 함께 달리기 제안·친구 요청·크루 초대가 있으면 true.
+  final bool friendDot;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -182,35 +193,23 @@ class _TabBar extends StatelessWidget {
                                     ? AppColors.textPrimary
                                     : AppColors.textTertiary,
                               ),
-                            // 주황·빨강은 이 용도에 쓰지 않아 선택 탭과 같은 흰색으로 둡니다.
-                            if (i == _MainTabsState._friends && friendBadge > 0)
+                            // 새 소식이 있으면 숫자 없이 빨간 점만 붙입니다.
+                            if (i == _MainTabsState._friends && friendDot)
                               Positioned(
-                                top: -4,
-                                right: -9,
-                                child: Container(
-                                  constraints: const BoxConstraints(
-                                    minWidth: 16,
-                                  ),
-                                  height: 16,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
-                                  ),
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: AppColors.textPrimary,
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: AppColors.background,
-                                      width: 1.5,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    friendBadge > 9 ? '9+' : '$friendBadge',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      height: 1,
-                                      fontWeight: FontWeight.w800,
-                                      color: AppColors.background,
+                                top: -2,
+                                right: -4,
+                                child: Semantics(
+                                  label: '새 소식 있음',
+                                  child: Container(
+                                    width: 9,
+                                    height: 9,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.error,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: AppColors.background,
+                                        width: 1.5,
+                                      ),
                                     ),
                                   ),
                                 ),

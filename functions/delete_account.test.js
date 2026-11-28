@@ -1,7 +1,7 @@
 // 회원 탈퇴 본인 확인 테스트(진짜 서버를 부르지 않습니다). 실행: npm test
 const test = require('node:test');
 const assert = require('node:assert');
-const { RECENT_LOGIN_MS, ProofError, checkProof } = require('./delete_account');
+const { RECENT_LOGIN_MS, ProofError, checkProof, oldestMember } = require('./delete_account');
 
 const now = Date.UTC(2026, 10, 23, 12);
 const base = {
@@ -50,4 +50,20 @@ test('네이버 계정은 방금 마친 네이버 로그인의 계정이 같아�
     checkProof({ ...base, uid: 'naver:7', takeNaverLogin: async () => null }),
     /만료/,
   );
+});
+
+test('크루 방장이 탈퇴하면 가장 먼저 들어온 남은 멤버가 방장이 돼요', async () => {
+  const crewRef = {
+    collection: () => ({
+      orderBy: () => ({
+        get: async () => ({ docs: [{ id: 'me' }, { id: 'b' }, { id: 'c' }] }),
+      }),
+    }),
+  };
+  assert.strictEqual(await oldestMember(crewRef, ['c', 'b']), 'b');
+  // 멤버 정보가 없으면 남은 멤버 목록의 첫 사람.
+  const empty = {
+    collection: () => ({ orderBy: () => ({ get: async () => ({ docs: [] }) }) }),
+  };
+  assert.strictEqual(await oldestMember(empty, ['c', 'b']), 'c');
 });
