@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../../design_system/app_colors.dart';
 import '../../design_system/app_radius.dart';
@@ -14,7 +15,7 @@ import 'crew_new_page.dart' show CrewInvitePage;
 import 'crew_tab.dart' show CrewFaces;
 
 /// 17-11 크루 채팅방 서랍: 크루 이름·인원, 공지(크루장만 씀), 함께 달린 기록, 멤버(크루장은 내보내기),
-/// 멤버 초대, 나가기, 알림 켜고 끄기(종 아이콘).
+/// 초대 코드(복사, 크루장은 바꾸기), 멤버 초대, 나가기, 알림 켜고 끄기(종 아이콘).
 class CrewInfoDrawer extends StatefulWidget {
   const CrewInfoDrawer({
     super.key,
@@ -54,6 +55,34 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
     super.initState();
     unawaited(_loadMembers());
     unawaited(_loadRuns());
+    // 코드가 없는 예전 크루는 크루장이 서랍을 열 때 코드를 만듭니다.
+    final me = _store.me?.uid;
+    if (_crew.code == null && me != null && _crew.isOwner(me)) {
+      unawaited(_makeCode());
+    }
+  }
+
+  Future<void> _makeCode() async {
+    try {
+      await _store.issueCode(_crew);
+    } on FriendException {
+      // 서랍을 다시 열면 또 만듭니다.
+    }
+  }
+
+  Future<void> _copyCode(String code) async {
+    await Clipboard.setData(ClipboardData(text: code));
+    if (mounted) showFriendMessage(context, '코드를 복사했어요');
+  }
+
+  Future<void> _changeCode() async {
+    final ok = await _confirm(
+      '초대 코드를 바꿀까요?',
+      '바꾸면 지금 코드로는 더 이상 들어올 수 없어요.',
+      '바꾸기',
+    );
+    if (ok != true || !mounted) return;
+    await _run(() => _store.issueCode(_crew), done: '새 코드로 바꿨어요');
   }
 
   Future<void> _loadRuns() async {
@@ -294,6 +323,8 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
                       ],
                     ),
                     const SizedBox(height: 24),
+                    _codeCard(owner),
+                    const SizedBox(height: 12),
                     _noticeCard(owner),
                     const SizedBox(height: 28),
                     const FriendSectionHeader(title: '함께 달린 기록'),
@@ -407,6 +438,81 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
       );
     },
   );
+
+  /// 초대 코드: 친구가 아니어도 이 코드로 들어올 수 있어요. 멤버는 복사하고, 크루장은 바꿀 수 있습니다.
+  Widget _codeCard(bool owner) {
+    final code = _crew.code;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: AppRadius.thumbnailBorder,
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.vpn_key_outlined,
+            size: 18,
+            color: AppColors.textSecondary,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '초대 코드',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                if (code != null)
+                  Text(
+                    code,
+                    semanticsLabel: '초대 코드 ${code.split('').join(' ')}',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 2,
+                    ),
+                  )
+                else
+                  Text(
+                    owner ? '코드를 만드는 중이에요' : '아직 코드가 없어요',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                const SizedBox(height: 4),
+                Text(
+                  '친구가 아니어도 이 코드로 들어올 수 있어요',
+                  style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+                ),
+              ],
+            ),
+          ),
+          if (code != null)
+            IconButton(
+              tooltip: '코드 복사',
+              icon: const Icon(Icons.copy_rounded, size: 20),
+              color: AppColors.textSecondary,
+              onPressed: () => _copyCode(code),
+            ),
+          if (owner)
+            IconButton(
+              tooltip: '코드 바꾸기',
+              icon: const Icon(Icons.refresh_rounded, size: 20),
+              color: AppColors.textSecondary,
+              onPressed: _busy ? null : _changeCode,
+            ),
+        ],
+      ),
+    );
+  }
 
   Widget _noticeCard(bool owner) {
     final notice = _crew.notice;

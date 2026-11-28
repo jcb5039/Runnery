@@ -13,6 +13,7 @@ class Crew {
     this.createdAt,
     this.notice,
     this.lastMessage,
+    this.code,
   });
   final String id, name;
 
@@ -26,6 +27,23 @@ class Crew {
 
   /// 목록에 보여 줄 마지막 메시지. 아직 없으면 null.
   final CrewLastMessage? lastMessage;
+
+  /// 초대 코드(영어 대문자·숫자 6자리). 친구가 아니어도 이 코드로 들어올 수 있습니다. 예전 크루는 없을 수 있습니다.
+  final String? code;
+
+  /// 코드에 쓰는 글자(헷갈리는 0·O·1·I·L은 뺌). 서버 함수(functions/crew_code.js)와 같습니다.
+  static const codeAlphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  static const codeLength = 6;
+
+  /// 입력한 코드를 대문자로 바꾸고 띄어쓰기를 지웁니다. 코드 모양이 아니면 null.
+  static String? normalizeCode(String text) {
+    final code = text.replaceAll(RegExp(r'\s'), '').toUpperCase();
+    if (code.length != codeLength) return null;
+    for (final c in code.split('')) {
+      if (!codeAlphabet.contains(c)) return null;
+    }
+    return code;
+  }
 
   /// 크루 최대 인원.
   static const maxMembers = 200;

@@ -57,7 +57,7 @@ void main() {
     await tester.tap(find.byTooltip('친구 추가').first);
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), '서준');
+    await tester.enterText(find.byType(TextField), 'seoj');
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
     expect(find.text('검색 결과'), findsOneWidget);

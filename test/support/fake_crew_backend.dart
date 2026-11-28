@@ -27,6 +27,16 @@ class FakeCrewBackend implements CrewBackend {
   final Map<String, List<CrewMessage>> messagesById = {};
   final Map<String, CrewInvite> invitesById = {};
 
+  /// 초대 코드 → 크루 번호(서버의 crewCodes).
+  final Map<String, String> crewByCode = {};
+
+  /// 크루 번호 → 크루장이 내보낸 사람(코드로 못 들어옴).
+  final Map<String, Set<String>> bannedById = {};
+
+  /// 다음에 만들 코드들. 비어 있으면 순서대로 만듭니다(시험에서 겹치는 코드를 흉내 낼 때 넣습니다).
+  final List<String> nextCodes = [];
+  int _codeSeq = 0;
+
   /// 크루 번호/모집 번호 → 모집.
   final Map<String, CrewRun> runs = {};
 
@@ -62,6 +72,7 @@ class FakeCrewBackend implements CrewBackend {
     CrewNotice? notice,
     bool clearNotice = false,
     CrewLastMessage? lastMessage,
+    String? code,
   }) => Crew(
     id: c.id,
     name: c.name,
@@ -70,6 +81,7 @@ class FakeCrewBackend implements CrewBackend {
     createdAt: c.createdAt,
     notice: clearNotice ? null : (notice ?? c.notice),
     lastMessage: lastMessage ?? c.lastMessage,
+    code: code ?? c.code,
   );
 
   void _message(
@@ -132,11 +144,17 @@ class FakeCrewBackend implements CrewBackend {
   }
 
   @override
-  Stream<List<CrewMessage>> watchMessages(String id, {int limit = 50}) =>
-      _watch(() {
-        final all = messagesById[id] ?? const <CrewMessage>[];
-        return all.length <= limit ? [...all] : all.sublist(all.length - limit);
-      });
+  Stream<List<CrewMessage>> watchMessages(
+    String id, {
+    int limit = 50,
+    DateTime? since,
+  }) => _watch(() {
+    final all = [
+      for (final m in messagesById[id] ?? const <CrewMessage>[])
+        if (since == null || !(m.createdAt ?? clock()).isBefore(since)) m,
+    ];
+    return all.length <= limit ? [...all] : all.sublist(all.length - limit);
+  });
 
   @override
   Future<void> sendMessage(String id, String uid, String text) async {
@@ -208,6 +226,7 @@ class FakeCrewBackend implements CrewBackend {
     final c = _member(id, owner);
     if (c.owner != owner || target == owner) throw _denied;
     membersById[id]?.remove(target);
+    (bannedById[id] ??= {}).add(target);
     _message(id, owner, CrewMessageKind.kick, target: target);
     _put(_copy(c, members: [...c.members]..remove(target)));
   }
@@ -282,6 +301,7 @@ class FakeCrewBackend implements CrewBackend {
       throw _denied;
     }
     invitesById.remove(invite.id);
+    bannedById[c.id]?.remove(invite.to);
     // 실제 서버처럼 들어온 시각·읽은 시각·들어옴 안내가 같은 시각입니다.
     final at = clock();
     (membersById[c.id] ??= {})[invite.to] = CrewMember(
@@ -297,6 +317,65 @@ class FakeCrewBackend implements CrewBackend {
   Future<void> declineInvite(CrewInvite invite) async {
     invitesById.remove(invite.id);
     _notify();
+  }
+
+  String _makeCode() {
+    if (nextCodes.isNotEmpty) return nextCodes.removeAt(0);
+    final n = ++_codeSeq;
+    const a = Crew.codeAlphabet;
+    return 'TEST${a[n ~/ a.length % a.length]}${a[n % a.length]}';
+  }
+
+  @override
+  Future<String> issueCode(String crewId) async {
+    final c = crewById[crewId];
+    if (c == null) throw const FriendException('크루를 찾을 수 없어요');
+    if (c.owner != actor) {
+      throw const FriendException('크루장만 코드를 바꿀 수 있어요');
+    }
+    var code = _makeCode();
+    // 서버처럼 이미 쓰는 코드는 다시 뽑습니다.
+    while (crewByCode.containsKey(code)) {
+      code = _makeCode();
+    }
+    if (c.code != null) crewByCode.remove(c.code);
+    crewByCode[code] = crewId;
+    _put(_copy(c, code: code));
+    return code;
+  }
+
+  @override
+  Future<String> joinByCode(String code) async {
+    final normal = Crew.normalizeCode(code);
+    if (normal == null) throw const FriendException('코드 6자리를 확인해 주세요');
+    final id = crewByCode[normal];
+    final c = id == null ? null : crewById[id];
+    if (c == null || c.code != normal) {
+      throw const FriendException('코드를 다시 확인해 주세요');
+    }
+    // 서버 함수처럼 부른 사람([actor])을 넣습니다.
+    final uid = actor;
+    if (c.members.contains(uid)) return c.id;
+    if (bannedById[c.id]?.contains(uid) ?? false) {
+      throw const FriendException('이 크루에는 코드로 들어갈 수 없어요');
+    }
+    if ((friends.blocks[uid]?.contains(c.owner) ?? false) ||
+        (friends.blocks[c.owner]?.contains(uid) ?? false)) {
+      throw const FriendException('이 크루에는 들어갈 수 없어요');
+    }
+    if (c.members.length >= Crew.maxMembers) {
+      throw const FriendException('크루는 200명까지예요');
+    }
+    final at = clock();
+    (membersById[c.id] ??= {})[uid] = CrewMember(
+      uid: uid,
+      joinedAt: at,
+      lastReadAt: at,
+    );
+    invitesById.remove('${c.id}_$uid');
+    _message(c.id, uid, CrewMessageKind.join, at: at);
+    _put(_copy(c, members: [...c.members, uid]));
+    return c.id;
   }
 
   @override

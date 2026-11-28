@@ -37,6 +37,9 @@ class CrewStore extends ChangeNotifier {
   final Map<String, PublicProfile> _people = {};
   final Map<String, int> _unread = {};
   final Map<String, bool> _muted = {};
+
+  /// 크루 번호 → 내가 들어온 시각. 들어오기 전의 채팅·미리보기는 보여 주지 않습니다.
+  final Map<String, DateTime> _joined = {};
   StreamSubscription<List<Crew>>? _crewSub;
   StreamSubscription<List<CrewInvite>>? _inviteSub;
   bool _loaded = false;
@@ -107,6 +110,7 @@ class CrewStore extends ChangeNotifier {
     _invites = const [];
     _unread.clear();
     _muted.clear();
+    _joined.clear();
     _left.clear();
     _loaded = false;
     _error = null;
@@ -177,6 +181,7 @@ class CrewStore extends ChangeNotifier {
         final member = await backend.member(crew.id, me.uid);
         if (me.uid != _owner) return;
         _muted[crew.id] = member?.muted ?? false;
+        if (member != null) _joined[crew.id] = member.joinedAt;
         final last = crew.lastMessage;
         final read = member?.lastReadAt;
         // 내 메시지가 마지막이거나 읽은 뒤에 온 메시지가 없으면 세지 않습니다.
@@ -214,7 +219,7 @@ class CrewStore extends ChangeNotifier {
   /// 채팅방·서랍이 멤버 이름을 보여 주기 전에 부릅니다.
   Future<void> loadPeople(Iterable<String> uids) => _loadPeople(uids.toSet());
 
-  /// 크루를 만들고, 고른 친구들에게 초대를 보냅니다. 만든 크루 번호를 돌려줍니다.
+  /// 크루를 만들고 초대 코드를 붙인 뒤, 고른 친구들에게 초대를 보냅니다. 만든 크루 번호를 돌려줍니다.
   Future<String> create(String name, List<PublicProfile> invitees) async {
     final me = _require();
     final text = name.trim();
@@ -227,6 +232,11 @@ class CrewStore extends ChangeNotifier {
     if (byId(id) == null) {
       _crews = [crew, ..._crews];
       notifyListeners();
+    }
+    try {
+      await backend.issueCode(id);
+    } on FriendException {
+      // 코드를 못 만들었으면 크루장이 서랍을 열 때 다시 만듭니다.
     }
     for (final person in invitees) {
       try {
@@ -241,8 +251,31 @@ class CrewStore extends ChangeNotifier {
 
   Stream<Crew?> watch(String id) => backend.watchCrew(id);
 
-  Stream<List<CrewMessage>> messages(String id, {int limit = 50}) =>
-      backend.watchMessages(id, limit: limit);
+  /// 채팅방 메시지. 내가 들어온 뒤의 것만 옵니다(나갔다 다시 들어오면 다시 들어온 때부터).
+  /// 들어온 시각 기록이 없는 예전 멤버는 모두 봅니다.
+  Stream<List<CrewMessage>> messages(String id, {int limit = 50}) async* {
+    final since = await _joinedAt(id);
+    yield* backend.watchMessages(id, limit: limit, since: since);
+  }
+
+  Future<DateTime> _joinedAt(String crewId) async {
+    final known = _joined[crewId];
+    if (known != null) return known;
+    final me = _require();
+    final member = await backend.member(crewId, me.uid);
+    final at = member?.joinedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+    if (member != null) _joined[crewId] = at;
+    return at;
+  }
+
+  /// 목록에 보여 줄 마지막 메시지. 내가 들어오기 전의 메시지면 null입니다.
+  CrewLastMessage? lastMessageOf(Crew crew) {
+    final last = crew.lastMessage, joined = _joined[crew.id];
+    if (last == null || (joined != null && last.at.isBefore(joined))) {
+      return null;
+    }
+    return last;
+  }
 
   Future<void> send(String crewId, String text) async {
     final me = _require();
@@ -332,6 +365,8 @@ class CrewStore extends ChangeNotifier {
     }
     _crews = [..._crews]..removeWhere((c) => c.id == crew.id);
     _unread.remove(crew.id);
+    // 다시 들어오면 그때부터 보이도록 들어온 시각을 잊습니다.
+    _joined.remove(crew.id);
     notifyListeners();
   }
 
@@ -345,6 +380,27 @@ class CrewStore extends ChangeNotifier {
     await backend.invite(crew, me.uid, friend.uid);
   }
 
+  /// 크루장이 초대 코드를 새로 만듭니다(예전 코드로는 더 못 들어옵니다). 코드가 없던 예전 크루에도 씁니다.
+  Future<String> issueCode(Crew crew) async {
+    final me = _require();
+    if (!crew.isOwner(me.uid)) {
+      throw const FriendException('크루장만 코드를 바꿀 수 있어요');
+    }
+    return backend.issueCode(crew.id);
+  }
+
+  /// 초대 코드로 크루에 들어갑니다(친구가 아니어도 됩니다). 들어간 크루 번호를 돌려줍니다.
+  Future<String> joinByCode(String text) async {
+    _require();
+    final code = Crew.normalizeCode(text);
+    if (code == null) throw const FriendException('코드 6자리를 확인해 주세요');
+    final id = await backend.joinByCode(code);
+    _left.remove(id);
+    _joined.remove(id);
+    start();
+    return id;
+  }
+
   /// 내가 이 크루에 초대해 두고 아직 답을 받지 못한 사람들.
   Future<Set<String>> invited(String crewId) async {
     final me = _require();
@@ -355,6 +411,7 @@ class CrewStore extends ChangeNotifier {
     _require();
     await backend.acceptInvite(invite);
     _left.remove(invite.crewId);
+    _joined.remove(invite.crewId);
     _invites = [..._invites]..removeWhere((i) => i.id == invite.id);
     notifyListeners();
   }

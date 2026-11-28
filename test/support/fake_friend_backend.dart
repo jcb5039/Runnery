@@ -55,12 +55,13 @@ class FakeFriendBackend implements FriendBackend {
   }
 
   @override
-  Future<List<PublicProfile>> search(String query) async {
+  Future<List<PublicProfile>> search(String query, {int limit = 10}) async {
     _check();
-    return [
+    // 서버처럼 아이디 앞부분으로, 아이디 순서대로 [limit]명까지.
+    return ([
       for (final p in profilesByUid.values)
-        if (searchKeywords(p.name, p.id).contains(query)) p,
-    ];
+        if (p.id.startsWith(query)) p,
+    ]..sort((a, b) => a.id.compareTo(b.id))).take(limit).toList();
   }
 
   @override

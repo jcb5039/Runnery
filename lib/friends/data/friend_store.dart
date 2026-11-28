@@ -252,20 +252,26 @@ class FriendStore extends ChangeNotifier {
   static List<PublicProfile> _sorted(List<PublicProfile> people) =>
       people..sort((a, b) => a.name.compareTo(b.name));
 
-  /// 이름 일부나 아이디로 찾습니다. 나 자신도 결과에 들어갈 수 있습니다([relation]이 me).
+  /// 검색 결과로 보여 주는 최대 인원.
+  static const searchLimit = 5;
+
+  /// 아이디 앞부분으로 찾습니다(이름으로는 찾지 않음). 예: 'qwe'를 치면 qwer·qwet가 모두 나옵니다.
+  /// 아이디 순서로 [searchLimit]명까지이고, 나 자신도 결과에 들어갈 수 있습니다([relation]이 me).
   Future<List<PublicProfile>> search(String query) async {
-    final text = query.trim().toLowerCase().replaceAll(RegExp(r'\s'), '');
-    if (text.isEmpty) return const [];
+    var text = query.trim().toLowerCase().replaceAll(RegExp(r'\s'), '');
+    if (text.startsWith('@')) text = text.substring(1);
+    // 아이디에 쓸 수 없는 글자가 있으면 찾을 사람이 없습니다.
+    if (text.isEmpty || !RegExp(r'^[a-z0-9_]+$').hasMatch(text)) {
+      return const [];
+    }
     _require();
-    final found = await backend.search(
-      text.startsWith('@') ? text.substring(1) : text,
-    );
-    // 차단한 사람은 찾아도 나오지 않습니다(차단 풀기는 내 친구 화면에서).
+    // 차단한 사람은 빼고 보여 주므로 조금 넉넉히 받아 옵니다(차단 풀기는 내 친구 화면에서).
+    final found = await backend.search(text, limit: searchLimit * 2);
     final blocked = {for (final p in _blocked) p.uid};
-    return _sorted([
+    return [
       for (final p in found)
         if (!blocked.contains(p.uid)) p,
-    ]);
+    ].take(searchLimit).toList();
   }
 
   /// 앱을 켜 둔 동안 받은 친구 요청을 실시간으로 받습니다. 받은 요청 목록([incoming])도 바꿔 두므로

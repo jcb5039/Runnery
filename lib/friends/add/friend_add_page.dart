@@ -8,7 +8,7 @@ import '../../design_system/app_spacing.dart';
 import '../data/friend_store.dart';
 import '../widgets/friend_widgets.dart';
 
-/// 18 친구 추가: 이름이나 아이디로 찾아 친구 요청을 보내고, 받은 요청을 수락·거절합니다.
+/// 18 친구 추가: 아이디로 찾아(앞부분만 쳐도 최대 5명) 친구 요청을 보내고, 받은 요청을 수락·거절합니다.
 class FriendAddPage extends StatefulWidget {
   const FriendAddPage({super.key, this.store});
 
@@ -176,7 +176,7 @@ class _FriendAddPageState extends State<FriendAddPage> {
     style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w500),
     cursorColor: AppColors.textPrimary,
     decoration: InputDecoration(
-      hintText: '이름 또는 아이디',
+      hintText: '아이디',
       hintStyle: TextStyle(color: AppColors.textTertiary),
       prefixIcon: Icon(Icons.search, color: AppColors.textSecondary),
       prefixIconConstraints: const BoxConstraints(minWidth: 34),
@@ -218,7 +218,7 @@ class _FriendAddPageState extends State<FriendAddPage> {
           ),
         )
       else if (results.isEmpty)
-        _note('찾는 친구가 없어요. 이름이나 아이디를 다시 확인해 주세요')
+        _note('찾는 친구가 없어요. 아이디를 다시 확인해 주세요')
       else
         for (final (i, person) in results.indexed)
           FriendRow(

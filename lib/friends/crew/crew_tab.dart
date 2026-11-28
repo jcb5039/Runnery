@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../design_system/app_colors.dart';
 import '../../record/models/running_record.dart' show clockText;
@@ -10,7 +11,7 @@ import '../widgets/friend_widgets.dart';
 import 'crew_new_page.dart';
 import 'crew_room_page.dart';
 
-/// 17-7 크루 목록: 내 크루(최근에 이야기한 순), 크루 만들기. 크루를 누르면 채팅방이 열립니다.
+/// 17-7 크루 목록: 내 크루(최근에 이야기한 순), 코드로 참가, 크루 만들기. 크루를 누르면 채팅방이 열립니다.
 class CrewTab extends StatefulWidget {
   const CrewTab({super.key, required this.friends, this.store});
 
@@ -41,9 +42,22 @@ class _CrewTabState extends State<CrewTab> {
   void _openNew() =>
       _open(CrewNewPage(friends: widget.friends, store: widget.store));
 
-  void _openRoom(Crew crew) => _open(
-    CrewRoomPage(id: crew.id, friends: widget.friends, store: widget.store),
-  );
+  void _openRoom(Crew crew) => _openRoomById(crew.id);
+
+  void _openRoomById(String id) =>
+      _open(CrewRoomPage(id: id, friends: widget.friends, store: widget.store));
+
+  /// 초대 코드를 넣는 창. 맞는 코드면 그 크루 채팅방을 엽니다.
+  Future<void> _openCode() async {
+    final id = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.sheet,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => _CodeSheet(store: _store),
+    );
+    if (id != null && mounted) _openRoomById(id);
+  }
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -62,6 +76,12 @@ class _CrewTabState extends State<CrewTab> {
                 ),
               ),
               const SizedBox(width: 12),
+              FriendPillButton(
+                label: '코드로 참가',
+                semanticLabel: '초대 코드로 크루에 참가하기',
+                onPressed: _openCode,
+              ),
+              const SizedBox(width: 8),
               FriendPillButton(label: '크루 만들기', onPressed: _openNew),
             ],
           ),
@@ -98,7 +118,7 @@ class _CrewTabState extends State<CrewTab> {
         ),
         const SizedBox(height: 8),
         Text(
-          '크루를 만들고 친구를 초대해 함께 달려요',
+          '크루를 만들거나 받은 초대 코드로 들어가 함께 달려요',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
         ),
@@ -123,7 +143,8 @@ class _CrewRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final last = crew.lastMessage;
+    // 들어오기 전의 메시지는 미리보기에도 보여 주지 않습니다.
+    final last = store.lastMessageOf(crew);
     final unread = store.unread(crew.id), muted = store.muted(crew.id);
     final preview = last == null
         ? '아직 메시지가 없어요'
@@ -300,4 +321,118 @@ String crewTimeLabel(DateTime time, DateTime now) {
     1 => '어제',
     _ => '${time.month}월 ${time.day}일',
   };
+}
+
+/// 초대 코드 6자리를 넣고 '들어가기'를 누릅니다. 들어가면 크루 번호를 돌려주며 닫힙니다.
+class _CodeSheet extends StatefulWidget {
+  const _CodeSheet({required this.store});
+
+  final CrewStore store;
+
+  @override
+  State<_CodeSheet> createState() => _CodeSheetState();
+}
+
+class _CodeSheetState extends State<_CodeSheet> {
+  final _text = TextEditingController();
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  bool get _ready => Crew.normalizeCode(_text.text) != null;
+
+  Future<void> _join() async {
+    if (_busy || !_ready) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final id = await widget.store.joinByCode(_text.text);
+      if (mounted) Navigator.pop(context, id);
+    } on FriendException catch (e) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = e.message;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+    child: SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 6, 24, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              '코드로 참가',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '크루원에게 받은 초대 코드 6자리를 넣어 주세요',
+              style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _text,
+              autofocus: true,
+              textAlign: TextAlign.center,
+              textCapitalization: TextCapitalization.characters,
+              autocorrect: false,
+              enableSuggestions: false,
+              maxLength: Crew.codeLength,
+              inputFormatters: [
+                // 소문자는 대문자로, 띄어쓰기·기호는 뺍니다.
+                FilteringTextInputFormatter.allow(RegExp('[A-Za-z0-9]')),
+                TextInputFormatter.withFunction(
+                  (_, v) => v.copyWith(text: v.text.toUpperCase()),
+                ),
+              ],
+              onChanged: (_) => setState(() => _error = null),
+              onSubmitted: (_) => _join(),
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 6,
+              ),
+              decoration: InputDecoration(
+                hintText: '코드 6자리를 입력해 주세요',
+                counterText: '',
+                errorText: _error,
+                // 코드 글자(크고 굵고 넓게)와 달리 안내는 보통 글자로 보여 줍니다.
+                hintStyle: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w400,
+                  letterSpacing: 0,
+                  color: AppColors.textTertiary,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: AppColors.borderDefault),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            FriendSheetButton(
+              label: _busy ? '들어가는 중이에요' : '들어가기',
+              filled: true,
+              onPressed: _busy || !_ready ? null : _join,
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }

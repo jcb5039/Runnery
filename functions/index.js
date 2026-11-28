@@ -1,5 +1,5 @@
 // 러너리 서버 함수. Firebase가 직접 지원하지 않는 카카오·네이버 로그인을 Firebase 계정으로 바꿔 주고,
-// 회원 탈퇴 때 서버 데이터를 지웁니다. 크루 함께 달리기 모집(대기실)의 규칙도 여기서 지킵니다.
+// 회원 탈퇴 때 서버 데이터를 지웁니다. 크루 함께 달리기 모집(대기실)과 크루 초대 코드의 규칙도 여기서 지킵니다.
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
@@ -11,6 +11,8 @@ const { ProofError, checkProof, deleteUserData } = require('./delete_account');
 const { KakaoTokenError, verifyKakaoToken } = require('./kakao');
 const { NaverLoginError, naverIdFromCode, stateFor, validState } = require('./naver');
 const { RunError, decide, decideTick } = require('./crew_run');
+const { CodeError, makeCode, normalizeCode, decideJoin, decideIssue } = require('./crew_code');
+const { randomInt } = require('node:crypto');
 
 initializeApp();
 
@@ -269,6 +271,90 @@ exports.crewRun = onCall({ region: REGION, maxInstances: 20 }, async (request) =
     throw new HttpsError('internal', '잠시 후 다시 시도해주세요');
   }
   return { ok: true, runId: runRef.id };
+});
+
+/**
+ * 크루 초대 코드: 코드 만들기·바꾸기(issue, 크루장만)와 코드로 들어가기(join). 판단은 crew_code.js를 봅니다.
+ * 코드로 크루를 찾는 crewCodes 문서는 앱이 읽지 못해서, 코드를 모르면 크루를 찾을 수 없습니다.
+ * 친구가 아니어도 코드만 있으면 들어올 수 있고, 크루장이 내보낸 사람(banned)은 코드로 못 들어옵니다.
+ */
+exports.crewCode = onCall({ region: REGION, maxInstances: 20 }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', '로그인이 필요해요');
+  const uid = request.auth.uid;
+  const data = request.data || {};
+  const action = String(data.action || '');
+  const db = getFirestore();
+  try {
+    if (action === 'issue') {
+      const crewId = typeof data.crewId === 'string' ? data.crewId : '';
+      if (!crewId) throw new CodeError('크루를 찾을 수 없어요');
+      const crewRef = db.collection('crews').doc(crewId);
+      // 드물게 이미 쓰는 코드가 나오면 다시 뽑습니다.
+      for (let i = 0; i < 5; i++) {
+        const code = makeCode(() => randomInt(1e9) / 1e9);
+        const done = await db.runTransaction(async (t) => {
+          const crewSnap = await t.get(crewRef);
+          const codeRef = db.collection('crewCodes').doc(code);
+          const codeSnap = await t.get(codeRef);
+          const crew = crewSnap.exists ? crewSnap.data() : null;
+          decideIssue({ crew, uid });
+          if (codeSnap.exists) return false;
+          // 예전 코드는 지워서 더는 들어올 수 없게 합니다.
+          if (crew.code) t.delete(db.collection('crewCodes').doc(crew.code));
+          t.set(codeRef, { crewId, createdAt: FieldValue.serverTimestamp() });
+          t.update(crewRef, { code });
+          return true;
+        });
+        if (done) return { ok: true, code };
+      }
+      throw new Error('코드를 만들지 못함');
+    }
+    if (action === 'join') {
+      const code = normalizeCode(data.code);
+      if (!code) throw new CodeError('코드 6자리를 확인해 주세요');
+      const codeSnap = await db.collection('crewCodes').doc(code).get();
+      const crewId = codeSnap.exists ? String(codeSnap.get('crewId') || '') : '';
+      if (!crewId) throw new CodeError('코드를 다시 확인해 주세요');
+      const crewRef = db.collection('crews').doc(crewId);
+      await db.runTransaction(async (t) => {
+        const crewSnap = await t.get(crewRef);
+        const crew = crewSnap.exists ? crewSnap.data() : null;
+        const owner = crew && crew.owner;
+        const [bannedSnap, mine, theirs] = await Promise.all([
+          t.get(crewRef.collection('banned').doc(uid)),
+          owner ? t.get(db.collection('users').doc(uid).collection('blocks').doc(owner)) : null,
+          owner ? t.get(db.collection('users').doc(owner).collection('blocks').doc(uid)) : null,
+        ]);
+        const result = decideJoin({
+          crew,
+          code,
+          uid,
+          banned: bannedSnap.exists,
+          blocked: Boolean((mine && mine.exists) || (theirs && theirs.exists)),
+        });
+        if (result === 'member') return;
+        t.update(crewRef, { members: FieldValue.arrayUnion(uid) });
+        t.set(crewRef.collection('members').doc(uid), {
+          joinedAt: FieldValue.serverTimestamp(),
+          lastReadAt: FieldValue.serverTimestamp(),
+          muted: false,
+        });
+        t.set(crewRef.collection('messages').doc(), {
+          uid,
+          kind: 'join',
+          createdAt: FieldValue.serverTimestamp(),
+        });
+        // 받아 둔 초대가 있으면 함께 지웁니다.
+        t.delete(db.collection('crewInvites').doc(`${crewId}_${uid}`));
+      });
+      return { ok: true, crewId };
+    }
+    throw new CodeError('잠시 후 다시 시도해주세요');
+  } catch (e) {
+    if (e instanceof CodeError) throw new HttpsError('failed-precondition', e.message);
+    logger.error('크루 코드 실패', action, uid, e);
+    throw new HttpsError('internal', '잠시 후 다시 시도해주세요');
+  }
 });
 
 /** 모집 참여자들의 지금 실시간 상태(거리·시간). 트랜잭션 안에서 읽습니다. */

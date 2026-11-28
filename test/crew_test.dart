@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:runnery_new/friends/crew/crew_room_page.dart';
 import 'package:runnery_new/friends/data/crew_store.dart';
 import 'package:runnery_new/friends/data/friend_store.dart';
 import 'package:runnery_new/friends/data/together_store.dart';
@@ -13,6 +15,9 @@ void main() {
   const minji = PublicProfile(uid: 'u1', name: '김민지', id: 'minji_run');
   const haeun = PublicProfile(uid: 'u2', name: '박하은', id: 'haeun_run');
   const seojun = PublicProfile(uid: 'u3', name: '이서준', id: 'seojun_k');
+
+  /// 아무와도 친구가 아닌 사람.
+  const stranger = PublicProfile(uid: 'u9', name: '정우진', id: 'woojin_9');
 
   late FakeFriendBackend server;
   late FakeCrewBackend crews;
@@ -28,6 +33,7 @@ void main() {
       ..profilesByUid[minji.uid] = minji
       ..profilesByUid[haeun.uid] = haeun
       ..profilesByUid[seojun.uid] = seojun
+      ..profilesByUid[stranger.uid] = stranger
       ..friends[minji.uid] = {haeun.uid, seojun.uid}
       ..friends[haeun.uid] = {minji.uid}
       ..friends[seojun.uid] = {minji.uid};
@@ -128,6 +134,150 @@ void main() {
     });
   });
 
+  group('초대 코드', () {
+    /// 서버 함수처럼, 부르는 사람을 정한 뒤 그 사람의 저장소를 돌려줍니다.
+    CrewStore as(PublicProfile who) {
+      crews.actor = who.uid;
+      return storeFor(who);
+    }
+
+    test('크루를 만들면 6자리 코드가 생기고, 친구가 아니어도 코드로 들어와요', () async {
+      final id = await as(minji).create('주말 LSD', const []);
+      final code = crews.crewById[id]!.code!;
+      expect(Crew.normalizeCode(code), code);
+      expect(code, hasLength(6));
+
+      // 소문자로 쳐도 들어가요.
+      expect(await as(stranger).joinByCode(code.toLowerCase()), id);
+      expect(crews.crewById[id]!.members, [minji.uid, stranger.uid]);
+      expect(crews.messagesById[id]!.last.kind, CrewMessageKind.join);
+      // 이미 멤버면 그대로예요.
+      expect(await as(stranger).joinByCode(code), id);
+      expect(crews.crewById[id]!.members, hasLength(2));
+    });
+
+    test('틀린 코드·모양이 다른 코드는 들어갈 수 없어요', () async {
+      await as(minji).create('주말 LSD', const []);
+      await expectLater(
+        as(stranger).joinByCode('ZZZZZZ'),
+        throwsA(
+          isA<FriendException>().having(
+            (e) => e.message,
+            'message',
+            '코드를 다시 확인해 주세요',
+          ),
+        ),
+      );
+      await expectLater(
+        as(stranger).joinByCode('AB0'),
+        throwsA(
+          isA<FriendException>().having(
+            (e) => e.message,
+            'message',
+            '코드 6자리를 확인해 주세요',
+          ),
+        ),
+      );
+    });
+
+    test('크루장이 코드를 바꾸면 예전 코드는 막혀요. 크루장만 바꿀 수 있어요', () async {
+      final id = await as(minji).create('주말 LSD', const []);
+      final old = crews.crewById[id]!.code!;
+      final fresh = await as(minji).issueCode(crews.crewById[id]!);
+      expect(fresh, isNot(old));
+      expect(crews.crewById[id]!.code, fresh);
+
+      await expectLater(
+        as(stranger).joinByCode(old),
+        throwsA(isA<FriendException>()),
+      );
+      expect(await as(stranger).joinByCode(fresh), id);
+      await expectLater(
+        as(stranger).issueCode(crews.crewById[id]!),
+        throwsA(isA<FriendException>()),
+      );
+    });
+
+    test('내보낸 사람은 코드로 못 들어와요. 다시 초대받아 들어오면 풀리고, 다시 내보내면 또 막혀요', () async {
+      final id = await as(minji).create('주말 LSD', [haeun]);
+      final code = crews.crewById[id]!.code!;
+      final b = as(haeun)..start();
+      await settle();
+      await b.accept(b.invites.single);
+
+      // 1. 내보내면 코드로 못 들어와요.
+      await as(minji).kick(crews.crewById[id]!, haeun.uid);
+      await expectLater(
+        as(haeun).joinByCode(code),
+        throwsA(
+          isA<FriendException>().having(
+            (e) => e.message,
+            'message',
+            '이 크루에는 코드로 들어갈 수 없어요',
+          ),
+        ),
+      );
+
+      // 2. 크루장이 다시 초대해 수락하면 막힘이 풀려요.
+      await as(minji).invite(crews.crewById[id]!, haeun);
+      final again = as(haeun)..start();
+      await settle();
+      await again.accept(again.invites.single);
+      expect(crews.bannedById[id], isNot(contains(haeun.uid)));
+
+      // 3. 스스로 나간 뒤에는 코드로 다시 들어올 수 있어요.
+      await again.leave(crews.crewById[id]!);
+      expect(await as(haeun).joinByCode(code), id);
+
+      // 4. 다시 내보내면 또 막혀요.
+      await as(minji).kick(crews.crewById[id]!, haeun.uid);
+      await expectLater(
+        as(haeun).joinByCode(code),
+        throwsA(isA<FriendException>()),
+      );
+    });
+
+    test('새로 들어온 사람은 들어온 뒤의 채팅만 보고, 다시 들어오면 그때부터 봐요', () async {
+      final a = as(minji);
+      final id = await a.create('주말 LSD', const []);
+      final code = crews.crewById[id]!.code!;
+      await a.send(id, '들어오기 전 이야기');
+
+      final b = as(stranger);
+      await b.joinByCode(code);
+      await settle();
+      var seen = await b.messages(id).first;
+      expect(seen.map((m) => m.kind), [CrewMessageKind.join]);
+      // 목록 미리보기에도 들어오기 전 메시지는 안 보여요.
+      await b.refresh();
+      await settle();
+      expect(b.lastMessageOf(b.byId(id)!), isNull);
+
+      await a.send(id, '어서 와요');
+      seen = await b.messages(id).first;
+      expect(seen.map((m) => m.text), ['', '어서 와요']);
+      await b.refresh();
+      await settle();
+      expect(b.lastMessageOf(b.byId(id)!)?.text, '어서 와요');
+
+      // 나갔다가 다시 들어오면 다시 들어온 때부터예요.
+      await b.leave(b.byId(id)!);
+      await a.send(id, '나간 동안 이야기');
+      await as(stranger).joinByCode(code);
+      seen = await b.messages(id).first;
+      expect(seen.map((m) => m.kind), [CrewMessageKind.join]);
+    });
+
+    test('크루장과 차단 관계면 코드로 못 들어와요', () async {
+      final id = await as(minji).create('주말 LSD', const []);
+      server.blocks[minji.uid] = {stranger.uid};
+      await expectLater(
+        as(stranger).joinByCode(crews.crewById[id]!.code!),
+        throwsA(isA<FriendException>()),
+      );
+    });
+  });
+
   group('화면', () {
     late FriendStore friends;
     late CrewStore crewStore;
@@ -139,6 +289,8 @@ void main() {
         clock: () => tick,
       );
       crewStore = storeFor(minji);
+      // 서버 함수(코드 만들기·코드로 들어가기)를 부르는 사람은 김민지예요.
+      crews.actor = minji.uid;
     });
 
     Future<void> open(WidgetTester tester) async {
@@ -393,6 +545,93 @@ void main() {
       expect(crewStore.muted(id), isTrue);
       expect(find.byIcon(Icons.notifications_off_outlined), findsOneWidget);
       expect(find.bySemanticsLabel('크루 알림 꺼짐, 눌러서 켜기'), findsOneWidget);
+    });
+
+    testWidgets('서랍에 초대 코드가 보이고, 코드가 없던 크루는 크루장이 열면 생기고, 바꿀 수 있어요', (
+      tester,
+    ) async {
+      late String id;
+      await tester.runAsync(() async {
+        // 코드를 못 만든 예전 크루처럼 만듭니다.
+        crews.actor = '';
+        id = await crewStore.create('주말 LSD', const []);
+        crews.actor = minji.uid;
+      });
+      expect(crews.crewById[id]!.code, isNull);
+      await open(tester);
+      await tester.tap(find.bySemanticsLabel(RegExp('^주말 LSD 크루 채팅방')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('채팅방 메뉴'));
+      await tester.pumpAndSettle();
+
+      final code = crews.crewById[id]!.code!;
+      expect(find.text(code), findsOneWidget);
+      expect(find.text('친구가 아니어도 이 코드로 들어올 수 있어요'), findsOneWidget);
+      // 복사한 글자를 받아 둡니다(테스트에는 진짜 클립보드가 없어서).
+      String? copied;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method == 'Clipboard.setData') {
+            copied = (call.arguments as Map)['text'] as String?;
+          }
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
+      await tester.tap(find.byTooltip('코드 복사'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(copied, code);
+      expect(find.text('코드를 복사했어요'), findsOneWidget);
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      await tester.tap(find.byTooltip('코드 바꾸기'));
+      await tester.pumpAndSettle();
+      expect(find.text('초대 코드를 바꿀까요?'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, '바꾸기'));
+      await tester.pumpAndSettle();
+      final fresh = crews.crewById[id]!.code!;
+      expect(fresh, isNot(code));
+      expect(find.text(fresh), findsOneWidget);
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+    });
+
+    testWidgets('크루 탭에서 코드를 넣으면 그 크루 채팅방이 열려요(친구가 아니어도)', (tester) async {
+      late String code;
+      await tester.runAsync(() async {
+        crews.actor = seojun.uid;
+        final id = await storeFor(seojun).create('반포 저녁런', const []);
+        code = crews.crewById[id]!.code!;
+        crews.actor = minji.uid;
+      });
+      await open(tester);
+      await tester.tap(find.text('코드로 참가'));
+      await tester.pumpAndSettle();
+      // 창 제목과 버튼 두 곳에 같은 이름이 보여요.
+      expect(find.text('코드로 참가'), findsNWidgets(2));
+      expect(find.text('코드 6자리를 입력해 주세요'), findsOneWidget);
+
+      // 틀린 코드면 안내가 떠요.
+      await tester.enterText(find.byType(TextField), 'zzzzzz');
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, '들어가기'));
+      await tester.pumpAndSettle();
+      expect(find.text('코드를 다시 확인해 주세요'), findsOneWidget);
+
+      // 소문자로 쳐도 대문자로 바뀌어 들어가요.
+      await tester.enterText(find.byType(TextField), code.toLowerCase());
+      await tester.pump();
+      expect(find.text(code), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, '들어가기'));
+      await tester.pumpAndSettle();
+      expect(find.byType(CrewRoomPage), findsOneWidget);
+      expect(find.text('김민지 님이 들어왔어요'), findsOneWidget);
     });
 
     testWidgets('서랍에서 공지를 쓰고 크루를 나갈 수 있어요', (tester) async {

@@ -60,7 +60,7 @@ void main() {
       expect(store.friends.map((f) => f.uid), [haeun.uid]);
       expect(store.feed.map((f) => f.friend.uid), [haeun.uid]);
       expect(store.blocked.map((p) => p.uid), [seojun.uid]);
-      expect(await store.search('서준'), isEmpty);
+      expect(await store.search('seojun'), isEmpty);
 
       // 차단당한 사람은 다시 친구 요청을 보낼 수 없어요.
       final other = FriendStore(backend: server, me: () => seojun);
