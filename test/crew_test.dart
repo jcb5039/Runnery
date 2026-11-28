@@ -210,6 +210,191 @@ void main() {
       expect(find.text('박하은 님이 들어왔어요'), findsOneWidget);
     });
 
+    testWidgets('나가자마자 서버 소식이 먼저 와도 채팅방만 닫혀요(검은 화면 방지)', (tester) async {
+      await tester.runAsync(() async {
+        final id = await crewStore.create('주말 LSD', [haeun]);
+        final b = storeFor(haeun)..start();
+        await settle();
+        await b.accept(b.invites.single);
+        expect(crews.crewById[id]!.members, hasLength(2));
+      });
+      crews.notifyBeforeDone = true;
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      // 앱처럼 친구 탭 아래에 다른 화면(바닥)이 깔린 상태에서 시작합니다.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: TextButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => FriendsPage(
+                        store: friends,
+                        crew: crewStore,
+                        together: TogetherStore(
+                          backend: server,
+                          me: () => minji,
+                          records: () async => const [],
+                        ),
+                      ),
+                    ),
+                  ),
+                  child: const Text('바닥 화면'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('바닥 화면'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('크루'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.bySemanticsLabel(RegExp('^주말 LSD 크루 채팅방')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('채팅방 메뉴'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('나가기'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('김민지 님'), findsNothing);
+      await tester.tap(find.widgetWithText(FilledButton, '나가기'));
+      await tester.pumpAndSettle();
+      // 한 번 더 물어봐요.
+      expect(find.text('정말 나갈까요?'), findsOneWidget);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('나가기'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 직접 나갔으니 강제퇴장 안내는 뜨지 않아요.
+      expect(find.text('강제퇴장됐어요'), findsNothing);
+      // 크루 목록(친구 탭)으로 돌아오고, 바닥 화면까지 닫히지 않아요.
+      expect(find.text('크루 만들기'), findsOneWidget);
+      expect(find.text('바닥 화면'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('채팅방을 보는 중에 내보내지면 강제퇴장 안내가 뜨고, 확인하면 크루 목록으로 가요', (
+      tester,
+    ) async {
+      late CrewStore owner;
+      late String id;
+      await tester.runAsync(() async {
+        owner = storeFor(haeun);
+        id = await owner.create('주말 LSD', [minji]);
+        crewStore.start();
+        await settle();
+        await crewStore.accept(crewStore.invites.single);
+        await settle();
+      });
+      await open(tester);
+      await tester.tap(find.bySemanticsLabel(RegExp('^주말 LSD 크루 채팅방')));
+      await tester.pumpAndSettle();
+      expect(find.text('강제퇴장됐어요'), findsNothing);
+
+      await tester.runAsync(() async {
+        await owner.kick(crews.crewById[id]!, minji.uid);
+        await settle();
+      });
+      await tester.pumpAndSettle();
+      expect(find.text('강제퇴장됐어요'), findsOneWidget);
+      expect(find.textContaining("'주말 LSD' 크루에서 내보냈어요"), findsOneWidget);
+
+      await tester.tap(find.text('확인'));
+      await tester.pumpAndSettle();
+      expect(find.text('강제퇴장됐어요'), findsNothing);
+      expect(find.text('크루 만들기'), findsOneWidget);
+      expect(find.byTooltip('채팅방 메뉴'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('내보내기와 나가기는 한 번 더 묻고, 취소하면 그대로예요', (tester) async {
+      late String id;
+      await tester.runAsync(() async {
+        id = await crewStore.create('주말 LSD', [haeun]);
+        final b = storeFor(haeun)..start();
+        await settle();
+        await b.accept(b.invites.single);
+        await settle();
+      });
+      await open(tester);
+      await tester.tap(find.bySemanticsLabel(RegExp('^주말 LSD 크루 채팅방')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('채팅방 메뉴'));
+      await tester.pumpAndSettle();
+
+      // 내보내기: 두 번째 창에서 취소하면 그대로예요.
+      await tester.tap(find.byTooltip('박하은 님 내보내기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, '내보내기'));
+      await tester.pumpAndSettle();
+      expect(find.text('정말 내보낼까요?'), findsOneWidget);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('취소'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(crews.crewById[id]!.members, contains(haeun.uid));
+
+      // 나가기: 두 번째 창에서 취소해도 그대로예요.
+      await tester.tap(find.text('나가기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, '나가기'));
+      await tester.pumpAndSettle();
+      expect(find.text('정말 나갈까요?'), findsOneWidget);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('취소'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(crews.crewById[id]!.members, contains(minji.uid));
+
+      // 두 번 다 누르면 내보내요.
+      await tester.tap(find.byTooltip('박하은 님 내보내기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, '내보내기'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('내보내기'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(crews.crewById[id]!.members, [minji.uid]);
+    });
+
+    testWidgets('알림 버튼은 글자 없이 종 모양으로 지금 상태를 보여 줘요', (tester) async {
+      late String id;
+      await tester.runAsync(() async {
+        id = await crewStore.create('주말 LSD', const []);
+      });
+      await open(tester);
+      await tester.tap(find.bySemanticsLabel(RegExp('^주말 LSD 크루 채팅방')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('채팅방 메뉴'));
+      await tester.pumpAndSettle();
+      expect(find.text('알림 끄기'), findsNothing);
+      expect(find.byIcon(Icons.notifications_none), findsOneWidget);
+
+      await tester.tap(find.bySemanticsLabel('크루 알림 켜짐, 눌러서 끄기'));
+      await tester.pumpAndSettle();
+      expect(crewStore.muted(id), isTrue);
+      expect(find.byIcon(Icons.notifications_off_outlined), findsOneWidget);
+      expect(find.bySemanticsLabel('크루 알림 꺼짐, 눌러서 켜기'), findsOneWidget);
+    });
+
     testWidgets('서랍에서 공지를 쓰고 크루를 나갈 수 있어요', (tester) async {
       await tester.runAsync(() async {
         await crewStore.create('주말 LSD', const []);
@@ -235,6 +420,15 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('혼자 남은 크루라'), findsOneWidget);
       await tester.tap(find.widgetWithText(FilledButton, '나가기'));
+      await tester.pumpAndSettle();
+      // 한 번 더 물어봐요.
+      expect(find.text('정말 나갈까요?'), findsOneWidget);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('나가기'),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(find.text('아직 크루가 없어요'), findsOneWidget);
       expect(crews.crewById, isEmpty);

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../design_system/app_colors.dart';
 import '../../design_system/app_radius.dart';
 import '../../home/running/running_start_page.dart' show runningNumberStyle;
+import '../../record/list/detail/record_detail_page.dart' show recordDelete;
 import '../../record/models/running_record.dart' show clockText;
 import '../data/crew_store.dart';
 import '../data/friend_store.dart';
@@ -13,7 +14,7 @@ import 'crew_new_page.dart' show CrewInvitePage;
 import 'crew_tab.dart' show CrewFaces;
 
 /// 17-11 크루 채팅방 서랍: 크루 이름·인원, 공지(크루장만 씀), 함께 달린 기록, 멤버(크루장은 내보내기),
-/// 멤버 초대, 나가기, 알림 끄기.
+/// 멤버 초대, 나가기, 알림 켜고 끄기(종 아이콘).
 class CrewInfoDrawer extends StatefulWidget {
   const CrewInfoDrawer({
     super.key,
@@ -128,7 +129,13 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
       '내보내면 채팅방에 안내가 남아요. 다시 초대하면 들어올 수 있어요.',
       '내보내기',
     );
-    if (ok != true) return;
+    if (ok != true || !mounted) return;
+    final sure = await _confirmAgain(
+      '정말 내보낼까요?',
+      '$name 님은 바로 채팅방에서 나가게 돼요.',
+      '내보내기',
+    );
+    if (!sure) return;
     await _run(() => _store.kick(_crew, uid), done: '$name 님을 내보냈어요');
   }
 
@@ -145,8 +152,13 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
           : '나가면 가장 오래된 멤버인 ${_store.nameOf(next)} 님이 크루장이 돼요.',
       '나가기',
     );
-    if (ok != true) return;
-    if (_busy) return;
+    if (ok != true || !mounted) return;
+    final sure = await _confirmAgain(
+      '정말 나갈까요?',
+      owner && next == null ? '크루와 대화가 모두 지워져요.' : '나가면 다시 초대를 받아야 들어올 수 있어요.',
+      '나가기',
+    );
+    if (!sure || _busy) return;
     setState(() => _busy = true);
     try {
       await _store.leave(_crew);
@@ -158,6 +170,32 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
       }
     }
   }
+
+  /// 되돌리기 어려운 일이라 한 번 더 묻는 창(기록 삭제 확인 창과 같은 모양).
+  Future<bool> _confirmAgain(String title, String body, String action) async =>
+      await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: AppColors.pick(
+            const Color(0xFF171818),
+            AppColors.background,
+          ),
+          title: Text(title),
+          content: Text(body),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('취소'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: TextButton.styleFrom(foregroundColor: recordDelete),
+              child: Text(action),
+            ),
+          ],
+        ),
+      ) ??
+      false;
 
   Future<bool?> _confirm(String title, String body, String action) =>
       showModalBottomSheet<bool>(
@@ -336,23 +374,28 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
                       ),
                     ),
                   ),
+                  // 글자 없이 지금 상태만 보여 줍니다: 종이면 켜짐, 작대기 그어진 종이면 꺼짐.
                   Expanded(
-                    child: TextButton.icon(
-                      onPressed: _busy
-                          ? null
-                          : () => _run(
-                              () => _store.setMuted(_crew.id, muted: !muted),
-                            ),
-                      icon: Icon(
-                        muted
-                            ? Icons.notifications_none
-                            : Icons.notifications_off_outlined,
-                        size: 18,
-                      ),
-                      label: Text(muted ? '알림 켜기' : '알림 끄기'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppColors.textSecondary,
-                        minimumSize: const Size.fromHeight(56),
+                    child: Semantics(
+                      button: true,
+                      label: muted ? '크루 알림 꺼짐, 눌러서 켜기' : '크루 알림 켜짐, 눌러서 끄기',
+                      excludeSemantics: true,
+                      child: TextButton(
+                        onPressed: _busy
+                            ? null
+                            : () => _run(
+                                () => _store.setMuted(_crew.id, muted: !muted),
+                              ),
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.textSecondary,
+                          minimumSize: const Size.fromHeight(56),
+                        ),
+                        child: Icon(
+                          muted
+                              ? Icons.notifications_off_outlined
+                              : Icons.notifications_none,
+                          size: 22,
+                        ),
                       ),
                     ),
                   ),

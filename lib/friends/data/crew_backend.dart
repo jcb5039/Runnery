@@ -241,8 +241,13 @@ class FirebaseCrewBackend implements CrewBackend {
       .doc(id)
       .snapshots()
       .map((doc) => _toCrew(doc.id, doc.data()))
-      // 내보내져 읽을 권한이 없어지면 크루가 없는 것으로 봅니다.
-      .handleError((Object _) {}, test: (e) => e is FirebaseException);
+      // 내보내져 읽을 권한이 없어지면 크루가 없는 것으로 봅니다(채팅방이 알 수 있게 null을 보냅니다).
+      .transform(
+        StreamTransformer<Crew?, Crew?>.fromHandlers(
+          handleError: (e, stack, sink) =>
+              e is FirebaseException ? sink.add(null) : sink.addError(e, stack),
+        ),
+      );
 
   @override
   Future<String> createCrew(String owner, String name) => _run(() async {

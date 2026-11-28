@@ -42,6 +42,12 @@ class CrewStore extends ChangeNotifier {
   bool _loaded = false;
   String? _error;
 
+  /// 지금 열려 있는 채팅방(크루 번호). 나중에 연 방이 뒤쪽입니다.
+  final List<String> _viewing = [];
+
+  /// 내가 직접 나간(나가는 중인) 크루. 채팅방이 '내보내졌어요' 안내를 띄우지 않게 합니다.
+  final Set<String> _left = {};
+
   PublicProfile? get me => _me();
   DateTime get now => _clock();
 
@@ -63,6 +69,19 @@ class CrewStore extends ChangeNotifier {
   String nameOf(String uid) => person(uid)?.name ?? '멤버';
 
   int unread(String crewId) => _unread[crewId] ?? 0;
+
+  /// 안 읽은 채팅이 있는 크루가 하나라도 있으면 true(알림을 꺼 둔 크루도 셉니다).
+  bool get hasUnread => _crews.any((c) => unread(c.id) > 0);
+
+  /// 이 크루의 채팅방을 보고 있으면 true(가장 나중에 연 채팅방만 셉니다). 채팅 알림 띠를 띄울지 정할 때 씁니다.
+  bool viewing(String crewId) => _viewing.isNotEmpty && _viewing.last == crewId;
+
+  /// 채팅방이 열릴 때·닫힐 때 부릅니다.
+  void openedRoom(String crewId) => _viewing.add(crewId);
+  void closedRoom(String crewId) => _viewing.remove(crewId);
+
+  /// 내가 직접 나갔거나 나가는 중인 크루면 true. 다시 초대를 받아 들어오면 false가 됩니다.
+  bool leftByMe(String crewId) => _left.contains(crewId);
   bool muted(String crewId) => _muted[crewId] ?? false;
 
   PublicProfile _require() {
@@ -88,6 +107,7 @@ class CrewStore extends ChangeNotifier {
     _invites = const [];
     _unread.clear();
     _muted.clear();
+    _left.clear();
     _loaded = false;
     _error = null;
   }
@@ -130,6 +150,17 @@ class CrewStore extends ChangeNotifier {
       notifyListeners();
       unawaited(_loadPeople({for (final i in invites) i.from}));
     }, onError: (Object _) {});
+  }
+
+  /// 앱을 켜 둔 동안 받은 크루 초대를 실시간으로 받습니다(알림 띠용). 로그아웃 상태면 아무것도 오지 않습니다.
+  Stream<List<CrewInvite>> watchInvites() {
+    final PublicProfile me;
+    try {
+      me = _require();
+    } on FriendException {
+      return const Stream.empty();
+    }
+    return backend.watchInvites(me.uid);
   }
 
   /// 처음 쓸 때 [start]를 부르고, 안 읽은 수를 다시 셉니다.
@@ -291,7 +322,14 @@ class CrewStore extends ChangeNotifier {
           ? others.first.uid
           : crew.members.where((m) => m != me.uid).firstOrNull;
     }
-    await backend.leave(crew.id, me.uid, newOwner: newOwner);
+    // 나가기가 끝났다고 알기 전에 서버 소식이 먼저 올 수 있어서, 보내기 전에 적어 둡니다.
+    _left.add(crew.id);
+    try {
+      await backend.leave(crew.id, me.uid, newOwner: newOwner);
+    } catch (_) {
+      _left.remove(crew.id);
+      rethrow;
+    }
     _crews = [..._crews]..removeWhere((c) => c.id == crew.id);
     _unread.remove(crew.id);
     notifyListeners();
@@ -316,6 +354,7 @@ class CrewStore extends ChangeNotifier {
   Future<void> accept(CrewInvite invite) async {
     _require();
     await backend.acceptInvite(invite);
+    _left.remove(invite.crewId);
     _invites = [..._invites]..removeWhere((i) => i.id == invite.id);
     notifyListeners();
   }

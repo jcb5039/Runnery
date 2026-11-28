@@ -17,6 +17,9 @@ class FakeCrewBackend implements CrewBackend {
 
   DateTime Function() clock = DateTime.now;
 
+  /// true면 실제 서버처럼, 쓰기가 끝났다고 알리기 전에 지켜보는 화면에 바뀐 내용이 먼저 갑니다.
+  bool notifyBeforeDone = false;
+
   final Map<String, Crew> crewById = {};
 
   /// 크루 번호 → uid → 멤버 정보.
@@ -211,6 +214,12 @@ class FakeCrewBackend implements CrewBackend {
 
   @override
   Future<void> leave(String id, String me, {String? newOwner}) async {
+    await _leave(id, me, newOwner: newOwner);
+    // 지켜보는 화면이 바뀐 크루를 먼저 받게 한 박자 쉽니다.
+    if (notifyBeforeDone) await Future<void>.delayed(Duration.zero);
+  }
+
+  Future<void> _leave(String id, String me, {String? newOwner}) async {
     final c = _member(id, me);
     membersById[id]?.remove(me);
     if (newOwner == null) {

@@ -11,7 +11,8 @@ import 'crew_info_drawer.dart';
 import 'crew_run_pages.dart';
 
 /// 17-8 크루 채팅방: 최근 메시지(위로 올리면 더 보기), 글자 보내기. 오른쪽 위 메뉴로 서랍(17-11)을 엽니다.
-/// 차단한 사람의 메시지는 가려서 보여 줍니다. '함께 시작'으로 함께 달리기 모집을 열고, 채팅방의 모집 카드에서 참여합니다.
+/// 차단한 사람의 메시지는 가려서 보여 줍니다. 방장이 나를 내보내면 '강제퇴장' 안내를 띄우고, 확인을 누르면 크루 목록으로 돌아갑니다.
+/// '함께 시작'으로 함께 달리기 모집을 열고, 채팅방의 모집 카드에서 참여합니다.
 class CrewRoomPage extends StatefulWidget {
   const CrewRoomPage({
     super.key,
@@ -42,6 +43,12 @@ class _CrewRoomPageState extends State<CrewRoomPage> {
   StreamSubscription<List<CrewMessage>>? _messageSub;
   Crew? _crew;
   bool _gone = false;
+
+  /// 방장이 나를 내보냈으면 true. 안내는 한 번만 띄웁니다([_kickShown]).
+  bool _kicked = false, _kickShown = false;
+
+  /// 안내 창에 쓸 크루 이름. 내보내지면 크루를 더 읽을 수 없어서 미리 적어 둡니다.
+  String? _name;
   List<CrewMessage> _messages = const [];
   int _limit = CrewRoomPage.pageSize;
   bool _sending = false;
@@ -50,16 +57,25 @@ class _CrewRoomPageState extends State<CrewRoomPage> {
   void initState() {
     super.initState();
     _crew = _store.byId(widget.id);
+    _name = _crew?.name;
     _crewSub = _store.watch(widget.id).listen((crew) {
       if (!mounted) return;
+      final me = _store.me?.uid;
+      final wasMember = _crew?.members.contains(me) ?? false;
+      final gone = crew == null || !crew.members.contains(me);
       setState(() {
         _crew = crew;
-        _gone = crew == null || !crew.members.contains(_store.me?.uid);
+        _name = crew?.name ?? _name;
+        _gone = gone;
+        // 멤버였다가 빠졌는데 내가 나간 게 아니면, 방장이 내보낸 것입니다.
+        if (gone && wasMember && !_store.leftByMe(widget.id)) _kicked = true;
       });
       if (crew != null) unawaited(_store.loadPeople(crew.members));
     }, onError: (Object _) => setState(() => _gone = true));
     _listen();
     unawaited(_store.markRead(widget.id));
+    // 이 방을 보는 동안에는 이 크루의 채팅 알림 띠를 띄우지 않습니다.
+    _store.openedRoom(widget.id);
   }
 
   void _listen() {
@@ -80,6 +96,7 @@ class _CrewRoomPageState extends State<CrewRoomPage> {
 
   @override
   void dispose() {
+    _store.closedRoom(widget.id);
     _crewSub?.cancel();
     _messageSub?.cancel();
     _text.dispose();
@@ -121,6 +138,46 @@ class _CrewRoomPageState extends State<CrewRoomPage> {
     ),
   );
 
+  /// 크루를 나간 뒤 채팅방만 닫습니다. 나가자마자 서버 소식으로 서랍이 먼저 사라질 수 있어서,
+  /// 몇 번 닫는 대신 이 화면을 콕 집어 닫습니다(아래 화면까지 닫혀 검은 화면이 되지 않게).
+  void _closeRoom() {
+    final route = ModalRoute.of(context);
+    if (route != null && route.isActive) {
+      Navigator.of(context).removeRoute(route);
+    }
+  }
+
+  /// 내보내졌다는 안내. 확인을 눌러야 닫히고, 닫으면 채팅방도 닫혀 크루 목록으로 돌아갑니다.
+  Future<void> _showKicked() async {
+    final name = _name;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          backgroundColor: AppColors.pick(
+            const Color(0xFF171818),
+            AppColors.background,
+          ),
+          title: const Text('강제퇴장됐어요'),
+          content: Text(
+            name == null
+                ? '크루장이 크루에서 내보냈어요.\n다시 들어오려면 초대를 받아야 해요.'
+                : "크루장이 '$name' 크루에서 내보냈어요.\n다시 들어오려면 초대를 받아야 해요.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('확인'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (mounted) _closeRoom();
+  }
+
   Future<void> _join(CrewRun run) async {
     try {
       await _store.joinRun(run);
@@ -133,6 +190,13 @@ class _CrewRoomPageState extends State<CrewRoomPage> {
   @override
   Widget build(BuildContext context) {
     final crew = _crew;
+    // 대기실·러닝 화면이 위에 있으면 닫지 않고, 채팅방으로 돌아왔을 때 안내합니다.
+    if (_kicked && !_kickShown && (ModalRoute.of(context)?.isCurrent ?? true)) {
+      _kickShown = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_showKicked());
+      });
+    }
     return Scaffold(
       key: _scaffold,
       backgroundColor: AppColors.background,
@@ -174,9 +238,7 @@ class _CrewRoomPageState extends State<CrewRoomPage> {
               crew: crew,
               friends: widget.friends,
               store: widget.store,
-              onLeft: () => Navigator.of(context)
-                ..pop()
-                ..pop(),
+              onLeft: _closeRoom,
             ),
       body: SafeArea(
         top: false,
