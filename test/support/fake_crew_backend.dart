@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:runnery_new/friends/data/crew_store.dart';
 import 'package:runnery_new/friends/data/friend_models.dart'
-    show LiveRun, TogetherResult;
+    show LiveRun, TogetherResult, privateRoute;
 import 'package:runnery_new/friends/data/friend_store.dart';
 
 import 'fake_friend_backend.dart';
@@ -422,7 +422,27 @@ class FakeCrewBackend implements CrewBackend {
     for (final m in run.members) {
       if (runnerLocks[m] == key) runnerLocks.remove(m);
     }
+    // 서버 함수처럼 각자의 지나간 길을 출발·도착 200m를 잘라 팀 기록에 옮깁니다.
+    routesByRun[key] = {
+      for (final MapEntry(key: uid, value: live)
+          in (liveByRun[key] ?? const <String, LiveRun>{}).entries)
+        if (run.members.contains(uid))
+          uid: CrewRunRoute(
+            uid: uid,
+            color: run.colorOf(uid),
+            points: privateRoute(live.route, maxPoints: 600),
+          ),
+    };
   }
+
+  /// '크루 번호/모집 번호' → 팀 기록에 남긴 각자의 길.
+  final Map<String, Map<String, CrewRunRoute>> routesByRun = {};
+
+  @override
+  Future<Map<String, CrewRunRoute>> runRoutes(
+    String crewId,
+    String runId,
+  ) async => {...?routesByRun['$crewId/$runId']};
 
   static int votesNeeded(int members) =>
       (members * .2).ceil().clamp(1, 1 << 30);
@@ -597,15 +617,7 @@ class FakeCrewBackend implements CrewBackend {
         if (!inRun) throw const FriendException('이 모집에 참여하지 않았어요');
         final next = _copyRun(run, results: {...run.results, uid: result!});
         if (run.isStarted && next.stillRunning.isEmpty) {
-          runs[key] = _copyRun(
-            next,
-            status: CrewRunStatus.ended,
-            endedAt: clock(),
-            team: _team(next),
-          );
-          for (final m in run.members) {
-            if (runnerLocks[m] == key) runnerLocks.remove(m);
-          }
+          _end(key, next);
         } else {
           runs[key] = next;
           if (runnerLocks[uid] == key) runnerLocks.remove(uid);
@@ -613,15 +625,7 @@ class FakeCrewBackend implements CrewBackend {
       case 'end':
         if (uid != run.host) throw const FriendException('팀장만 팀을 끝낼 수 있어요');
         if (run.isEnded) return run.id;
-        runs[key] = _copyRun(
-          run,
-          status: CrewRunStatus.ended,
-          endedAt: clock(),
-          team: _team(run),
-        );
-        for (final m in run.members) {
-          if (runnerLocks[m] == key) runnerLocks.remove(m);
-        }
+        _end(key, run);
       case 'vote':
         final vote = run.vote;
         if (!inRun) throw const FriendException('이 모집에 참여하지 않았어요');

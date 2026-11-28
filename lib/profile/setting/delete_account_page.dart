@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../account/account_store.dart';
 import '../../design_system/app_colors.dart';
+import '../../design_system/inline_notice.dart';
 import '../../login/auth_ui/auth_ui.dart';
 import '../../login/login.dart';
 
@@ -24,6 +25,9 @@ class _DeleteAccountPageState extends State<DeleteAccountPage> {
   final _password = TextEditingController();
   bool _deleting = false;
 
+  /// 안 된 이유. 맨 아래 탈퇴하기 버튼 바로 위에 빨간 글씨로 보여 줍니다.
+  String? _error;
+
   @override
   void dispose() {
     _password.dispose();
@@ -40,8 +44,10 @@ class _DeleteAccountPageState extends State<DeleteAccountPage> {
   Future<void> _delete() async {
     if (_deleting) return;
     if (_method == LoginMethod.email && !_form.currentState!.validate()) return;
-    setState(() => _deleting = true);
-    final messenger = ScaffoldMessenger.of(context);
+    setState(() {
+      _deleting = true;
+      _error = null;
+    });
     try {
       final deleted = await _store.deleteAccount(
         password: _method == LoginMethod.email ? _password.text : null,
@@ -51,13 +57,10 @@ class _DeleteAccountPageState extends State<DeleteAccountPage> {
         MaterialPageRoute(builder: (_) => LoginPageV2(store: _store)),
         (_) => false,
       );
-      messenger.showSnackBar(const SnackBar(content: Text('탈퇴했어요. 그동안 고마웠어요')));
     } on AuthException catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      if (mounted) setState(() => _error = e.message);
     } catch (_) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('탈퇴하지 못했어요. 다시 시도해주세요')),
-      );
+      if (mounted) setState(() => _error = '탈퇴하지 못했어요. 다시 시도해주세요');
     } finally {
       if (mounted) setState(() => _deleting = false);
     }
@@ -85,22 +88,36 @@ class _DeleteAccountPageState extends State<DeleteAccountPage> {
       ),
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-        child: SizedBox(
-          height: 52,
-          child: FilledButton(
-            onPressed: _deleting ? null : _delete,
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.textPrimary,
-              foregroundColor: AppColors.onInverse,
-              disabledBackgroundColor: AppColors.surfacePressed,
-              disabledForegroundColor: AppColors.textTertiary,
-              shape: const StadiumBorder(),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            InlineNotice(
+              _error,
+              textAlign: TextAlign.center,
+              padding: const EdgeInsets.only(bottom: 8),
             ),
-            child: Text(
-              _deleting ? '탈퇴하는 중…' : '탈퇴하기',
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+            SizedBox(
+              height: 52,
+              child: FilledButton(
+                onPressed: _deleting ? null : _delete,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.textPrimary,
+                  foregroundColor: AppColors.onInverse,
+                  disabledBackgroundColor: AppColors.surfacePressed,
+                  disabledForegroundColor: AppColors.textTertiary,
+                  shape: const StadiumBorder(),
+                ),
+                child: Text(
+                  _deleting ? '탈퇴하는 중…' : '탈퇴하기',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
             ),
-          ),
+          ],
         ),
       ),
       body: Center(

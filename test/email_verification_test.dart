@@ -266,7 +266,8 @@ void main() {
 
     await submit('runner123');
     await tester.pumpAndSettle();
+    // 화면이 닫히는 것으로 끝나고, 아래 알림은 띄우지 않아요.
     expect(find.byType(ChangePasswordPage), findsNothing);
-    expect(find.text('비밀번호를 바꿨어요'), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
   });
 }

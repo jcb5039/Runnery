@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../design_system/app_colors.dart';
+import '../../design_system/inline_notice.dart';
 import '../../friends/friends_feature.dart';
 import '../../friends/share/record_visibility_page.dart';
 import '../../home/running/calorie_quest.dart';
@@ -116,8 +117,12 @@ class ProfileSettingPage extends StatelessWidget {
     this.onEditProfile,
     this.onChangePassword,
     this.onDeleteAccount,
+    this.passwordNote,
   });
   final ProfileSettings settings;
+
+  /// 비밀번호를 바꿀 수 없는 이유(예: 소셜 계정). 있으면 '비밀번호 변경'을 눌렀을 때 그 줄 바로 아래에 보여 줍니다.
+  final String? passwordNote;
   final VoidCallback? onLogout;
 
   /// '개인 정보 수정'. 없으면 준비 중 안내를 띄웁니다.
@@ -129,10 +134,9 @@ class ProfileSettingPage extends StatelessWidget {
   /// '회원 탈퇴'. 없으면 준비 중 안내를 띄웁니다.
   final VoidCallback? onDeleteAccount;
 
-  void _pending(BuildContext context, String label) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text('$label 기능은 준비 중이에요')));
-  }
+  /// 아직 없는 기능을 누르면 그 줄 바로 아래에 안내를 보여 줍니다.
+  void _pending(Notices notices, String label) =>
+      notices.show(label, '$label 기능은 준비 중이에요');
 
   Future<void> _choose(
     BuildContext context,
@@ -178,7 +182,10 @@ class ProfileSettingPage extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) =>
+      NoticeHost(builder: (context, notices) => _page(context, notices));
+
+  Widget _page(BuildContext context, Notices notices) => Scaffold(
     backgroundColor: AppColors.background,
     appBar: AppBar(
       backgroundColor: AppColors.background,
@@ -274,8 +281,9 @@ class ProfileSettingPage extends StatelessWidget {
                 _section('계정'),
                 _row(
                   '개인 정보 수정',
-                  onTap: onEditProfile ?? () => _pending(context, '개인 정보 수정'),
+                  onTap: onEditProfile ?? () => _pending(notices, '개인 정보 수정'),
                 ),
+                NoticeSlot(notices: notices, id: '개인 정보 수정'),
                 if (FriendsFeature.available)
                   _row(
                     '기록 공개 설정',
@@ -289,8 +297,13 @@ class ProfileSettingPage extends StatelessWidget {
                 _row(
                   '비밀번호 변경',
                   divider: false,
-                  onTap: onChangePassword ?? () => _pending(context, '비밀번호 변경'),
+                  onTap: switch ((passwordNote, onChangePassword)) {
+                    (final note?, _) => () => notices.show('비밀번호 변경', note),
+                    (null, final change?) => change,
+                    (null, null) => () => _pending(notices, '비밀번호 변경'),
+                  },
                 ),
+                NoticeSlot(notices: notices, id: '비밀번호 변경'),
                 const SizedBox(height: 26),
                 _section('앱 정보'),
                 // 이용약관·개인정보 처리방침은 문서가 준비되면 넣습니다.
@@ -300,7 +313,7 @@ class ProfileSettingPage extends StatelessWidget {
                 Row(
                   children: [
                     TextButton(
-                      onPressed: onLogout ?? () => _pending(context, '로그아웃'),
+                      onPressed: onLogout ?? () => _pending(notices, '로그아웃'),
                       style: TextButton.styleFrom(
                         padding: EdgeInsets.zero,
                         foregroundColor: AppColors.textPrimary,
@@ -316,7 +329,7 @@ class ProfileSettingPage extends StatelessWidget {
                     ),
                     TextButton(
                       onPressed:
-                          onDeleteAccount ?? () => _pending(context, '회원 탈퇴'),
+                          onDeleteAccount ?? () => _pending(notices, '회원 탈퇴'),
                       style: TextButton.styleFrom(
                         padding: EdgeInsets.zero,
                         foregroundColor: AppColors.textTertiary,
@@ -325,6 +338,8 @@ class ProfileSettingPage extends StatelessWidget {
                     ),
                   ],
                 ),
+                NoticeSlot(notices: notices, id: '로그아웃'),
+                NoticeSlot(notices: notices, id: '회원 탈퇴'),
               ],
             ),
           ),

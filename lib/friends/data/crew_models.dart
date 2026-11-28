@@ -181,6 +181,24 @@ class CrewTeamEntry {
   final bool finished;
 }
 
+/// 팀 기록에 남은 한 사람의 지나간 길. 팀 달리기가 끝나면 서버가 실시간 상태에서 옮겨 저장합니다
+/// (출발·도착 200m는 잘라 냄). 크루 멤버 누구나 '기록 보기'에서 봅니다.
+@immutable
+class CrewRunRoute {
+  const CrewRunRoute({
+    required this.uid,
+    required this.color,
+    this.points = const [],
+  });
+  final String uid;
+
+  /// 대기실에서 고른 이름표 색 번호.
+  final int color;
+
+  /// 지나간 길(위도, 경도).
+  final List<(double, double)> points;
+}
+
 /// 크루 함께 달리기 모집(대기실). 바꾸는 건 모두 서버 함수가 하고, 앱은 읽기만 합니다.
 @immutable
 class CrewRun {

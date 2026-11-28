@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../design_system/app_colors.dart';
 import '../design_system/app_radius.dart';
 import '../design_system/app_spacing.dart';
+import '../design_system/inline_notice.dart';
 import 'add/friend_add_page.dart';
 import 'calendar/friend_calendar_page.dart';
 import 'crew/crew_tab.dart';
@@ -58,6 +59,15 @@ class _FriendsPageState extends State<FriendsPage> {
   /// 피드 안에서 내가 공유한 기록(내 피드)을 볼지, 친구들의 기록을 볼지.
   bool _myFeed = false;
 
+  /// 피드 카드의 응원·차단이 안 되면 그 카드 아래에 빨간 글씨로 알립니다.
+  final _notices = Notices();
+
+  @override
+  void dispose() {
+    _notices.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -80,7 +90,7 @@ class _FriendsPageState extends State<FriendsPage> {
     try {
       await _store.toggleCheer(item, type);
     } on FriendException catch (e) {
-      if (mounted) showFriendMessage(context, e.message);
+      if (mounted) _notices.show('feed:${item.key}', e.message);
     }
   }
 
@@ -131,37 +141,21 @@ class _FriendsPageState extends State<FriendsPage> {
           isScrollControlled: true,
           builder: (context) => BlockConfirmSheet(person: person),
         );
-        if (confirmed == true && mounted) _block(person);
+        if (confirmed == true && mounted) unawaited(_block(item));
     }
   }
 
-  /// 17-18-1 차단 후: 카드를 바로 감추고 '되돌리기'를 잠깐 보여 준 뒤, 누르지 않으면 차단합니다.
-  void _block(PublicProfile person) {
+  /// 차단 확인 창(17-18)에서 차단을 누르면 카드를 바로 감추고 차단합니다.
+  /// 안 되면 카드를 다시 보여 주고 그 카드 바로 아래에 이유를 빨간 글씨로 보여 줍니다.
+  Future<void> _block(FeedItem item) async {
+    final person = item.friend;
     _store.hideFromFeed(person.uid, hide: true);
-    final messenger = ScaffoldMessenger.of(context)..hideCurrentSnackBar();
-    final bar = messenger.showSnackBar(
-      SnackBar(
-        content: Text('${person.name} 님을 차단했어요'),
-        duration: const Duration(seconds: 4),
-        // '되돌리기'가 있어도 4초 뒤 저절로 닫혀야 차단이 확정됩니다.
-        persist: false,
-        action: SnackBarAction(label: '되돌리기', onPressed: () {}),
-      ),
-    );
-    unawaited(
-      bar.closed.then((reason) async {
-        if (reason == SnackBarClosedReason.action) {
-          _store.hideFromFeed(person.uid, hide: false);
-          return;
-        }
-        try {
-          await _store.block(person);
-        } on FriendException catch (e) {
-          _store.hideFromFeed(person.uid, hide: false);
-          messenger.showSnackBar(SnackBar(content: Text(e.message)));
-        }
-      }),
-    );
+    try {
+      await _store.block(person);
+    } on FriendException catch (e) {
+      _store.hideFromFeed(person.uid, hide: false);
+      if (mounted) _notices.show('feed:${item.key}', e.message);
+    }
   }
 
   @override
@@ -403,6 +397,7 @@ class _FriendsPageState extends State<FriendsPage> {
       onCheer: _cheer,
       onOpenFriend: _openCalendar,
       onMore: _more,
+      notices: _notices,
     );
   }
 }

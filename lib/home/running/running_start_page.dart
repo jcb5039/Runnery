@@ -24,7 +24,8 @@ import 'running_voice.dart';
 import 'running_watch_link.dart';
 import 'running_result_page.dart';
 import '../../friends/data/record_share.dart';
-import '../../friends/crew/crew_run_pages.dart' show CrewVoteListener;
+import '../../friends/crew/crew_run_pages.dart'
+    show CrewVoteListener, crewRunColor;
 import '../../friends/data/crew_store.dart';
 import '../../friends/data/together_live.dart';
 import '../../friends/data/together_store.dart';
@@ -1121,6 +1122,17 @@ class _RunningStartPageState extends State<RunningStartPage>
     super.dispose();
   }
 
+  /// 지도에 그릴 함께 달리는 사람.
+  /// 크루: 거리와 상관없이 모두, 먼저 끝낸 팀원도 끝난 자리까지 그립니다(멀면 화면 밖이라 지도를 움직여 봐요).
+  /// 친구 약속: 달리는 중이거나 잠깐 멈춘, 1km 안의 친구만 그립니다.
+  bool _showFriend(LiveFriend f) {
+    if (widget.crewRun != null) return f.state != LiveFriendState.waiting;
+    return (f.state == LiveFriendState.running ||
+            f.state == LiveFriendState.paused) &&
+        (_awayMeters(f) ?? double.infinity) <=
+            RunningConfig.friendMapRadiusMeters;
+  }
+
   void _followCamera() {
     // 화면이 안 보일 때는 지도를 움직이지 않아 배터리를 아낍니다. 돌아오면 다음 위치에서 따라갑니다.
     if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
@@ -1267,7 +1279,7 @@ class _RunningStartPageState extends State<RunningStartPage>
     );
   }
 
-  /// 목표를 처음 채운 순간 한 번만 진동과 안내를 띄웁니다. 러닝은 계속 이어집니다.
+  /// 목표를 처음 채운 순간 한 번만 진동과 음성으로 알립니다. 러닝은 계속 이어집니다.
   void _checkGoal() {
     if (_goalReached) return;
     final progress = widget.options.goalProgress(
@@ -1282,12 +1294,7 @@ class _RunningStartPageState extends State<RunningStartPage>
           ? '목표 거리 $_goalText를 달성했어요. 계속 달려도 돼요.'
           : '목표 시간 $_goalText을 채웠어요. 계속 달려도 돼요.',
     );
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        behavior: SnackBarBehavior.floating,
-        content: Text('목표 달성! 계속 달려도 돼요.'),
-      ),
-    );
+    // 화면에는 러닝 카드의 목표 문구가 '목표 달성!'으로 바뀌어 보입니다(아래 알림은 버튼을 가려서 쓰지 않음).
   }
 
   Future<void> _loadQuestBase() async {
@@ -1552,18 +1559,18 @@ class _RunningStartPageState extends State<RunningStartPage>
         : LatLng(position.latitude, position.longitude);
     final firstPoint = _session.segments.firstOrNull?.firstOrNull;
     final pausePoint = _session.currentPausePoint;
-    // 달리는 중이거나 잠깐 멈춘, 1km 안의 친구만 지도에 그립니다.
     final friends = [
       for (final f in _live?.friends ?? const <LiveFriend>[])
         if (f.run?.position case (final lat, final lng)?)
-          if ((f.state == LiveFriendState.running ||
-                  f.state == LiveFriendState.paused) &&
-              (_awayMeters(f) ?? double.infinity) <=
-                  RunningConfig.friendMapRadiusMeters)
+          if (_showFriend(f))
             MapFriend(
               LatLng(lat, lng),
               f.name,
               route: [for (final (a, b) in f.run!.route) LatLng(a, b)],
+              color: switch (f.color) {
+                final i? => crewRunColor(i),
+                null => null,
+              },
             ),
     ];
 

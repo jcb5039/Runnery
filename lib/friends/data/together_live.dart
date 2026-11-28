@@ -29,11 +29,15 @@ class LiveFriend {
     required this.state,
     this.run,
     this.result,
+    this.color,
   });
   final String uid, name;
   final LiveFriendState state;
   final LiveRun? run;
   final TogetherResult? result;
+
+  /// 크루 모집에서 고른 이름표 색 번호. 친구 약속이면 null(색을 고르지 않음).
+  final int? color;
 }
 
 /// 함께 달리는 동안 실시간 상태를 주고받는 곳. 친구 약속(`together/{번호}/live`)과
@@ -54,6 +58,13 @@ abstract class LiveChannel {
   Stream<List<LiveRun>> watchLive();
   Future<void> send(LiveRun run, {required int sentPoints});
   Future<void> delete(String uid);
+
+  /// 고른 이름표 색 번호. 색이 없는 곳(친구 약속)이면 null.
+  int? colorOf(String uid);
+
+  /// true면 끝나도 내 지나간 길을 지우지 않습니다(크루: 먼저 끝낸 팀원의 길을 끝난 자리까지 보여 주고,
+  /// 팀이 끝나면 서버가 팀 기록에 옮긴 뒤 정리합니다). false면 끝날 때 지웁니다(친구 약속).
+  bool get keepAfterFinish;
 }
 
 /// 친구 약속의 실시간 상태(`together/{번호}/live/{uid}`).
@@ -98,6 +109,12 @@ class _TogetherChannel implements LiveChannel {
   @override
   Future<void> delete(String uid) =>
       store.backend.deleteTogetherLive(togetherId, uid);
+
+  @override
+  int? colorOf(String uid) => null;
+
+  @override
+  bool get keepAfterFinish => false;
 }
 
 /// 함께 달리는 동안 내 거리·시간·위치·지나간 길을 함께 달리는 사람들과 주고받습니다.
@@ -185,15 +202,20 @@ class TogetherLive extends ChangeNotifier {
     );
   }
 
-  Future<void> _publish() async {
+  /// [force]면 바뀐 게 없어도 올립니다(크루에서 끝낼 때 마지막 위치를 남기려고).
+  Future<void> _publish({bool force = false}) async {
     final mine = _mine;
     if (_closed || _sending || mine == null) return;
     final now = _clock();
     final sentAt = _sentAt;
     final changed = !_same(mine, _sent) || mine.route.length > _sentPoints;
-    if (!changed && sentAt != null && now.difference(sentAt) < heartbeat) {
+    if (!force &&
+        !changed &&
+        sentAt != null &&
+        now.difference(sentAt) < heartbeat) {
       return;
     }
+    if (force && !changed) return;
     _sending = true;
     try {
       await _channel.send(mine, sentPoints: _sentPoints);
@@ -252,20 +274,26 @@ class TogetherLive extends ChangeNotifier {
             state: state,
             run: run,
             result: result,
+            color: _channel.colorOf(uid),
           );
         }(),
     ];
   }
 
   /// 달리기를 끝내거나 화면을 닫을 때 부릅니다. 서버의 내 위치·지나간 길을 지웁니다. 여러 번 불러도 됩니다.
+  /// 크루([LiveChannel.keepAfterFinish])는 지우지 않고, 끝난 자리까지 남도록 마지막 상태를 한 번 더 올립니다.
   Future<void> close() async {
     if (_closed) return;
+    final me = _channel.myUid;
+    if (_channel.keepAfterFinish) {
+      _timer?.cancel();
+      if (_started && me != null) await _publish(force: true);
+    }
     _closed = true;
     _timer?.cancel();
     unawaited(_liveSub?.cancel());
     unawaited(_membersSub?.cancel());
-    final me = _channel.myUid;
-    if (!_started || me == null) return;
+    if (!_started || me == null || _channel.keepAfterFinish) return;
     try {
       await _channel.delete(me);
     } on FriendException {

@@ -209,7 +209,8 @@ void main() {
 
     expect(s.server.deletedAccounts, hasLength(1));
     expect(find.byType(LoginPageV2), findsOneWidget);
-    expect(find.text('탈퇴했어요. 그동안 고마웠어요'), findsOneWidget);
+    // 로그인 화면으로 돌아가는 것으로 끝나고, 아래 알림은 띄우지 않아요.
+    expect(find.byType(SnackBar), findsNothing);
   });
 
   testWidgets('delete page: social account explains the extra login', (

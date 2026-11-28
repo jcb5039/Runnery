@@ -89,6 +89,12 @@ async function deleteUserData(db, uid, FieldValue) {
       await db.recursiveDelete(crew.ref);
       continue;
     }
+    // 함께 달린 모집에 남은 내 위치·지나간 길(실시간 상태, 팀 기록의 길)도 지웁니다. 팀 기록의 거리·시간은 남깁니다.
+    const runs = await crew.ref.collection('runs').select().get();
+    await deleteRefs(
+      db,
+      runs.docs.flatMap((r) => [r.ref.collection('live').doc(uid), r.ref.collection('routes').doc(uid)]),
+    );
     const update = { members: FieldValue.arrayRemove(uid) };
     if (crew.get('owner') === uid) {
       update.owner = await oldestMember(crew.ref, others);

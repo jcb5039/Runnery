@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../design_system/app_colors.dart';
 import '../../design_system/app_spacing.dart';
+import '../../design_system/inline_notice.dart';
 import '../../record/data/running_record_store.dart';
 import '../../record/models/running_record.dart';
 import '../data/friend_store.dart';
@@ -33,6 +34,15 @@ class _RecordVisibilityPageState extends State<RecordVisibilityPage> {
   final Set<String> _busy = {};
   bool _savingAuto = false;
   bool _savingRoute = false;
+
+  /// 실패하면 그 스위치 줄 바로 아래에 빨간 글씨로 알립니다('auto', 'route', 기록 번호).
+  final _notices = Notices();
+
+  @override
+  void dispose() {
+    _notices.dispose();
+    super.dispose();
+  }
 
   /// 이번 주 월요일 0시.
   DateTime get _weekStart {
@@ -93,7 +103,7 @@ class _RecordVisibilityPageState extends State<RecordVisibilityPage> {
     } on FriendException catch (e) {
       if (mounted) {
         setState(() => _settings = settings);
-        showFriendMessage(context, e.message);
+        _notices.show('auto', e.message);
       }
     } finally {
       if (mounted) setState(() => _savingAuto = false);
@@ -116,7 +126,7 @@ class _RecordVisibilityPageState extends State<RecordVisibilityPage> {
     } on FriendException catch (e) {
       if (mounted) {
         setState(() => _settings = settings);
-        showFriendMessage(context, e.message);
+        _notices.show('route', e.message);
       }
     } finally {
       if (mounted) setState(() => _savingRoute = false);
@@ -136,7 +146,7 @@ class _RecordVisibilityPageState extends State<RecordVisibilityPage> {
         setState(() {
           public ? _shared.remove(record.id) : _shared.add(record.id);
         });
-        showFriendMessage(context, e.message);
+        _notices.show(record.id, e.message);
       }
     } finally {
       if (mounted) setState(() => _busy.remove(record.id));
@@ -169,6 +179,7 @@ class _RecordVisibilityPageState extends State<RecordVisibilityPage> {
                 '러닝이 끝나면 친구에게 공유',
               ),
             ),
+            NoticeSlot(notices: _notices, id: 'auto'),
             _row(
               title: '경로 지도 공개',
               subtitle: '출발·도착 근처 200m는 빼고 보여줘요',
@@ -178,6 +189,7 @@ class _RecordVisibilityPageState extends State<RecordVisibilityPage> {
                 '경로 지도 공개',
               ),
             ),
+            NoticeSlot(notices: _notices, id: 'route'),
             _row(
               title: '공개 범위',
               divider: true,
@@ -216,7 +228,10 @@ class _RecordVisibilityPageState extends State<RecordVisibilityPage> {
             else if (week.isEmpty)
               _note('이번 주에 달린 기록이 없어요')
             else
-              for (final (i, record) in week.indexed) _recordRow(record, i > 0),
+              for (final (i, record) in week.indexed) ...[
+                _recordRow(record, i > 0),
+                NoticeSlot(notices: _notices, id: record.id),
+              ],
             const SizedBox(height: 16),
             Text(
               '비공개로 바꾼 기록은 친구 피드에 보이지 않아요.',

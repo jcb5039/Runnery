@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../design_system/app_colors.dart';
+import '../../design_system/inline_notice.dart';
 import '../../home/running/running_home_page.dart'
     show
         RunningCountdownView,
@@ -101,6 +102,9 @@ class _CrewRunTitlePageState extends State<CrewRunTitlePage> {
   final _title = TextEditingController();
   bool _sending = false;
 
+  /// 열지 못한 이유. 만들기 버튼 바로 아래에 빨간 글씨로 보여 줍니다.
+  String? _error;
+
   @override
   void dispose() {
     _title.dispose();
@@ -109,7 +113,10 @@ class _CrewRunTitlePageState extends State<CrewRunTitlePage> {
 
   Future<void> _create() async {
     if (_sending || _title.text.trim().isEmpty) return;
-    setState(() => _sending = true);
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
     try {
       final id = await _store.openRun(widget.crewId, _title.text);
       if (!mounted) return;
@@ -120,13 +127,17 @@ class _CrewRunTitlePageState extends State<CrewRunTitlePage> {
             runId: id,
             friends: widget.friends,
             store: widget.store,
+            // 팀을 만들자마자 색 고르는 화면을 띄웁니다.
+            pickColorOnOpen: true,
           ),
         ),
       );
     } on FriendException catch (e) {
       if (mounted) {
-        setState(() => _sending = false);
-        showFriendMessage(context, e.message);
+        setState(() {
+          _sending = false;
+          _error = e.message;
+        });
       }
     }
   }
@@ -163,7 +174,7 @@ class _CrewRunTitlePageState extends State<CrewRunTitlePage> {
             style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w500),
             cursorColor: AppColors.textPrimary,
             decoration: InputDecoration(
-              hintText: '예: 물빛광장 5 km 같이 뛰어요',
+              hintText: '제목을 입력해 주세요',
               hintStyle: TextStyle(color: AppColors.textTertiary),
               helperText: '20자까지 쓸 수 있어요',
               enabledBorder: UnderlineInputBorder(
@@ -195,6 +206,7 @@ class _CrewRunTitlePageState extends State<CrewRunTitlePage> {
             filled: true,
             onPressed: _title.text.trim().isEmpty || _sending ? null : _create,
           ),
+          InlineNotice(_error, textAlign: TextAlign.center),
         ],
       ),
     ),
@@ -202,6 +214,7 @@ class _CrewRunTitlePageState extends State<CrewRunTitlePage> {
 }
 
 /// 17-10 채팅방의 모집 카드: 제목, 연 사람·시각, 참여한 사람, 인원, 참여 버튼. 모집 문서를 지켜봅니다.
+/// 출발하면 '러닝 진행 중'(버튼 없음), 팀 달리기가 끝나면 '기록 보기'를 보여 줍니다.
 class CrewRunCard extends StatelessWidget {
   const CrewRunCard({
     super.key,
@@ -212,6 +225,7 @@ class CrewRunCard extends StatelessWidget {
     required this.store,
     required this.onJoin,
     required this.onOpen,
+    this.onRecord,
   });
 
   final String crewId, runId, title;
@@ -224,6 +238,9 @@ class CrewRunCard extends StatelessWidget {
   /// 대기실로 가기(이미 참여했을 때).
   final ValueChanged<CrewRun> onOpen;
 
+  /// 기록 보기(팀 달리기가 끝났을 때). 없으면 버튼을 숨깁니다.
+  final ValueChanged<CrewRun>? onRecord;
+
   @override
   Widget build(BuildContext context) => StreamBuilder<CrewRun?>(
     stream: store.watchRun(crewId, runId),
@@ -234,11 +251,16 @@ class CrewRunCard extends StatelessWidget {
       final (status, action) = switch (run) {
         null => ('불러오는 중', null),
         _ when run.status == CrewRunStatus.closed => ('모집이 닫혔어요', null),
-        _ when run.status == CrewRunStatus.started => ('출발했어요', null),
+        // 출발한 뒤에는 누구도 새로 들어갈 수 없어 버튼을 두지 않습니다.
+        _ when run.isStarted => ('러닝 진행 중', null),
+        _ when run.isEnded => ('함께 달렸어요', onRecord == null ? null : '기록 보기'),
         _ when joined => ('모으는 중', '대기실로 가기'),
         _ when run.isFull => ('자리가 다 찼어요', null),
         _ => ('모으는 중', '참여'),
       };
+      final running = run == null || !run.isStarted
+          ? 0
+          : run.stillRunning.length;
       return Container(
         margin: const EdgeInsets.symmetric(vertical: 10),
         padding: const EdgeInsets.all(16),
@@ -313,6 +335,17 @@ class CrewRunCard extends StatelessWidget {
                   FriendChip(label: status, muted: action == null),
                 ],
               ),
+              if (running > 0) ...[
+                const SizedBox(height: 10),
+                Text(
+                  '$running명이 함께 달리고 있어요',
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.5,
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+              ],
             ],
             if (run != null && action != null) ...[
               const SizedBox(height: 14),
@@ -320,9 +353,13 @@ class CrewRunCard extends StatelessWidget {
                 label: action,
                 filled: true,
                 height: 44,
-                onPressed: () => joined ? onOpen(run) : onJoin(run),
+                onPressed: () => run.isEnded
+                    ? onRecord?.call(run)
+                    : joined
+                    ? onOpen(run)
+                    : onJoin(run),
               ),
-              if (!joined) ...[
+              if (!joined && run.isOpen) ...[
                 const SizedBox(height: 10),
                 Text(
                   '참여하면 대기실로 들어가요. ${store.nameOf(run.host)} 님이 러닝 시작을 누르면 다 같이 카운트다운해요.',
@@ -352,11 +389,16 @@ class CrewLobbyPage extends StatefulWidget {
     this.store,
     this.checkLocation,
     this.startRun,
+    this.pickColorOnOpen = false,
   });
 
   final String crewId, runId;
   final FriendStore friends;
   final CrewStore? store;
+
+  /// 팀을 막 만들었거나 막 참여했으면 true. 대기실에 들어오자마자 색 고르는 화면을 띄웁니다
+  /// (팀장은 '확인', 팀원은 '준비 완료'). 이미 들어가 있던 대기실을 다시 열 때는 false입니다.
+  final bool pickColorOnOpen;
 
   /// 테스트에서만 넣습니다. 없으면 위치 권한을 확인하고 진짜 러닝 화면을 엽니다.
   final Future<bool> Function()? checkLocation;
@@ -382,6 +424,13 @@ class _CrewLobbyPageState extends State<CrewLobbyPage> {
   bool _counting = false, _launched = false;
   bool? _locationOk;
 
+  /// 들어오자마자 색 고르는 화면을 이미 띄웠으면 true(한 번만 띄웁니다).
+  bool _autoPicked = false;
+
+  /// 안 되면 누른 곳 가까이에 빨간 글씨로 알립니다.
+  /// 자리: 'top' 뒤로 가기가 있는 제목 줄 아래, 'me' 내 이름 줄 아래, 'actions' 맨 아래 버튼 바로 위.
+  final _notices = Notices();
+
   String get _me => _store.me?.uid ?? '';
 
   @override
@@ -402,11 +451,29 @@ class _CrewLobbyPageState extends State<CrewLobbyPage> {
       ok = false;
     }
     if (mounted) setState(() => _locationOk = ok);
+    _autoPickColor();
+  }
+
+  /// [CrewLobbyPage.pickColorOnOpen]이면 모집 정보와 위치 권한을 확인한 뒤 색 고르는 화면을 한 번 띄웁니다.
+  /// 위치 권한이 없으면 준비 완료를 할 수 없어 띄우지 않습니다(화면에 위치 안내가 보입니다).
+  void _autoPickColor() {
+    final run = _run;
+    if (!widget.pickColorOnOpen || _autoPicked || !mounted) return;
+    if (run == null || _locationOk == null) return;
+    _autoPicked = true;
+    if (_locationOk != true || !run.isOpen || !run.members.contains(_me)) {
+      return;
+    }
+    if (run.host != _me && run.ready.contains(_me)) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_counting) unawaited(_pickColor());
+    });
   }
 
   @override
   void dispose() {
     _sub?.cancel();
+    _notices.dispose();
     super.dispose();
   }
 
@@ -414,6 +481,7 @@ class _CrewLobbyPageState extends State<CrewLobbyPage> {
     if (!mounted) return;
     setState(() => _run = run);
     if (run != null) unawaited(_store.loadPeople(run.members));
+    _autoPickColor();
     // 팀장이 러닝 시작을 누르면 대기실의 모두가 함께 셉니다.
     if (run != null &&
         run.isStarted &&
@@ -517,13 +585,17 @@ class _CrewLobbyPageState extends State<CrewLobbyPage> {
     }
   }
 
-  Future<void> _act(Future<void> Function() task) async {
+  Future<void> _act(
+    Future<void> Function() task, {
+    String at = 'actions',
+  }) async {
     if (_busy) return;
     setState(() => _busy = true);
+    _notices.clear(at);
     try {
       await task();
     } on FriendException catch (e) {
-      if (mounted) showFriendMessage(context, e.message);
+      if (mounted) _notices.show(at, e.message);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -537,7 +609,7 @@ class _CrewLobbyPageState extends State<CrewLobbyPage> {
       return;
     }
     if (run.host != _me && run.ready.contains(_me)) {
-      showFriendMessage(context, '준비 취소를 누른 뒤 나갈 수 있어요');
+      _notices.show('top', '준비 취소를 누른 뒤 나갈 수 있어요');
       return;
     }
     if (run.host == _me) {
@@ -589,17 +661,18 @@ class _CrewLobbyPageState extends State<CrewLobbyPage> {
       if (mounted) Navigator.pop(context);
     } on FriendException catch (e) {
       _leaving = false;
-      if (mounted) showFriendMessage(context, e.message);
+      if (mounted) _notices.show('top', e.message);
     }
   }
 
   /// 17-12-1 색 고르기. 팀원은 '준비 완료'로 색을 정하며 준비하고, 팀장은 '확인'으로 색만 정합니다.
-  Future<void> _pickColor() async {
+  /// [at]은 누른 곳('me' 내 이름 줄, 'actions' 맨 아래 준비 완료 버튼)입니다.
+  Future<void> _pickColor({String at = 'actions'}) async {
     final run = _run;
     if (run == null || !run.isOpen) return;
     final host = run.host == _me;
     if (!host && run.ready.contains(_me)) {
-      showFriendMessage(context, '준비 취소를 누른 뒤 색을 바꿀 수 있어요');
+      _notices.show(at, '준비 취소를 누른 뒤 색을 바꿀 수 있어요');
       return;
     }
     final picked = await showModalBottomSheet<int>(
@@ -617,7 +690,7 @@ class _CrewLobbyPageState extends State<CrewLobbyPage> {
     await _act(() async {
       if (picked != run.colorOf(_me)) await _store.setRunColor(run, picked);
       if (!host) await _store.setRunReady(run, ready: true);
-    });
+    }, at: at);
   }
 
   @override
@@ -671,7 +744,18 @@ class _CrewLobbyPageState extends State<CrewLobbyPage> {
           top: false,
           child: run == null
               ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-              : _content(run),
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    NoticeSlot(
+                      notices: _notices,
+                      id: 'top',
+                      textAlign: TextAlign.center,
+                      padding: const EdgeInsets.fromLTRB(24, 4, 24, 4),
+                    ),
+                    Expanded(child: _content(run)),
+                  ],
+                ),
         ),
       ),
     );
@@ -734,15 +818,19 @@ class _CrewLobbyPageState extends State<CrewLobbyPage> {
                 style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 24),
-              for (final (i, uid) in order.indexed)
+              for (final (i, uid) in order.indexed) ...[
                 _MemberRow(
                   run: run,
                   uid: uid,
                   me: _me,
                   store: _store,
                   divider: i > 0,
-                  onTap: uid == _me && run.isOpen && !_busy ? _pickColor : null,
+                  onTap: uid == _me && run.isOpen && !_busy
+                      ? () => _pickColor(at: 'me')
+                      : null,
                 ),
+                if (uid == _me) NoticeSlot(notices: _notices, id: 'me'),
+              ],
               const SizedBox(height: 12),
               if (run.isOpen && !(ready && !host))
                 Text(
@@ -785,6 +873,12 @@ class _CrewLobbyPageState extends State<CrewLobbyPage> {
             ],
           ),
         ),
+        NoticeSlot(
+          notices: _notices,
+          id: 'actions',
+          textAlign: TextAlign.center,
+          padding: const EdgeInsets.fromLTRB(24, 6, 24, 0),
+        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
           child: host
@@ -805,7 +899,9 @@ class _CrewLobbyPageState extends State<CrewLobbyPage> {
               : FriendSheetButton(
                   label: '준비 완료',
                   filled: true,
-                  onPressed: _busy || _locationOk != true ? null : _pickColor,
+                  onPressed: _busy || _locationOk != true
+                      ? null
+                      : () => _pickColor(),
                 ),
         ),
       ],
@@ -1026,13 +1122,22 @@ class _ColorSheetState extends State<_ColorSheet> {
 }
 
 /// 결과 화면의 크루 팀 기록 안내. 팀장은 아직 달리는 사람이 있으면 '팀 끝내기'를 누를 수 있습니다.
-class CrewTeamBanner extends StatelessWidget {
+class CrewTeamBanner extends StatefulWidget {
   const CrewTeamBanner({super.key, required this.link, this.store});
 
   final CrewRunLink link;
   final CrewStore? store;
 
-  CrewStore get _store => store ?? CrewStore.instance;
+  @override
+  State<CrewTeamBanner> createState() => _CrewTeamBannerState();
+}
+
+class _CrewTeamBannerState extends State<CrewTeamBanner> {
+  CrewRunLink get link => widget.link;
+  CrewStore get _store => widget.store ?? CrewStore.instance;
+
+  /// 팀을 끝내지 못한 이유. '팀 끝내기' 버튼이 있는 안내 칸 안 아래쪽에 빨간 글씨로 보여 줍니다.
+  String? _error;
 
   Future<void> _end(BuildContext context, CrewRun run, int running) async {
     final ok = await showModalBottomSheet<bool>(
@@ -1075,11 +1180,12 @@ class CrewTeamBanner extends StatelessWidget {
         ),
       ),
     );
-    if (ok != true || !context.mounted) return;
+    if (ok != true || !mounted) return;
+    setState(() => _error = null);
     try {
       await _store.endTeam(run.crewId, run.id);
     } on FriendException catch (e) {
-      if (context.mounted) showFriendMessage(context, e.message);
+      if (mounted) setState(() => _error = e.message);
     }
   }
 
@@ -1119,25 +1225,32 @@ class CrewTeamBanner extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: AppColors.divider),
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.groups_outlined,
-              size: 18,
-              color: AppColors.textSecondary,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                text,
-                style: const TextStyle(
-                  fontSize: 13,
-                  height: 1.4,
-                  fontWeight: FontWeight.w600,
+            Row(
+              children: [
+                Icon(
+                  Icons.groups_outlined,
+                  size: 18,
+                  color: AppColors.textSecondary,
                 ),
-              ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    text,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      height: 1.4,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                if (action != null) ...[const SizedBox(width: 8), action],
+              ],
             ),
-            if (action != null) ...[const SizedBox(width: 8), action],
+            if (action != null) InlineNotice(_error, textAlign: TextAlign.end),
           ],
         ),
       );
@@ -1200,58 +1313,93 @@ class _CrewVoteListenerState extends State<CrewVoteListener> {
 
   Future<void> _ask(CrewRun run) async {
     _open = true;
-    final end = await showModalBottomSheet<bool>(
+    // 누른 답이 서버에 들어갈 때까지 창을 열어 두고, 안 되면 창 안에 이유를 보여 줍니다.
+    await showModalBottomSheet<bool>(
       context: context,
       backgroundColor: AppColors.sheet,
       showDragHandle: true,
       // 글이 길어 작은 화면에서도 잘리지 않게 내용 높이만큼 엽니다.
       isScrollControlled: true,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 10, 24, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                '팀을 종료할까요?',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                '함께 달린 지 2시간이 넘었어요. 참가자 몇 명이 종료를 누르면 팀 기록이 지금까지의 기록으로 끝나요. '
-                '30분 동안 아무도 끝내지 않기를 누르지 않아도 끝나요. 내 러닝은 계속돼요.',
-                style: TextStyle(
-                  fontSize: 15,
-                  height: 1.5,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 26),
-              FriendSheetButton(
-                label: '종료',
-                filled: true,
-                onPressed: () => Navigator.pop(context, true),
-              ),
-              const SizedBox(height: 10),
-              FriendSheetButton(
-                label: '끝내지 않기',
-                onPressed: () => Navigator.pop(context, false),
-              ),
-            ],
-          ),
-        ),
+      builder: (context) => _VoteSheet(
+        onVote: (end) => _store.voteRun(run.crewId, run.id, end: end),
       ),
     );
     _open = false;
-    if (end == null) return;
-    try {
-      await _store.voteRun(run.crewId, run.id, end: end);
-    } on FriendException catch (e) {
-      if (mounted) showFriendMessage(context, e.message);
-    }
   }
 
   @override
   Widget build(BuildContext context) => widget.child;
+}
+
+/// 종료 투표 창: '종료' 또는 '끝내지 않기'. 답이 들어가면 닫히고, 안 되면 버튼 바로 위에 이유를 보여 줍니다.
+class _VoteSheet extends StatefulWidget {
+  const _VoteSheet({required this.onVote});
+
+  final Future<void> Function(bool end) onVote;
+
+  @override
+  State<_VoteSheet> createState() => _VoteSheetState();
+}
+
+class _VoteSheetState extends State<_VoteSheet> {
+  bool _busy = false;
+  String? _error;
+
+  Future<void> _vote(bool end) async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await widget.onVote(end);
+      if (mounted) Navigator.pop(context, end);
+    } on FriendException catch (e) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = e.message;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(24, 10, 24, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            '팀을 종료할까요?',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '함께 달린 지 2시간이 넘었어요. 참가자 몇 명이 종료를 누르면 팀 기록이 지금까지의 기록으로 끝나요. '
+            '30분 동안 아무도 끝내지 않기를 누르지 않아도 끝나요. 내 러닝은 계속돼요.',
+            style: TextStyle(
+              fontSize: 15,
+              height: 1.5,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 26),
+          InlineNotice(_error, padding: const EdgeInsets.only(bottom: 10)),
+          FriendSheetButton(
+            label: '종료',
+            filled: true,
+            onPressed: _busy ? null : () => _vote(true),
+          ),
+          const SizedBox(height: 10),
+          FriendSheetButton(
+            label: '끝내지 않기',
+            onPressed: _busy ? null : () => _vote(false),
+          ),
+        ],
+      ),
+    ),
+  );
 }

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../design_system/app_colors.dart';
+import '../../design_system/inline_notice.dart';
 
 import 'package:flutter/services.dart';
 
@@ -58,16 +59,24 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
   bool _selecting = false;
   final _selected = <String>{};
 
+  /// 밀어서 지우지 못하면 그 기록 줄 바로 아래에 빨간 글씨로 알립니다(기록 번호).
+  final _notices = Notices();
+
+  /// 골라서 지우지 못한 이유. 아래 삭제 버튼 바로 위에 빨간 글씨로 보여 줍니다.
+  String? _deleteError;
+
   void _setSelecting(bool value) => setState(() {
     _selecting = value;
     _selected.clear();
+    _deleteError = null;
   });
 
   void _toggleSelected(RunningRecord r) => setState(() {
     if (!_selected.remove(r.id)) _selected.add(r.id);
   });
 
-  /// 고른 기록을 한 번에 지웁니다. 일부가 실패하면 지운 것만 목록에서 빼고 알려 줍니다.
+  /// 고른 기록을 한 번에 지웁니다. 일부가 실패하면 지운 것만 목록에서 빼고, 못 지운 기록은 고른 채로 두고
+  /// 삭제 버튼 바로 위에 알려 줍니다.
   Future<void> _deleteSelected() async {
     final ids = _selected.toList();
     if (ids.isEmpty || !await confirmRecordDelete(context, count: ids.length)) {
@@ -83,12 +92,14 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
       }
     }
     if (!mounted) return;
-    _setSelecting(false);
-    if (failed > 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('기록 $failed개를 삭제하지 못했어요. 다시 시도해 주세요.')),
-      );
+    if (failed == 0) {
+      _setSelecting(false);
+      return;
     }
+    setState(() {
+      _selected.removeWhere(_deleted.contains);
+      _deleteError = '기록 $failed개를 삭제하지 못했어요. 다시 시도해 주세요';
+    });
   }
 
   List<RunningRecord> get records => (widget.records ?? _saved)
@@ -135,6 +146,7 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
   @override
   void dispose() {
     _store.removeListener(_reload);
+    _notices.dispose();
     super.dispose();
   }
 
@@ -489,7 +501,14 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
           ),
         ),
         Divider(height: 1, color: recordLine),
-        for (final r in group.value) _recordTile(r),
+        for (final r in group.value) ...[
+          _recordTile(r),
+          NoticeSlot(
+            notices: _notices,
+            id: r.id,
+            padding: const EdgeInsets.only(bottom: 10),
+          ),
+        ],
       ],
     ];
   }
@@ -534,14 +553,13 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
           ),
           confirmDismiss: (_) async {
             if (!await confirmRecordDelete(context)) return false;
+            _notices.clear(r.id);
             try {
               await _store.delete(r.id);
               return true;
             } catch (_) {
               if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('기록 삭제에 실패했습니다. 다시 시도해 주세요.')),
-                );
+                _notices.show(r.id, '기록을 삭제하지 못했어요. 다시 시도해 주세요');
               }
               return false;
             }
@@ -656,48 +674,57 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
       child: SafeArea(
         top: false,
         minimum: const EdgeInsets.fromLTRB(20, 10, 20, 10),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextButton(
-              onPressed: () => setState(() {
-                if (all) {
-                  _selected.removeAll(ids);
-                } else {
-                  _selected.addAll(ids);
-                }
-              }),
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.textPrimary,
-              ),
-              child: Text(all ? '전체 해제' : '이번 달 전체 선택'),
+            InlineNotice(
+              _deleteError,
+              textAlign: TextAlign.center,
+              padding: const EdgeInsets.only(bottom: 8),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: SizedBox(
-                height: 48,
-                child: FilledButton.icon(
-                  onPressed: _selected.isEmpty ? null : _deleteSelected,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: recordDelete,
-                    foregroundColor: AppColors.textPrimary,
-                    disabledBackgroundColor: AppColors.pick(
-                      const Color(0xFF2A2C2E),
-                      AppColors.divider,
-                    ),
-                    shape: const StadiumBorder(),
-                  ),
-                  icon: const Icon(Icons.delete_outline, size: 18),
-                  label: Text(
-                    _selected.isEmpty ? '삭제' : '${_selected.length}개 삭제',
-                  ),
-                ),
-              ),
-            ),
+            _selectionButtons(all, ids),
           ],
         ),
       ),
     );
   }
+
+  Widget _selectionButtons(bool all, Set<String> ids) => Row(
+    children: [
+      TextButton(
+        onPressed: () => setState(() {
+          if (all) {
+            _selected.removeAll(ids);
+          } else {
+            _selected.addAll(ids);
+          }
+        }),
+        style: TextButton.styleFrom(foregroundColor: AppColors.textPrimary),
+        child: Text(all ? '전체 해제' : '이번 달 전체 선택'),
+      ),
+      const SizedBox(width: 12),
+      Expanded(
+        child: SizedBox(
+          height: 48,
+          child: FilledButton.icon(
+            onPressed: _selected.isEmpty ? null : _deleteSelected,
+            style: FilledButton.styleFrom(
+              backgroundColor: recordDelete,
+              foregroundColor: AppColors.textPrimary,
+              disabledBackgroundColor: AppColors.pick(
+                const Color(0xFF2A2C2E),
+                AppColors.divider,
+              ),
+              shape: const StadiumBorder(),
+            ),
+            icon: const Icon(Icons.delete_outline, size: 18),
+            label: Text(_selected.isEmpty ? '삭제' : '${_selected.length}개 삭제'),
+          ),
+        ),
+      ),
+    ],
+  );
 
   Widget _navigation() => Container(
     decoration: BoxDecoration(

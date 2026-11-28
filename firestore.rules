@@ -506,6 +506,13 @@ service cloud.firestore {
             && validLiveRun(request.resource.data);
           allow delete: if isOwner(uid);
         }
+
+        // 팀 기록에 남긴 각자의 지나간 길(출발·도착 200m는 잘라 냄). 팀이 끝나면 서버 함수만 씁니다.
+        // 크루 멤버 누구나 '기록 보기'에서 봅니다.
+        match /routes/{uid} {
+          allow get, list: if isCrewMember(crewId) && verified();
+          allow write: if false;
+        }
       }
 
       // 채팅 메시지. 멤버만 읽고 씁니다. 고치거나 지우지 않습니다.
@@ -550,6 +557,11 @@ service cloud.firestore {
     // 크루 초대 코드 → 크루 번호. 서버 함수 crewCode만 쓰고 읽어서, 앱에서는 코드로 크루를 훑어볼 수 없습니다.
     // 지금 코드는 crews/{번호}.code에 있고(멤버만 읽음) 그것도 서버 함수만 바꿉니다.
     match /crewCodes/{code} {
+      allow read, write: if false;
+    }
+
+    // 팀이 끝난 뒤 실시간 상태를 지울 차례(서버 함수 crewRunTick만 씁니다).
+    match /crewLiveCleanup/{id} {
       allow read, write: if false;
     }
 

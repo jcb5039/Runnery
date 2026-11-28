@@ -139,7 +139,9 @@ void main() {
 
     await tester.tap(find.text('친구에게 공유'));
     await tester.pumpAndSettle();
-    expect(find.text('친구 피드에 올렸어요'), findsOneWidget);
+    // 올리면 창이 닫히는 것으로 알 수 있어 따로 알림을 띄우지 않아요.
+    expect(find.text('친구에게 기록 공유'), findsNothing);
+    expect(find.byType(SnackBar), findsNothing);
     final post = server.postsByOwner[minji.uid]!['r1']!;
     expect(post.kcal, isNull);
     expect(post.movingSeconds, 1935);

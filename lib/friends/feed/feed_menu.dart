@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../design_system/app_colors.dart';
+import '../../design_system/inline_notice.dart';
+import '../data/friend_backend.dart' show FriendException;
 import '../data/friend_models.dart';
 import '../widgets/friend_widgets.dart';
 
@@ -213,6 +215,9 @@ class _ReportPageState extends State<ReportPage> {
   final _detail = TextEditingController();
   bool _sending = false;
 
+  /// 보내지 못한 이유. 신고하기 버튼 바로 아래에 빨간 글씨로 보여 줍니다.
+  String? _error;
+
   @override
   void dispose() {
     _detail.dispose();
@@ -222,7 +227,10 @@ class _ReportPageState extends State<ReportPage> {
   Future<void> _submit() async {
     final reason = _reason;
     if (reason == null || _sending) return;
-    setState(() => _sending = true);
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
     try {
       await widget.onSubmit(reason, _detail.text);
       if (!mounted) return;
@@ -235,8 +243,10 @@ class _ReportPageState extends State<ReportPage> {
       if (mounted) Navigator.pop(context, true);
     } on Exception catch (e) {
       if (mounted) {
-        setState(() => _sending = false);
-        showFriendMessage(context, '$e');
+        setState(() {
+          _sending = false;
+          _error = e is FriendException ? e.message : '신고하지 못했어요. 다시 시도해주세요';
+        });
       }
     }
   }
@@ -351,6 +361,7 @@ class _ReportPageState extends State<ReportPage> {
             filled: true,
             onPressed: _reason == null || _sending ? null : _submit,
           ),
+          InlineNotice(_error, textAlign: TextAlign.center),
         ],
       ),
     ),

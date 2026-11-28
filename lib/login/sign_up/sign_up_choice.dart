@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../account/account_store.dart';
 import '../../design_system/app_colors.dart';
+import '../../design_system/inline_notice.dart';
 import '../auth_ui/auth_ui.dart';
 import 'basic_info.dart';
 
@@ -140,11 +141,17 @@ class _SocialLoginButtonsState extends State<SocialLoginButtons> {
   late final AccountStore _store = widget.store ?? AccountStore.instance;
   bool _busy = false;
 
-  /// 아직 연결 전인 소셜 로그인은 안내만 띄웁니다.
-  void _notReady(String name) => _message('$name 로그인은 준비 중이에요');
+  /// 안 되면 누른 버튼 바로 아래에 빨간 글씨로 알립니다(자리 이름은 'Apple', '카카오', '네이버', '구글').
+  final _notices = Notices();
 
-  void _message(String text) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  @override
+  void dispose() {
+    _notices.dispose();
+    super.dispose();
+  }
+
+  /// 아직 연결 전인 소셜 로그인은 안내만 보여 줍니다.
+  void _notReady(String name) => _notices.show(name, '$name 로그인은 준비 중이에요');
 
   /// 이미 가입한 계정이면 바로 로그인, 처음이면 가입 단계를 받습니다.
   Future<void> _social(
@@ -153,6 +160,7 @@ class _SocialLoginButtonsState extends State<SocialLoginButtons> {
   ) async {
     if (_busy) return;
     setState(() => _busy = true);
+    _notices.clear(name);
     try {
       final result = await login();
       if (!mounted) return;
@@ -162,12 +170,12 @@ class _SocialLoginButtonsState extends State<SocialLoginButtons> {
         case SocialLoginResult.loggedIn:
           widget.onSignedIn();
         case SocialLoginResult.needsProfile:
-          await _socialProfile();
+          await _socialProfile(name);
       }
     } on AuthException catch (e) {
-      if (mounted) _message(e.message);
+      if (mounted) _notices.show(name, e.message);
     } catch (_) {
-      if (mounted) _message('$name 로그인을 하지 못했어요. 다시 시도해주세요');
+      if (mounted) _notices.show(name, '$name 로그인을 하지 못했어요. 다시 시도해주세요');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -175,7 +183,8 @@ class _SocialLoginButtonsState extends State<SocialLoginButtons> {
 
   /// 소셜 로그인으로 처음 들어온 사람: 이름 → 아이디 → 나이·성별·체중을 받고 프로필을 만듭니다.
   /// 중간에 나가거나 저장하지 못하면 로그인을 풀어 처음 상태로 돌립니다.
-  Future<void> _socialProfile() async {
+  /// [name]은 누른 소셜 버튼입니다(가입하지 못하면 그 버튼 아래에 알립니다).
+  Future<void> _socialProfile(String name) async {
     final data = await Navigator.push<RegistrationData>(
       context,
       MaterialPageRoute(
@@ -192,7 +201,10 @@ class _SocialLoginButtonsState extends State<SocialLoginButtons> {
     } catch (e) {
       await _store.cancelSocialSignUp();
       if (mounted) {
-        _message(e is AuthException ? e.message : '가입하지 못했어요. 다시 시도해주세요');
+        _notices.show(
+          name,
+          e is AuthException ? e.message : '가입하지 못했어요. 다시 시도해주세요',
+        );
       }
     }
   }
@@ -206,6 +218,7 @@ class _SocialLoginButtonsState extends State<SocialLoginButtons> {
         icon: Icon(Icons.apple, size: 20, color: AppColors.textPrimary),
         onPressed: () => _notReady('Apple'),
       ),
+      NoticeSlot(notices: _notices, id: 'Apple', textAlign: TextAlign.center),
       const SizedBox(height: 12),
       _SocialButton(
         label: '카카오로 ${widget.verb}',
@@ -214,6 +227,7 @@ class _SocialLoginButtonsState extends State<SocialLoginButtons> {
         foreground: _kakaoText,
         onPressed: () => _social('카카오', _store.loginWithKakao),
       ),
+      NoticeSlot(notices: _notices, id: '카카오', textAlign: TextAlign.center),
       const SizedBox(height: 12),
       _SocialButton(
         label: '네이버로 ${widget.verb}',
@@ -229,12 +243,14 @@ class _SocialLoginButtonsState extends State<SocialLoginButtons> {
         ),
         onPressed: () => _social('네이버', _store.loginWithNaver),
       ),
+      NoticeSlot(notices: _notices, id: '네이버', textAlign: TextAlign.center),
       const SizedBox(height: 12),
       _SocialButton(
         label: 'Google로 ${widget.verb}',
         icon: const CustomPaint(size: Size(18, 18), painter: _GoogleLogo()),
         onPressed: () => _social('구글', _store.loginWithGoogle),
       ),
+      NoticeSlot(notices: _notices, id: '구글', textAlign: TextAlign.center),
     ],
   );
 }

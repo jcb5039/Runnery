@@ -16,6 +16,7 @@ import 'friend_models.dart' show LiveRun, PublicProfile, TogetherResult;
 /// - `crews/{번호}/runs/{번호}`: 함께 달리기 모집(대기실). 멤버만 읽고, 바꾸는 건 서버 함수 `crewRun`만 합니다.
 /// - `crewInvites/{크루 번호}_{받는 uid}`: 크루 초대. 보낸 사람과 받는 사람만 봅니다.
 /// - `crews/{번호}.code`, `crewCodes/{코드}`: 초대 코드. 만들기·바꾸기·코드로 들어가기는 서버 함수 `crewCode`만 합니다.
+/// - `crews/{번호}/runs/{모집}/routes/{uid}`: 팀 기록에 남긴 각자의 지나간 길(서버 함수만 씀, 멤버만 읽음).
 /// - `crews/{번호}/banned/{uid}`: 크루장이 내보낸 사람(코드로 못 들어옴). 다시 초대받아 수락하면 지웁니다.
 abstract class CrewBackend {
   /// 여러 사람의 공개 정보. 서버에 없는 사람은 빠집니다.
@@ -115,6 +116,9 @@ abstract class CrewBackend {
 
   /// 팀 기록이 끝난 모집들(최근 것부터). 서랍의 '함께 달린 기록'.
   Future<List<CrewRun>> endedRuns(String crewId, {int limit = 30});
+
+  /// 팀 기록에 남은 각자의 지나간 길(uid → 길). 팀이 끝나기 전이면 비어 있습니다.
+  Future<Map<String, CrewRunRoute>> runRoutes(String crewId, String runId);
 }
 
 /// Firestore를 쓰는 실제 구현.
@@ -599,6 +603,34 @@ class FirebaseCrewBackend implements CrewBackend {
     () => _runLive(crewId, runId).doc(uid).delete(),
     '함께 달린 위치 정보를 지우지 못했어요',
   );
+
+  @override
+  Future<Map<String, CrewRunRoute>> runRoutes(String crewId, String runId) =>
+      _run(() async {
+        final s = await _crews
+            .doc(crewId)
+            .collection('runs')
+            .doc(runId)
+            .collection('routes')
+            .get();
+        return {
+          for (final doc in s.docs)
+            doc.id: () {
+              final flat = [
+                for (final v in doc.data()['points'] as List? ?? const [])
+                  if (v is num) v.toDouble(),
+              ];
+              return CrewRunRoute(
+                uid: doc.id,
+                color: (doc.data()['color'] as num?)?.toInt() ?? 0,
+                points: [
+                  for (var i = 0; i + 1 < flat.length; i += 2)
+                    (flat[i], flat[i + 1]),
+                ],
+              );
+            }(),
+        };
+      }, '함께 달린 길을 불러오지 못했어요');
 
   @override
   Future<List<CrewRun>> endedRuns(String crewId, {int limit = 30}) =>

@@ -588,7 +588,9 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       expect(copied, code);
-      expect(find.text('코드를 복사했어요'), findsOneWidget);
+      // 복사하면 하단 알림 대신 복사 버튼이 잠깐 체크 표시로 바뀌어요.
+      expect(find.byTooltip('복사했어요'), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
       await tester.pumpAndSettle(const Duration(seconds: 5));
 
       await tester.tap(find.byTooltip('코드 바꾸기'));

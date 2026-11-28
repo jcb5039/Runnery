@@ -467,7 +467,7 @@ class CrewStore extends ChangeNotifier {
   }
 
   /// 내 러닝을 끝내고 저장한 뒤 부릅니다. 모두 끝내면 팀 기록도 저절로 끝납니다.
-  /// 서버의 내 실시간 상태도 지웁니다.
+  /// 내 실시간 상태(지나간 길)는 남겨 둡니다(팀이 끝나고 1시간 뒤 서버가 정리).
   Future<void> finishRun(
     String crewId,
     String runId, {
@@ -476,7 +476,7 @@ class CrewStore extends ChangeNotifier {
     required int movingSeconds,
     required int kcal,
   }) async {
-    final me = _require();
+    _require();
     await backend.runAction(
       crewId,
       'finish',
@@ -489,11 +489,8 @@ class CrewStore extends ChangeNotifier {
         finishedAt: now,
       ),
     );
-    try {
-      await backend.deleteRunLive(crewId, runId, me.uid);
-    } on FriendException {
-      // 다음에 끝낼 때 다시 지웁니다.
-    }
+    // 내 지나간 길(실시간 상태)은 지우지 않습니다. 팀원들이 끝난 자리까지 볼 수 있고, 팀이 끝나면
+    // 서버가 팀 기록에 옮긴 뒤 1시간 뒤에 정리합니다.
   }
 
   /// 팀장이 팀을 끝냅니다. 아직 달리는 사람은 그때의 기록으로 팀 기록에 남고, 각자 계속 달릴 수 있습니다.
@@ -510,6 +507,10 @@ class CrewStore extends ChangeNotifier {
 
   /// 서랍의 '함께 달린 기록'.
   Future<List<CrewRun>> endedRuns(String crewId) => backend.endedRuns(crewId);
+
+  /// 팀 기록에 남은 각자의 지나간 길('기록 보기'에서 씁니다).
+  Future<Map<String, CrewRunRoute>> runRoutes(String crewId, String runId) =>
+      backend.runRoutes(crewId, runId);
 
   /// 러닝 화면이 같은 모집 사람들과 실시간 상태를 주고받을 곳.
   LiveChannel liveChannel(String crewId, String runId) =>
@@ -564,4 +565,10 @@ class _CrewRunChannel implements LiveChannel {
   @override
   Future<void> delete(String uid) =>
       store.backend.deleteRunLive(crewId, runId, uid);
+
+  @override
+  int? colorOf(String uid) => _run?.colorOf(uid);
+
+  @override
+  bool get keepAfterFinish => true;
 }

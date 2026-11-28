@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../design_system/app_colors.dart';
 import '../../design_system/app_radius.dart';
 import '../../design_system/app_spacing.dart';
+import '../../design_system/inline_notice.dart';
 import '../data/friend_store.dart';
 import '../widgets/friend_widgets.dart';
 
@@ -36,6 +37,9 @@ class _FriendAddPageState extends State<FriendAddPage> {
   /// 서버에 보내는 중인 사람. 그동안 버튼을 막습니다.
   final Set<String> _busy = {};
 
+  /// 실패하면 그 사람 줄 바로 아래에 빨간 글씨로 알립니다('search:uid', 'request:uid').
+  final _notices = Notices();
+
   @override
   void initState() {
     super.initState();
@@ -49,6 +53,7 @@ class _FriendAddPageState extends State<FriendAddPage> {
     _store.removeListener(_syncRequests);
     _debounce?.cancel();
     _query.dispose();
+    _notices.dispose();
     super.dispose();
   }
 
@@ -102,27 +107,34 @@ class _FriendAddPageState extends State<FriendAddPage> {
   }
 
   /// 서버 작업을 하는 동안 그 사람의 버튼을 막고, 실패하면 이유를 알려 줍니다.
-  Future<void> _act(String uid, Future<void> Function() task) async {
+  /// [at]은 누른 줄이 있는 곳('search' 검색 결과, 'request' 받은 요청)입니다.
+  Future<void> _act(
+    String uid,
+    Future<void> Function() task, {
+    required String at,
+  }) async {
     if (_busy.contains(uid)) return;
     setState(() => _busy.add(uid));
+    _notices.clear('$at:$uid');
     try {
       await task();
     } on FriendException catch (e) {
-      if (mounted) showFriendMessage(context, e.message);
+      if (mounted) _notices.show('$at:$uid', e.message);
     } finally {
       if (mounted) setState(() => _busy.remove(uid));
     }
   }
 
-  Future<void> _accept(PublicProfile person) => _act(person.uid, () async {
-    await _store.accept(person);
-    _answered[person.uid] = true;
-  });
+  Future<void> _accept(PublicProfile person, {required String at}) =>
+      _act(person.uid, () async {
+        await _store.accept(person);
+        _answered[person.uid] = true;
+      }, at: at);
 
   Future<void> _decline(PublicProfile person) => _act(person.uid, () async {
     await _store.decline(person);
     _answered[person.uid] = false;
-  });
+  }, at: 'request');
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -220,12 +232,14 @@ class _FriendAddPageState extends State<FriendAddPage> {
       else if (results.isEmpty)
         _note('찾는 친구가 없어요. 아이디를 다시 확인해 주세요')
       else
-        for (final (i, person) in results.indexed)
+        for (final (i, person) in results.indexed) ...[
           FriendRow(
             person: person,
             divider: i > 0,
             trailing: _searchAction(person),
           ),
+          NoticeSlot(notices: _notices, id: 'search:${person.uid}'),
+        ],
     ];
   }
 
@@ -261,19 +275,27 @@ class _FriendAddPageState extends State<FriendAddPage> {
         semanticLabel: '${person.name} 님에게 보낸 요청 취소',
         onPressed: busy
             ? null
-            : () => _act(person.uid, () => _store.cancelRequest(person.uid)),
+            : () => _act(
+                person.uid,
+                () => _store.cancelRequest(person.uid),
+                at: 'search',
+              ),
       ),
       FriendRelation.incoming => FriendPillButton(
         label: '수락',
         semanticLabel: '${person.name} 님 요청 수락',
-        onPressed: busy ? null : () => _accept(person),
+        onPressed: busy ? null : () => _accept(person, at: 'search'),
       ),
       FriendRelation.none => FriendPillButton(
         label: '친구 요청',
         semanticLabel: '${person.name} 님에게 친구 요청',
         onPressed: busy
             ? null
-            : () => _act(person.uid, () => _store.sendRequest(person)),
+            : () => _act(
+                person.uid,
+                () => _store.sendRequest(person),
+                at: 'search',
+              ),
       ),
     };
   }
@@ -295,12 +317,14 @@ class _FriendAddPageState extends State<FriendAddPage> {
       if (_requests.isEmpty)
         _note(_store.loading ? '불러오는 중이에요' : _store.error ?? '받은 친구 요청이 없어요')
       else
-        for (final (i, person) in _requests.indexed)
+        for (final (i, person) in _requests.indexed) ...[
           FriendRow(
             person: person,
             divider: i > 0,
             trailing: _requestAction(person),
           ),
+          NoticeSlot(notices: _notices, id: 'request:${person.uid}'),
+        ],
     ];
   }
 
@@ -353,7 +377,7 @@ class _FriendAddPageState extends State<FriendAddPage> {
         FriendPillButton(
           label: '수락',
           semanticLabel: '${person.name} 님 요청 수락',
-          onPressed: busy ? null : () => _accept(person),
+          onPressed: busy ? null : () => _accept(person, at: 'request'),
         ),
       ],
     );

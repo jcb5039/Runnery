@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../design_system/app_colors.dart';
+import '../../design_system/inline_notice.dart';
 import '../../home/running/running_home_page.dart' show runningLocationActive;
 import '../../record/models/running_record.dart' show clockText;
 import '../data/friend_store.dart';
@@ -65,10 +66,11 @@ class _TogetherInviteListenerState extends State<TogetherInviteListener> {
     if (t == null) return;
     _shown.add(t.id);
     _open = true;
-    final join = await _ask(t);
+    final joined = await _ask(t);
     _open = false;
     if (!mounted) return;
-    if (join == true) await (t.isQuick ? _join(t) : _accept(t));
+    // 날짜를 정한 약속은 수락하면 창이 닫히는 것으로 끝나고, '지금 같이 뛰기'는 대기실로 갑니다.
+    if (joined == true && t.isQuick) await _openLobby(t);
     unawaited(_showNext());
   }
 
@@ -82,81 +84,106 @@ class _TogetherInviteListenerState extends State<TogetherInviteListener> {
       context: context,
       backgroundColor: AppColors.sheet,
       showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 6, 24, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                t.isQuick ? '$host 님이 지금 같이 뛰자고 해요' : '$host 님이 함께 달리자고 해요',
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                [
-                  if (!t.isQuick)
-                    '${t.startsAt.month}월 ${t.startsAt.day}일 '
-                        '(${weekdayLetter(t.startsAt)}) ${clockText(t.startsAt)} · ${t.goalLabel}.',
-                  if (others.isNotEmpty) '${others.join(', ')} 님도 함께해요.',
-                  if (t.isQuick) '목표 없이 자유롭게 달려요. 참여하면 대기실로 가요.',
-                ].join(' '),
-                style: TextStyle(
-                  fontSize: 15,
-                  height: 1.5,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 26),
-              FriendSheetButton(
-                label: t.isQuick ? '참여하기' : '수락하기',
-                filled: true,
-                onPressed: () => Navigator.pop(context, true),
-              ),
-              const SizedBox(height: 10),
-              FriendSheetButton(
-                label: '나중에',
-                onPressed: () => Navigator.pop(context, false),
-              ),
-            ],
-          ),
-        ),
+      builder: (context) => _InviteSheet(
+        title: t.isQuick ? '$host 님이 지금 같이 뛰자고 해요' : '$host 님이 함께 달리자고 해요',
+        body: [
+          if (!t.isQuick)
+            '${t.startsAt.month}월 ${t.startsAt.day}일 '
+                '(${weekdayLetter(t.startsAt)}) ${clockText(t.startsAt)} · ${t.goalLabel}.',
+          if (others.isNotEmpty) '${others.join(', ')} 님도 함께해요.',
+          if (t.isQuick) '목표 없이 자유롭게 달려요. 참여하면 대기실로 가요.',
+        ].join(' '),
+        action: t.isQuick ? '참여하기' : '수락하기',
+        onAccept: () => _store.answer(t, TogetherStatus.accepted),
       ),
     );
   }
 
-  /// 날짜를 정한 약속은 수락만 하고 지금 화면에 머뭅니다. 약속 시간에 함께 달리기 탭에서 대기실로 들어가요.
-  Future<void> _accept(Together t) async {
-    try {
-      await _store.answer(t, TogetherStatus.accepted);
-      if (mounted) {
-        final host = _store.person(t.host)?.name ?? '친구';
-        showFriendMessage(context, '$host 님과의 약속을 수락했어요');
-      }
-    } on FriendException catch (e) {
-      if (mounted) showFriendMessage(context, e.message);
-    }
-  }
-
-  Future<void> _join(Together t) async {
-    try {
-      await _store.answer(t, TogetherStatus.accepted);
-    } on FriendException catch (e) {
-      if (mounted) showFriendMessage(context, e.message);
-      return;
-    }
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => TogetherLobbyPage(id: t.id, store: widget.store),
-      ),
-    );
-  }
+  Future<void> _openLobby(Together t) => Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => TogetherLobbyPage(id: t.id, store: widget.store),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) => widget.child;
+}
+
+/// 받은 약속 창. 수락(참여)을 누르면 창을 연 채로 서버에 답하고, 되면 닫힙니다.
+/// 안 되면 창 안의 버튼 바로 위에 빨간 글씨로 이유를 보여 줍니다.
+class _InviteSheet extends StatefulWidget {
+  const _InviteSheet({
+    required this.title,
+    required this.body,
+    required this.action,
+    required this.onAccept,
+  });
+
+  final String title, body, action;
+  final Future<void> Function() onAccept;
+
+  @override
+  State<_InviteSheet> createState() => _InviteSheetState();
+}
+
+class _InviteSheetState extends State<_InviteSheet> {
+  bool _busy = false;
+  String? _error;
+
+  Future<void> _accept() async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await widget.onAccept();
+      if (mounted) Navigator.pop(context, true);
+    } on FriendException catch (e) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = e.message;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(24, 6, 24, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            widget.title,
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            widget.body,
+            style: TextStyle(
+              fontSize: 15,
+              height: 1.5,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 26),
+          InlineNotice(_error, padding: const EdgeInsets.only(bottom: 10)),
+          FriendSheetButton(
+            label: _busy ? '보내는 중이에요' : widget.action,
+            filled: true,
+            onPressed: _busy ? null : _accept,
+          ),
+          const SizedBox(height: 10),
+          FriendSheetButton(
+            label: '나중에',
+            onPressed: _busy ? null : () => Navigator.pop(context, false),
+          ),
+        ],
+      ),
+    ),
+  );
 }

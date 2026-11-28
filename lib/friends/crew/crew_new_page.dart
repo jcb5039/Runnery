@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../design_system/app_colors.dart';
+import '../../design_system/inline_notice.dart';
 import '../data/crew_store.dart';
 import '../data/friend_store.dart';
 import '../widgets/friend_widgets.dart';
@@ -28,6 +29,9 @@ class _CrewNewPageState extends State<CrewNewPage> {
   final Set<String> _selected = {};
   bool _sending = false;
 
+  /// 만들지 못한 이유. 만들기 버튼 바로 아래에 빨간 글씨로 보여 줍니다.
+  String? _error;
+
   @override
   void initState() {
     super.initState();
@@ -42,7 +46,10 @@ class _CrewNewPageState extends State<CrewNewPage> {
 
   Future<void> _create() async {
     if (_sending || _name.text.trim().isEmpty) return;
-    setState(() => _sending = true);
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
     try {
       final chosen = [
         for (final f in widget.friends.friends)
@@ -61,8 +68,10 @@ class _CrewNewPageState extends State<CrewNewPage> {
       );
     } on FriendException catch (e) {
       if (mounted) {
-        setState(() => _sending = false);
-        showFriendMessage(context, e.message);
+        setState(() {
+          _sending = false;
+          _error = e.message;
+        });
       }
     }
   }
@@ -124,6 +133,7 @@ class _CrewNewPageState extends State<CrewNewPage> {
               filled: true,
               onPressed: _name.text.trim().isEmpty || _sending ? null : _create,
             ),
+            InlineNotice(_error, textAlign: TextAlign.center),
           ],
         ),
       ),
@@ -214,6 +224,9 @@ class _CrewInvitePageState extends State<CrewInvitePage> {
   Set<String> _invited = const {};
   bool _sending = false;
 
+  /// 초대하지 못한 이유. 초대하기 버튼 바로 아래에 빨간 글씨로 보여 줍니다.
+  String? _error;
+
   @override
   void initState() {
     super.initState();
@@ -232,7 +245,10 @@ class _CrewInvitePageState extends State<CrewInvitePage> {
 
   Future<void> _send() async {
     if (_sending || _selected.isEmpty) return;
-    setState(() => _sending = true);
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
     var sent = 0;
     String? failed;
     for (final f in widget.friends.friends) {
@@ -246,11 +262,13 @@ class _CrewInvitePageState extends State<CrewInvitePage> {
     }
     if (!mounted) return;
     if (sent > 0) {
+      // 화면이 닫히는 것으로 보냈다는 걸 알 수 있어 따로 알리지 않습니다.
       Navigator.pop(context);
-      showFriendMessage(context, '$sent명에게 크루 초대를 보냈어요');
     } else {
-      setState(() => _sending = false);
-      showFriendMessage(context, failed ?? '초대하지 못했어요');
+      setState(() {
+        _sending = false;
+        _error = failed ?? '초대하지 못했어요';
+      });
     }
   }
 
@@ -293,6 +311,7 @@ class _CrewInvitePageState extends State<CrewInvitePage> {
               filled: true,
               onPressed: _selected.isEmpty || _sending ? null : _send,
             ),
+            InlineNotice(_error, textAlign: TextAlign.center),
           ],
         ),
       ),

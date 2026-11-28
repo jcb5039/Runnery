@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../design_system/app_colors.dart';
+import '../../design_system/inline_notice.dart';
 import '../auth_ui/auth_ui.dart';
 
 class RunningInfoPage extends StatefulWidget {
@@ -23,11 +24,17 @@ class _RunningInfoPageState extends State<RunningInfoPage> {
   final ruler = ScrollController(initialScrollOffset: 2040);
   String gender = '선택 안 함';
   double weight = 60;
+
+  /// 체중을 고르지 않았다는 안내. 체중 눈금자 바로 아래에 빨간 글씨로 보여 줍니다.
+  String? _weightError;
   @override
   void initState() {
     super.initState();
     ruler.addListener(() {
-      setState(() => weight = (ruler.offset / 34 * 10).round() / 10);
+      setState(() {
+        weight = (ruler.offset / 34 * 10).round() / 10;
+        if (weight > 0) _weightError = null;
+      });
     });
   }
 
@@ -101,14 +108,16 @@ class _RunningInfoPageState extends State<RunningInfoPage> {
     final value = (result * 10).round() / 10;
     // 눈금자 1kg = 34px(0.1kg = 3.4px). 스크롤 위치가 바뀌면 리스너가 weight를 갱신합니다.
     ruler.jumpTo((value * 34).clamp(0, ruler.position.maxScrollExtent));
-    setState(() => weight = value);
+    setState(() {
+      weight = value;
+      _weightError = null;
+    });
   }
 
   void complete() {
     if (!form.currentState!.validate()) return;
     if (weight <= 0) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('체중을 선택해주세요')));
+      setState(() => _weightError = '체중을 선택해주세요');
       return;
     }
     Navigator.pop(
@@ -286,6 +295,7 @@ class _RunningInfoPageState extends State<RunningInfoPage> {
               ),
             ),
           ),
+          InlineNotice(_weightError, textAlign: TextAlign.center),
         ],
       ),
     ),
