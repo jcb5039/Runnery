@@ -1,6 +1,7 @@
 // 러너리 서버 함수. Firebase가 직접 지원하지 않는 카카오·네이버 로그인을 Firebase 계정으로 바꿔 주고,
-// 회원 탈퇴 때 서버 데이터를 지웁니다.
+// 회원 탈퇴 때 서버 데이터를 지웁니다. 크루 함께 달리기 모집(대기실)의 규칙도 여기서 지킵니다.
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
 const { logger } = require('firebase-functions');
 const { initializeApp } = require('firebase-admin/app');
@@ -9,6 +10,7 @@ const { FieldValue, getFirestore, Timestamp } = require('firebase-admin/firestor
 const { ProofError, checkProof, deleteUserData } = require('./delete_account');
 const { KakaoTokenError, verifyKakaoToken } = require('./kakao');
 const { NaverLoginError, naverIdFromCode, stateFor, validState } = require('./naver');
+const { RunError, decide, decideTick } = require('./crew_run');
 
 initializeApp();
 
@@ -146,4 +148,179 @@ exports.deleteAccount = onCall({ region: REGION, maxInstances: 10, timeoutSecond
   }
   logger.info('회원 탈퇴 완료', uid);
   return { ok: true };
+});
+
+/** 서버 시각(밀리초) ↔ Firestore 시각. 모집 판단은 밀리초로 합니다. */
+function runFromDoc(d) {
+  if (!d) return null;
+  const ms = (v) => (v && typeof v.toMillis === 'function' ? v.toMillis() : v == null ? null : v);
+  const results = {};
+  for (const [k, v] of Object.entries(d.results || {})) results[k] = { ...v, finishedAt: ms(v.finishedAt) };
+  return {
+    ...d,
+    results,
+    createdAt: ms(d.createdAt),
+    startedAt: ms(d.startedAt),
+    endedAt: ms(d.endedAt),
+  };
+}
+
+function runToDoc(r) {
+  const ts = (v) => (v == null ? null : Timestamp.fromMillis(v));
+  const results = {};
+  for (const [k, v] of Object.entries(r.results || {})) results[k] = { ...v, finishedAt: ts(v.finishedAt) };
+  return {
+    ...r,
+    results,
+    createdAt: ts(r.createdAt),
+    startedAt: ts(r.startedAt),
+    endedAt: ts(r.endedAt),
+  };
+}
+
+/**
+ * 크루 함께 달리기 모집: 열기(create)·참여(join)·색 고르기(color)·준비(ready)·나가기(leave)·시작(start),
+ * 출발한 뒤 각자 끝내기(finish)·팀장의 팀 끝내기(end).
+ * 한 사람이 모집 하나만 열고 하나에만 참여하기, 10명 제한, 팀장이 나가면 닫기처럼 여러 사람이 동시에 눌러도
+ * 지켜야 하는 규칙이라 서버가 트랜잭션으로 한 번에 하나씩 처리합니다. 판단은 crew_run.js의 decide를 봅니다.
+ * 앱은 모집 문서를 읽기만 하고(보안 규칙에서 쓰기를 막음), 바꾸는 건 모두 이 함수로 합니다.
+ */
+exports.crewRun = onCall({ region: REGION, maxInstances: 20 }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', '로그인이 필요해요');
+  const uid = request.auth.uid;
+  const data = request.data || {};
+  const action = String(data.action || '');
+  const crewId = typeof data.crewId === 'string' ? data.crewId : '';
+  if (!crewId) throw new HttpsError('invalid-argument', '크루를 찾을 수 없어요');
+  const db = getFirestore();
+  const crewRef = db.collection('crews').doc(crewId);
+  const runRef = action === 'create'
+    ? crewRef.collection('runs').doc()
+    : crewRef.collection('runs').doc(typeof data.runId === 'string' && data.runId ? data.runId : '_');
+  const lockRef = (who) => db.collection('crewRunners').doc(who);
+  try {
+    await db.runTransaction(async (t) => {
+      const crewSnap = await t.get(crewRef);
+      const runSnap = action === 'create' ? null : await t.get(runRef);
+      const lockSnap = await t.get(lockRef(uid));
+      const lock = lockSnap.exists ? lockSnap.data() : null;
+      let lockRun = null;
+      if (lock && lock.crewId && lock.runId) {
+        const ref = db.collection('crews').doc(lock.crewId).collection('runs').doc(lock.runId);
+        lockRun = runFromDoc((await t.get(ref)).data());
+      }
+      const run = runSnap && runSnap.exists ? runFromDoc(runSnap.data()) : null;
+      // 참여할 때만 차단 관계를 읽습니다(한쪽이라도 차단했으면 같은 모집에 못 들어감).
+      const blockedPairs = new Set();
+      if (action === 'join' && run) {
+        for (const m of run.members || []) {
+          const [mine, theirs] = await Promise.all([
+            t.get(db.collection('users').doc(uid).collection('blocks').doc(m)),
+            t.get(db.collection('users').doc(m).collection('blocks').doc(uid)),
+          ]);
+          if (mine.exists || theirs.exists) blockedPairs.add(m);
+        }
+      }
+      // 팀 끝내기·종료 투표는 아직 달리는 사람의 지금 기록(실시간 상태)으로 팀 기록을 남깁니다.
+      const live = action === 'end' || action === 'vote' ? await readLive(t, runRef, run) : {};
+      const result = decide({
+        live,
+        action,
+        uid,
+        crew: crewSnap.exists ? crewSnap.data() : null,
+        run,
+        runId: action === 'create' ? null : runRef.id,
+        lockRun,
+        lockId: lock ? lock.runId : null,
+        blocked: (a, b) => (a === uid ? blockedPairs.has(b) : blockedPairs.has(a)),
+        now: Date.now(),
+        data,
+      });
+      // 다른 모집을 붙잡고 있는 사람의 기록은 지우지 않도록, 풀기 전에 그 사람의 기록을 읽어 둡니다.
+      const clears = [];
+      for (const who of result.lockClear || []) {
+        const snap = who === uid ? lockSnap : await t.get(lockRef(who));
+        if (snap.exists && snap.get('runId') === runRef.id) clears.push(who);
+      }
+      writeRun(t, db, crewId, runRef, result, clears);
+      for (const who of result.lockSet || []) {
+        t.set(lockRef(who), { crewId, runId: runRef.id });
+      }
+      if (result.message) {
+        t.set(crewRef.collection('messages').doc(), {
+          uid,
+          kind: 'run',
+          runId: runRef.id,
+          title: result.message.title,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+        t.update(crewRef, {
+          lastMessage: {
+            uid,
+            text: `함께 달리기를 열었어요: ${result.message.title}`.slice(0, 100),
+            at: FieldValue.serverTimestamp(),
+          },
+        });
+      }
+    });
+  } catch (e) {
+    if (e instanceof RunError) throw new HttpsError('failed-precondition', e.message);
+    logger.error('크루 모집 실패', action, crewId, uid, e);
+    throw new HttpsError('internal', '잠시 후 다시 시도해주세요');
+  }
+  return { ok: true, runId: runRef.id };
+});
+
+/** 모집 참여자들의 지금 실시간 상태(거리·시간). 트랜잭션 안에서 읽습니다. */
+async function readLive(t, runRef, run) {
+  const live = {};
+  for (const m of (run && run.members) || []) {
+    const snap = await t.get(runRef.collection('live').doc(m));
+    if (snap.exists) live[m] = { distanceKm: snap.get('distanceKm') || 0, movingSeconds: snap.get('movingSeconds') || 0 };
+  }
+  return live;
+}
+
+/**
+ * 판단 결과를 씁니다: 모집 문서, 풀어 줄 사람(clears, 미리 확인한 사람만), 서버가 지켜볼 출발한 모집 목록
+ * (crewActiveRuns: 5분마다 종료 투표를 살피는 데 씁니다).
+ */
+function writeRun(t, db, crewId, runRef, result, clears) {
+  if (result.run) t.set(runRef, runToDoc(result.run));
+  for (const who of clears) t.delete(db.collection('crewRunners').doc(who));
+  const active = db.collection('crewActiveRuns').doc(`${crewId}_${runRef.id}`);
+  if (result.activeSet) t.set(active, { crewId, runId: runRef.id });
+  if (result.activeClear) t.delete(active);
+}
+
+/**
+ * 출발한 크루 모집을 5분마다 살핍니다: 2시간이 지나면 종료 투표를 열고, 30분 동안 '끝내지 않기'가 없으면
+ * 팀을 끝내며(그때의 기록이 팀 기록), 있으면 투표를 다시 엽니다. 앱이 모두 꺼져 있어도 지켜집니다.
+ */
+exports.crewRunTick = onSchedule({ region: REGION, schedule: 'every 5 minutes', timeZone: 'Asia/Seoul' }, async () => {
+  const db = getFirestore();
+  const active = await db.collection('crewActiveRuns').limit(200).get();
+  for (const doc of active.docs) {
+    const { crewId, runId } = doc.data();
+    if (!crewId || !runId) {
+      await doc.ref.delete();
+      continue;
+    }
+    const runRef = db.collection('crews').doc(crewId).collection('runs').doc(runId);
+    try {
+      await db.runTransaction(async (t) => {
+        const run = runFromDoc((await t.get(runRef)).data());
+        const live = await readLive(t, runRef, run);
+        const result = decideTick(run, live, Date.now());
+        const clears = [];
+        for (const who of result.lockClear || []) {
+          const snap = await t.get(db.collection('crewRunners').doc(who));
+          if (snap.exists && snap.get('runId') === runId) clears.push(who);
+        }
+        writeRun(t, db, crewId, runRef, result, clears);
+      });
+    } catch (e) {
+      logger.error('크루 모집 살피기 실패', crewId, runId, e);
+    }
+  }
 });

@@ -41,7 +41,7 @@ async function deleteRefs(db, refs) {
 
 /**
  * 한 계정의 서버 데이터를 모두 지웁니다. 중간에 실패해도 다시 부르면 남은 것부터 이어 지웁니다.
- * 다른 사람 문서에 걸친 것(친구 목록, 응원, 친구 요청, 함께 달리기)을 먼저 정리하고,
+ * 다른 사람 문서에 걸친 것(친구 목록, 응원, 친구 요청, 함께 달리기, 크루, 크루 초대)을 먼저 정리하고,
  * 내 문서(`users/{uid}` 아래 전부, 공개 프로필, 아이디)를 지웁니다. 로그인 계정은 부르는 쪽이 마지막에 지웁니다.
  */
 async function deleteUserData(db, uid, FieldValue) {
@@ -80,7 +80,49 @@ async function deleteUserData(db, uid, FieldValue) {
     }
   }
 
-  // 4. 아이디(내 것일 때만)와 공개 프로필.
+  // 4. 크루: 혼자 남은 크루는 지우고, 방장이면 가장 오래된 멤버에게 넘긴 뒤 나만 뺍니다.
+  //    채팅 메시지는 남기되(다른 멤버의 대화), 내 멤버 정보와 내가 보내거나 받은 초대는 지웁니다.
+  const crews = await db.collection('crews').where('members', 'array-contains', uid).get();
+  for (const crew of crews.docs) {
+    const others = (crew.get('members') || []).filter((m) => m !== uid);
+    if (others.length === 0) {
+      await db.recursiveDelete(crew.ref);
+      continue;
+    }
+    const update = { members: FieldValue.arrayRemove(uid) };
+    if (crew.get('owner') === uid) {
+      update.owner = await oldestMember(crew.ref, others);
+    }
+    await crew.ref.update(update);
+    await crew.ref.collection('members').doc(uid).delete();
+  }
+  // 들어가 있던 크루 모집: 팀장이면 모집을 닫고(다른 참여자도 풀어 줌), 아니면 나만 뺍니다.
+  const lockRef = db.collection('crewRunners').doc(uid);
+  const lock = await lockRef.get();
+  if (lock.exists && lock.get('crewId') && lock.get('runId')) {
+    const runRef = db.collection('crews').doc(lock.get('crewId')).collection('runs').doc(lock.get('runId'));
+    const run = await runRef.get();
+    if (run.exists && run.get('status') === 'open') {
+      if (run.get('host') === uid) {
+        await runRef.update({ status: 'closed' });
+        await deleteRefs(db, (run.get('members') || []).map((m) => db.collection('crewRunners').doc(m)));
+      } else {
+        await runRef.update({
+          members: FieldValue.arrayRemove(uid),
+          [`colors.${uid}`]: FieldValue.delete(),
+          [`ready.${uid}`]: FieldValue.delete(),
+        });
+      }
+    }
+    await lockRef.delete();
+  }
+  const [invitesSent, invitesReceived] = await Promise.all([
+    db.collection('crewInvites').where('from', '==', uid).get(),
+    db.collection('crewInvites').where('to', '==', uid).get(),
+  ]);
+  await deleteRefs(db, [...invitesSent.docs, ...invitesReceived.docs].map((d) => d.ref));
+
+  // 5. 아이디(내 것일 때만)와 공개 프로필.
   const profile = await userRef.get();
   const id = profile.exists ? profile.get('id') : null;
   if (typeof id === 'string' && id) {
@@ -90,8 +132,17 @@ async function deleteUserData(db, uid, FieldValue) {
   }
   await db.collection('profiles').doc(uid).delete();
 
-  // 5. 내 문서 아래 전부: 러닝 기록, 설정, 합계, 친구 목록, 공유한 기록과 응원.
+  // 6. 내 문서 아래 전부: 러닝 기록, 설정, 합계, 친구 목록, 공유한 기록과 응원.
   await db.recursiveDelete(userRef);
 }
 
-module.exports = { RECENT_LOGIN_MS, ProofError, checkProof, deleteUserData };
+/**
+ * 남은 멤버 [others] 중 크루에 가장 먼저 들어온 사람. 들어온 시각이 없으면 멤버 목록 순서대로 고릅니다.
+ */
+async function oldestMember(crewRef, others) {
+  const members = await crewRef.collection('members').orderBy('joinedAt').get();
+  const first = members.docs.find((m) => others.includes(m.id));
+  return first ? first.id : others[0];
+}
+
+module.exports = { RECENT_LOGIN_MS, ProofError, checkProof, deleteUserData, oldestMember };

@@ -354,6 +354,206 @@ service cloud.firestore {
         && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
     }
 
+    // 크루. 멤버(members)만 읽습니다. 들어오는 방법은 멤버가 보낸 초대(crewInvites)뿐이고 최대 200명입니다.
+    // 방장(owner)은 이름·공지를 바꾸고 멤버를 내보내며, 나갈 때 다른 멤버에게 방장을 넘깁니다(혼자면 크루를 지움).
+    // 멤버는 마지막 메시지 요약(lastMessage)을 바꾸고, 자기 자신만 넣거나(초대가 있을 때) 뺄 수 있습니다.
+    function crewDoc(id) {
+      return get(/databases/$(database)/documents/crews/$(id));
+    }
+
+    function crewAfter(id) {
+      return getAfter(/databases/$(database)/documents/crews/$(id));
+    }
+
+    function isCrewMember(id) {
+      return signedIn() && request.auth.uid in crewDoc(id).data.members;
+    }
+
+    function crewKeys(after, before) {
+      return after.diff(before).affectedKeys();
+    }
+
+    // [after]가 [before]에 [uid] 한 명만 더한 목록인지.
+    function addsOnly(after, before, uid) {
+      return after.size() == before.size() + 1
+        && after.hasAll(before)
+        && uid in after
+        && !(uid in before);
+    }
+
+    // [after]가 [before]에서 [uid] 한 명만 뺀 목록인지.
+    function removesOnly(after, before, uid) {
+      return after.size() == before.size() - 1
+        && before.hasAll(after)
+        && uid in before
+        && !(uid in after);
+    }
+
+    match /crews/{crewId} {
+      allow get, list: if signedIn() && verified() && request.auth.uid in resource.data.members;
+
+      allow create: if signedIn()
+        && verified()
+        && request.resource.data.keys().hasOnly(['name', 'owner', 'members', 'createdAt'])
+        && request.resource.data.keys().hasAll(['name', 'owner', 'members', 'createdAt'])
+        && request.resource.data.owner == request.auth.uid
+        && request.resource.data.members == [request.auth.uid]
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 1 && request.resource.data.name.size() <= 20
+        && request.resource.data.createdAt == request.time;
+
+      allow update: if signedIn() && verified() && (
+        // 메시지를 보낼 때: 마지막 메시지 요약만, 내 이름과 지금 시각으로.
+        (request.auth.uid in resource.data.members
+          && crewKeys(request.resource.data, resource.data).hasOnly(['lastMessage'])
+          && request.resource.data.lastMessage.keys().hasOnly(['uid', 'text', 'at'])
+          && request.resource.data.lastMessage.uid == request.auth.uid
+          && request.resource.data.lastMessage.text is string
+          && request.resource.data.lastMessage.text.size() <= 100
+          && request.resource.data.lastMessage.at == request.time)
+        // 방장이 공지를 쓰거나 지울 때.
+        || (resource.data.owner == request.auth.uid
+          && crewKeys(request.resource.data, resource.data).hasOnly(['notice'])
+          && (!('notice' in request.resource.data)
+            || (request.resource.data.notice.keys().hasOnly(['text', 'by', 'at'])
+              && request.resource.data.notice.by == request.auth.uid
+              && request.resource.data.notice.text is string
+              && request.resource.data.notice.text.size() >= 1
+              && request.resource.data.notice.text.size() <= 200
+              && request.resource.data.notice.at == request.time)))
+        // 초대를 받아 들어올 때: 나만 더하고, 초대가 있어야 하며, 200명까지.
+        || (crewKeys(request.resource.data, resource.data).hasOnly(['members'])
+          && addsOnly(request.resource.data.members, resource.data.members, request.auth.uid)
+          && request.resource.data.members.size() <= 200
+          && exists(/databases/$(database)/documents/crewInvites/$(crewId + '_' + request.auth.uid)))
+        // 멤버가 나갈 때(방장이 아니면 나만 뺌).
+        || (resource.data.owner != request.auth.uid
+          && crewKeys(request.resource.data, resource.data).hasOnly(['members'])
+          && removesOnly(request.resource.data.members, resource.data.members, request.auth.uid))
+        // 방장이 나갈 때: 나를 빼고 남은 멤버에게 방장을 넘깁니다.
+        || (resource.data.owner == request.auth.uid
+          && crewKeys(request.resource.data, resource.data).hasOnly(['members', 'owner'])
+          && removesOnly(request.resource.data.members, resource.data.members, request.auth.uid)
+          && request.resource.data.owner in request.resource.data.members)
+        // 방장이 다른 멤버를 내보낼 때(한 명씩).
+        || (resource.data.owner == request.auth.uid
+          && crewKeys(request.resource.data, resource.data).hasOnly(['members'])
+          && request.resource.data.members.size() == resource.data.members.size() - 1
+          && resource.data.members.hasAll(request.resource.data.members)
+          && request.auth.uid in request.resource.data.members)
+      );
+
+      // 혼자 남은 방장만 크루를 지웁니다.
+      allow delete: if signedIn()
+        && resource.data.owner == request.auth.uid
+        && resource.data.members.size() == 1;
+
+      // 멤버 정보: 들어온 시각·마지막으로 읽은 시각·알림 끄기. 멤버만 읽고, 본인만 바꿉니다.
+      match /members/{uid} {
+        allow get, list: if isCrewMember(crewId) && verified();
+        allow create: if isOwner(uid)
+          && verified()
+          && request.auth.uid in crewAfter(crewId).data.members
+          && request.resource.data.keys().hasOnly(['joinedAt', 'lastReadAt', 'muted'])
+          && request.resource.data.joinedAt == request.time
+          && request.resource.data.lastReadAt == request.time
+          && request.resource.data.muted is bool;
+        allow update: if isOwner(uid)
+          && verified()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastReadAt', 'muted'])
+          && (request.resource.data.lastReadAt == request.time
+            || request.resource.data.lastReadAt == resource.data.lastReadAt)
+          && request.resource.data.muted is bool;
+        // 본인(나갈 때)이나 방장(내보낼 때)이 지웁니다.
+        allow delete: if isOwner(uid)
+          || (signedIn() && crewDoc(crewId).data.owner == request.auth.uid);
+      }
+
+      // 함께 달리기 모집(대기실). 멤버만 읽습니다. 열기·참여·색·준비·나가기·시작은 서버 함수 crewRun이
+      // 규칙(한 사람 한 모집, 10명, 팀장이 나가면 닫힘)을 지키며 바꾸므로 앱에서는 쓰지 못합니다.
+      match /runs/{runId} {
+        allow get, list: if isCrewMember(crewId) && verified();
+        allow write: if false;
+
+        // 함께 달리는 동안의 실시간 상태(거리·시간·위치·지나간 길). 같은 모집에 참여한 사람만 읽고,
+        // 출발한 모집의 참여자 본인만 자기 것을 씁니다. 다른 모집 사람에게는 보이지 않습니다.
+        match /live/{uid} {
+          allow get, list: if signedIn()
+            && verified()
+            && request.auth.uid in get(/databases/$(database)/documents/crews/$(crewId)/runs/$(runId)).data.members;
+          allow create, update: if isOwner(uid)
+            && verified()
+            && request.auth.uid in get(/databases/$(database)/documents/crews/$(crewId)/runs/$(runId)).data.members
+            && get(/databases/$(database)/documents/crews/$(crewId)/runs/$(runId)).data.status in ['started', 'ended']
+            && validLiveRun(request.resource.data);
+          allow delete: if isOwner(uid);
+        }
+      }
+
+      // 채팅 메시지. 멤버만 읽고 씁니다. 고치거나 지우지 않습니다.
+      // 함께 달리기 모집 안내(run)는 서버 함수만 남깁니다.
+      // 들어옴(join)은 들어온 뒤의 멤버가, 나감(leave)은 나가기 전의 멤버가, 내보냄(kick)은 방장이 남깁니다.
+      match /messages/{messageId} {
+        allow get, list: if isCrewMember(crewId) && verified();
+        allow create: if signedIn()
+          && verified()
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.createdAt == request.time
+          && (
+            (request.resource.data.kind == 'text'
+              && request.resource.data.keys().hasOnly(['uid', 'kind', 'text', 'createdAt'])
+              && request.resource.data.text is string
+              && request.resource.data.text.size() >= 1
+              && request.resource.data.text.size() <= 1000
+              && request.auth.uid in crewDoc(crewId).data.members)
+            || (request.resource.data.kind == 'join'
+              && request.resource.data.keys().hasOnly(['uid', 'kind', 'createdAt'])
+              && request.auth.uid in crewAfter(crewId).data.members)
+            || (request.resource.data.kind == 'leave'
+              && request.resource.data.keys().hasOnly(['uid', 'kind', 'createdAt'])
+              && request.auth.uid in crewDoc(crewId).data.members
+              && !(request.auth.uid in crewAfter(crewId).data.members))
+            || (request.resource.data.kind == 'kick'
+              && request.resource.data.keys().hasOnly(['uid', 'kind', 'target', 'createdAt'])
+              && crewDoc(crewId).data.owner == request.auth.uid
+              && request.resource.data.target in crewDoc(crewId).data.members
+              && !(request.resource.data.target in crewAfter(crewId).data.members))
+          );
+        allow update, delete: if false;
+      }
+    }
+
+    // 지금 들어가 있는 크루 모집(서버 함수 crewRun만 씁니다). 본인만 읽습니다.
+    match /crewRunners/{uid} {
+      allow get: if isOwner(uid) && verified();
+      allow list, write: if false;
+    }
+
+    // 크루 초대. 문서 이름은 '크루 번호_받는 uid'이고, 보낸 사람과 받는 사람만 읽고 지웁니다.
+    // 크루 멤버가 자기 친구에게만 보내고, 이미 멤버이거나 나를 차단한 사람에게는 보낼 수 없습니다.
+    match /crewInvites/{inviteId} {
+      allow get, list: if signedIn()
+        && verified()
+        && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+      allow create: if signedIn()
+        && verified()
+        && request.resource.data.keys().hasOnly(['crewId', 'crewName', 'from', 'to', 'createdAt'])
+        && request.resource.data.keys().hasAll(['crewId', 'crewName', 'from', 'to', 'createdAt'])
+        && request.resource.data.from == request.auth.uid
+        && request.resource.data.to is string
+        && request.resource.data.to != request.auth.uid
+        && inviteId == request.resource.data.crewId + '_' + request.resource.data.to
+        && request.auth.uid in crewDoc(request.resource.data.crewId).data.members
+        && !(request.resource.data.to in crewDoc(request.resource.data.crewId).data.members)
+        && request.resource.data.crewName == crewDoc(request.resource.data.crewId).data.name
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(request.resource.data.to))
+        && !exists(/databases/$(database)/documents/users/$(request.resource.data.to)/blocks/$(request.auth.uid))
+        && request.resource.data.createdAt == request.time;
+      allow update: if false;
+      allow delete: if signedIn()
+        && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+    }
+
     // 신고. 인증을 마친 사람이 자기 이름으로 올리기만 하고, 앱에서는 아무도 읽거나 고치지 못합니다
     // (Firebase 관리 화면에서 확인). 사유는 앱의 ReportReason 이름, 내용은 300자까지입니다.
     match /reports/{reportId} {

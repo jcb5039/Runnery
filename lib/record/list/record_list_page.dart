@@ -624,6 +624,15 @@ class _RecordListPageV2State extends State<RecordListPageV2> {
                   '${r.durationLabel} · ${r.paceLabel}/km · ${r.calories} kcal',
                   style: recordText(11, color: recordSecondary),
                 ),
+                if (r.crewName case final crew?) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '$crew 크루와 함께',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: recordText(11, color: recordOrangeText),
+                  ),
+                ],
               ],
             ),
           ),

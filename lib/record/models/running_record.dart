@@ -43,7 +43,12 @@ class RunningRecord {
     this.splitSeconds = const [],
     this.pauseFractions = const [],
     this.diagnostics,
+    this.crewName,
   });
+
+  /// 크루 모집으로 함께 달렸으면 그 크루 이름('○○ 크루와 함께'). 혼자 달렸으면 null.
+  /// 예전 기록에는 이 값이 없습니다.
+  final String? crewName;
 
   /// 러닝 중 GPS 진단 기록(받은·버린 위치 수, 백그라운드 전환, 위치 공백 등). 화면에는 쓰지 않습니다.
   final Map<String, dynamic>? diagnostics;
@@ -108,6 +113,7 @@ class RunningRecord {
     'splitSeconds': splitSeconds,
     'pauseFractions': pauseFractions,
     'diagnostics': ?diagnostics,
+    'crewName': ?crewName,
     'route': [
       for (final p in route)
         {
@@ -175,8 +181,13 @@ class RunningRecord {
         (json['pauseFractions'] as List).map(number),
       ),
       diagnostics: json['diagnostics'] as Map<String, dynamic>?,
+      crewName: json['crewName'] is String ? json['crewName'] as String : null,
     );
   }
+
+  /// 크루와 함께 달린 기록으로 표시합니다.
+  RunningRecord withCrew(String name) =>
+      RunningRecord.fromJson({...toJson(), 'crewName': name});
 
   RunningRecord withMemo(String value) =>
       RunningRecord.fromJson({...toJson(), 'memo': value});

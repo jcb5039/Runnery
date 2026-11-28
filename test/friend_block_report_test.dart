@@ -117,7 +117,7 @@ void main() {
 
       await tester.tap(find.text('크루'));
       await tester.pumpAndSettle();
-      expect(find.text('크루는 준비 중이에요'), findsOneWidget);
+      expect(find.text('크루 만들기'), findsOneWidget);
     });
 
     testWidgets('친구 이름을 누르면 그 친구의 달력이 열려요', (tester) async {

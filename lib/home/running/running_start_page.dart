@@ -24,6 +24,8 @@ import 'running_voice.dart';
 import 'running_watch_link.dart';
 import 'running_result_page.dart';
 import '../../friends/data/record_share.dart';
+import '../../friends/crew/crew_run_pages.dart' show CrewVoteListener;
+import '../../friends/data/crew_store.dart';
 import '../../friends/data/together_live.dart';
 import '../../friends/data/together_store.dart';
 import '../../friends/friends_feature.dart';
@@ -973,12 +975,17 @@ class RunningStartPage extends StatefulWidget {
     required this.options,
     this.initialCenter,
     this.togetherId,
+    this.crewRun,
   });
 
   final RunningStartOptions options;
 
   /// 함께 달리기 대기실에서 시작했으면 그 약속 번호. 저장한 뒤 결과를 약속에 올립니다.
   final String? togetherId;
+
+  /// 크루 대기실에서 함께 출발했으면 그 모집. 같은 모집 사람들과 위치를 주고받고,
+  /// 저장한 뒤 내 기록을 모집에 올리며, 결과 화면에서 팀장은 팀을 끝낼 수 있습니다.
+  final CrewRunLink? crewRun;
 
   /// 시작 화면에서 마지막으로 잡힌 위치. 지도가 엉뚱한 곳에서 시작하지 않게 합니다.
   final LatLng? initialCenter;
@@ -1063,6 +1070,11 @@ class _RunningStartPageState extends State<RunningStartPage>
       ..start();
     if (widget.togetherId case final id?) {
       _live = TogetherLive(id)..start();
+      _session.addListener(_shareLive);
+    } else if (widget.crewRun case final crew?) {
+      _live = TogetherLive.channel(
+        CrewStore.instance.liveChannel(crew.crewId, crew.runId),
+      )..start();
       _session.addListener(_shareLive);
     }
     // '5킬로미터예요', '30분이에요': 거리는 받침이 없고 시간은 받침이 있습니다.
@@ -1411,7 +1423,11 @@ class _RunningStartPageState extends State<RunningStartPage>
     switch (action) {
       case _EndAction.save:
         final record = _session.finish();
-        final saved = recordFromSession(record);
+        // 크루로 함께 달렸으면 기록에 '○○ 크루와 함께'를 남깁니다.
+        final saved = switch (widget.crewRun) {
+          final crew? => recordFromSession(record).withCrew(crew.crewName),
+          null => recordFromSession(record),
+        };
         while (mounted) {
           try {
             await RunningRecordStore.instance.save(saved);
@@ -1420,6 +1436,20 @@ class _RunningStartPageState extends State<RunningStartPage>
             RouteThumbnails.instance.get(saved);
             if (widget.togetherId case final id?) {
               unawaited(TogetherStore.instance.runFinished(id, saved));
+            }
+            if (widget.crewRun case final crew?) {
+              unawaited(
+                CrewStore.instance
+                    .finishRun(
+                      crew.crewId,
+                      crew.runId,
+                      recordId: saved.id,
+                      distanceKm: saved.distanceKm,
+                      movingSeconds: saved.movingSeconds,
+                      kcal: saved.calories,
+                    )
+                    .catchError((Object _) {}),
+              );
             }
             // 자동 공유를 켜 두었으면 장소 이름을 찾은 뒤 친구 피드에 올립니다.
             // 친구 기능이 꺼져 있으면(1차 출시) 올리지 않습니다.
@@ -1467,7 +1497,7 @@ class _RunningStartPageState extends State<RunningStartPage>
         if (!mounted) return;
         Navigator.of(context).pushReplacement(
           runningPushRoute(
-            RunningResultPage(record: record),
+            RunningResultPage(record: record, crewRun: widget.crewRun),
             AppMotion.resultPush,
           ),
         );
@@ -1482,6 +1512,15 @@ class _RunningStartPageState extends State<RunningStartPage>
 
   @override
   Widget build(BuildContext context) {
+    final page = _page(context);
+    // 크루로 함께 달리는 중이면 2시간 뒤 종료 투표를 물어봅니다.
+    return switch (widget.crewRun) {
+      final crew? => CrewVoteListener(link: crew, child: page),
+      null => page,
+    };
+  }
+
+  Widget _page(BuildContext context) {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
