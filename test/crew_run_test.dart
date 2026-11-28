@@ -3,7 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:runnery_new/friends/crew/crew_room_page.dart';
 import 'package:runnery_new/friends/crew/crew_run_pages.dart';
 import 'package:runnery_new/friends/data/crew_store.dart';
+import 'package:runnery_new/friends/data/friend_models.dart' show LiveRun;
 import 'package:runnery_new/friends/data/friend_store.dart';
+import 'package:runnery_new/friends/data/together_live.dart';
 
 import 'support/fake_crew_backend.dart';
 import 'support/fake_friend_backend.dart';
@@ -111,6 +113,90 @@ void main() {
       // 닫히면 둘 다 새 모집을 열 수 있어요.
       await as(haeun, () => b.openRun(crewId, '새 모집'));
     });
+
+    testWidgets('팀원은 고른 색으로 보이고, 먼저 끝내도 지나간 길이 끝난 자리까지 남아요', (tester) async {
+      final a = storeFor(minji), b = storeFor(haeun);
+      late String key, runId;
+      await tester.runAsync(() async {
+        runId = await as(minji, () => a.openRun(crewId, '반포대교'));
+        key = '$crewId/$runId';
+        await as(haeun, () => b.joinRun(crews.runs[key]!));
+        await as(haeun, () => b.setRunColor(crews.runs[key]!, 6));
+        await as(haeun, () => b.setRunReady(crews.runs[key]!, ready: true));
+        await as(minji, () => a.startRun(crews.runs[key]!));
+      });
+      final runner = TogetherLive.channel(b.liveChannel(crewId, runId))
+        ..start();
+      final watcher = TogetherLive.channel(a.liveChannel(crewId, runId))
+        ..start();
+      runner.update(
+        meters: 800,
+        moving: const Duration(minutes: 4),
+        paused: false,
+        position: (37.5, 127.0),
+        routePoint: (37.5, 127.0),
+      );
+      await tester.pump(TogetherLive.interval);
+      runner.update(
+        meters: 1000,
+        moving: const Duration(minutes: 5),
+        paused: false,
+        position: (37.5003, 127.0),
+        routePoint: (37.5003, 127.0),
+      );
+      // 끝내면 마지막 자리까지 한 번 더 올리고, 지우지 않아요.
+      await runner.close();
+      await tester.runAsync(
+        () => as(
+          haeun,
+          () => b.finishRun(
+            crewId,
+            runId,
+            recordId: 'r1',
+            distanceKm: 1,
+            movingSeconds: 300,
+            kcal: 60,
+          ),
+        ),
+      );
+      await tester.pump();
+      final live = crews.liveByRun[key]![haeun.uid]!;
+      expect(live.route, [(37.5, 127.0), (37.5003, 127.0)]);
+      final friend = watcher.friends.single;
+      expect(friend.state, LiveFriendState.finished);
+      expect(friend.color, 6);
+      expect(friend.run!.route, hasLength(2));
+      watcher.dispose();
+    });
+
+    test('팀이 끝나면 각자의 길이 출발·도착 200m를 잘라 팀 기록에 남고, 고른 색도 함께 남아요', () async {
+      final a = storeFor(minji), b = storeFor(haeun);
+      final runId = await as(minji, () => a.openRun(crewId, '반포대교'));
+      final key = '$crewId/$runId';
+      await as(haeun, () => b.joinRun(crews.runs[key]!));
+      await as(haeun, () => b.setRunColor(crews.runs[key]!, 6));
+      await as(haeun, () => b.setRunReady(crews.runs[key]!, ready: true));
+      await as(minji, () => a.startRun(crews.runs[key]!));
+      expect(await a.runRoutes(crewId, runId), isEmpty);
+
+      // 박하은이 북쪽으로 1km(50m마다 점) 달리는 중이에요.
+      final route = [
+        for (var i = 0; i <= 20; i++) (37.5 + 50 / 111000 * i, 127.0),
+      ];
+      await crews.setRunLive(
+        crewId,
+        runId,
+        LiveRun(uid: haeun.uid, distanceKm: 1, route: route),
+      );
+      await as(minji, () => a.endTeam(crewId, runId));
+
+      final routes = await a.runRoutes(crewId, runId);
+      final hers = routes[haeun.uid]!;
+      expect(hers.color, 6);
+      expect(hers.points.first, isNot(route.first));
+      expect(hers.points.last, isNot(route.last));
+      expect(hers.points, hasLength(13));
+    });
   });
 
   group('화면', () {
@@ -141,10 +227,19 @@ void main() {
       await tester.tap(find.byTooltip('함께 시작'));
       await tester.pumpAndSettle();
       expect(find.text('최대 10명까지 함께 달릴 수 있어요'), findsOneWidget);
+      expect(find.text('제목을 입력해 주세요'), findsOneWidget);
       await tester.enterText(find.byType(TextField), '물빛광장 5 km 같이 뛰어요');
       await tester.pump();
       await tester.tap(find.widgetWithText(FilledButton, '만들기'));
       await tester.pumpAndSettle();
+
+      // 팀을 만들자마자 색 고르는 화면이 떠요(팀장은 '확인').
+      expect(find.text('내 색상'), findsOneWidget);
+      await tester.tap(find.bySemanticsLabel('색 4'));
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, '확인'));
+      await tester.pumpAndSettle();
+      expect(crews.runs.values.single.colorOf(minji.uid), 3);
 
       expect(find.text('대기실'), findsOneWidget);
       expect(find.text('물빛광장 5 km 같이 뛰어요'), findsOneWidget);
@@ -169,6 +264,71 @@ void main() {
       expect(find.text('모집이 닫혔어요'), findsOneWidget);
     });
 
+    testWidgets('이미 들어가 있던 대기실을 다시 열 때는 색 고르는 화면이 뜨지 않아요', (tester) async {
+      await tester.runAsync(() async {
+        await setUpCrew();
+        crews.actor = minji.uid;
+        final runId = await storeFor(minji).openRun(crewId, '반포대교 한 바퀴 뛰어요');
+        // 박하은은 이미 참여해 있어요.
+        crews.actor = haeun.uid;
+        await storeFor(haeun).joinRun(crews.runs['$crewId/$runId']!);
+      });
+      friends = FriendStore(backend: server, me: () => haeun);
+      store = storeFor(haeun);
+      await open(
+        tester,
+        CrewRoomPage(id: crewId, friends: friends, store: store),
+      );
+      await tester.tap(find.widgetWithText(FilledButton, '대기실로 가기'));
+      await tester.pumpAndSettle();
+      expect(find.text('대기실'), findsOneWidget);
+      expect(find.text('내 색상'), findsNothing);
+    });
+
+    testWidgets('참여하자마자 뜬 색 화면을 그냥 닫아도 대기실에 그대로 있어요', (tester) async {
+      await tester.runAsync(() async {
+        await setUpCrew();
+        crews.actor = minji.uid;
+        await storeFor(minji).openRun(crewId, '반포대교 한 바퀴 뛰어요');
+      });
+      friends = FriendStore(backend: server, me: () => haeun);
+      store = storeFor(haeun);
+      crews.actor = haeun.uid;
+      await open(
+        tester,
+        CrewRoomPage(id: crewId, friends: friends, store: store),
+      );
+      await tester.tap(find.widgetWithText(FilledButton, '참여'));
+      await tester.pumpAndSettle();
+      expect(find.text('내 색상'), findsOneWidget);
+      Navigator.of(tester.element(find.text('내 색상'))).pop();
+      await tester.pumpAndSettle();
+      expect(find.text('대기실'), findsOneWidget);
+      expect(find.text('내 색상'), findsNothing);
+      expect(crews.runs.values.single.ready, isEmpty);
+    });
+
+    testWidgets('위치 권한이 없으면 들어가자마자 색 고르는 화면을 띄우지 않아요', (tester) async {
+      CrewLobbyPage.defaultCheckLocation = () async => false;
+      await tester.runAsync(() async {
+        await setUpCrew();
+        crews.actor = minji.uid;
+        await storeFor(minji).openRun(crewId, '반포대교 한 바퀴 뛰어요');
+      });
+      friends = FriendStore(backend: server, me: () => haeun);
+      store = storeFor(haeun);
+      crews.actor = haeun.uid;
+      await open(
+        tester,
+        CrewRoomPage(id: crewId, friends: friends, store: store),
+      );
+      await tester.tap(find.widgetWithText(FilledButton, '참여'));
+      await tester.pumpAndSettle();
+      expect(find.text('대기실'), findsOneWidget);
+      expect(find.text('내 색상'), findsNothing);
+      expect(find.textContaining('위치 권한을 켜야'), findsOneWidget);
+    });
+
     testWidgets('카드에서 참여 → 색 고르고 준비 완료 → 준비 중엔 못 나가요', (tester) async {
       late String runId;
       await tester.runAsync(() async {
@@ -190,10 +350,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('김민지 님이 열었어요 · 2/10명'), findsOneWidget);
-      expect(find.text('내 이름을 눌러 색을 고를 수 있어요'), findsOneWidget);
-
-      await tester.tap(find.widgetWithText(FilledButton, '준비 완료'));
-      await tester.pumpAndSettle();
+      // 참여하자마자 색 고르는 화면이 떠요(팀원은 '준비 완료').
       expect(find.text('내 색상'), findsOneWidget);
       // 팀장이 고른 색은 고를 수 없어요.
       expect(find.bySemanticsLabel('색 1, 김민지 님이 고름'), findsOneWidget);
@@ -223,6 +380,44 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('대기실'), findsNothing);
       expect(crews.runs['$crewId/$runId']!.members, [minji.uid]);
+    });
+
+    testWidgets('출발하면 카드에 러닝 진행 중이 보이고, 팀이 끝나면 기록 보기가 나와요', (tester) async {
+      late String key;
+      await tester.runAsync(() async {
+        await setUpCrew();
+        final a = storeFor(minji), b = storeFor(haeun);
+        final runId = await as(minji, () => a.openRun(crewId, '반포대교 한 바퀴'));
+        key = '$crewId/$runId';
+        await as(haeun, () => b.joinRun(crews.runs[key]!));
+        await as(haeun, () => b.setRunReady(crews.runs[key]!, ready: true));
+        await as(minji, () => a.startRun(crews.runs[key]!));
+      });
+      // 달리기에 참여하지 않은 사람이 채팅방에서 봐요.
+      friends = FriendStore(backend: server, me: () => seojun);
+      store = storeFor(seojun);
+      await open(
+        tester,
+        CrewRoomPage(id: crewId, friends: friends, store: store),
+      );
+      expect(find.text('러닝 진행 중'), findsOneWidget);
+      expect(find.text('2명이 함께 달리고 있어요'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, '참여'), findsNothing);
+      expect(find.widgetWithText(FilledButton, '대기실로 가기'), findsNothing);
+
+      await tester.runAsync(
+        () => as(
+          minji,
+          () => storeFor(minji).endTeam(crewId, key.split('/').last),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('러닝 진행 중'), findsNothing);
+      expect(find.widgetWithText(FilledButton, '대기실로 가기'), findsNothing);
+      await tester.tap(find.widgetWithText(FilledButton, '기록 보기'));
+      await tester.pumpAndSettle();
+      // 팀 기록 화면을 만들기 전까지는 채팅방 메뉴의 '함께 달린 기록'이 열려요.
+      expect(find.text('함께 달린 기록'), findsOneWidget);
     });
 
     testWidgets('팀장이 나가면 팀원에게 모집이 닫혔다고 알려 줘요', (tester) async {

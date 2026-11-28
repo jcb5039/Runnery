@@ -52,12 +52,33 @@ void main() {
     expect(find.text('확인하기'), findsNothing);
   });
 
+  testWidgets('친구 요청을 못 보내면 그 사람 줄 바로 아래에 빨간 글씨로 보여요', (tester) async {
+    await open(tester);
+    await tester.tap(find.byTooltip('친구 추가').first);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'seoj');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    server.offline = true;
+    await tester.tap(find.text('친구 요청'));
+    await tester.pumpAndSettle();
+    expect(find.text('인터넷 연결을 확인해주세요'), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
+    // 이유는 누른 줄(@seojun_k) 바로 아래에 있어요.
+    final row = tester.getBottomLeft(find.text('@seojun_k'));
+    final note = tester.getTopLeft(find.text('인터넷 연결을 확인해주세요'));
+    expect(note.dy, greaterThan(row.dy));
+    expect(note.dy - row.dy, lessThan(60));
+    await tester.pump(const Duration(seconds: 6));
+  });
+
   testWidgets('search sends and cancels a friend request', (tester) async {
     await open(tester);
     await tester.tap(find.byTooltip('친구 추가').first);
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), '서준');
+    await tester.enterText(find.byType(TextField), 'seoj');
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
     expect(find.text('검색 결과'), findsOneWidget);

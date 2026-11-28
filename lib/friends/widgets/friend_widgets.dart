@@ -413,10 +413,3 @@ AppBar friendAppBar(
   centerTitle: true,
   actions: actions,
 );
-
-/// 화면 아래에 짧은 안내를 띄웁니다.
-void showFriendMessage(BuildContext context, String message) {
-  ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(message)));
-}

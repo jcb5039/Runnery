@@ -15,18 +15,15 @@ Future<void> showShareRecordSheet(
   RecordShare? share,
 }) async {
   final sharer = share ?? RecordShare.instance;
-  if (sharer.me == null) {
-    showFriendMessage(context, '로그인이 필요해요');
-    return;
-  }
-  final message = await showModalBottomSheet<String>(
+  // 올리거나 취소하면 창이 닫히는 것으로 결과를 알 수 있어 따로 알리지 않습니다.
+  // 실패·로그인 안내는 창 안의 공유 버튼 바로 위에 빨간 글씨로 보여 줍니다.
+  await showModalBottomSheet<void>(
     context: context,
     backgroundColor: AppColors.sheet,
     showDragHandle: true,
     isScrollControlled: true,
     builder: (_) => _ShareSheet(record: record, share: sharer),
   );
-  if (message != null && context.mounted) showFriendMessage(context, message);
 }
 
 class _ShareSheet extends StatefulWidget {
@@ -51,6 +48,12 @@ class _ShareSheetState extends State<_ShareSheet> {
   }
 
   Future<void> _load() async {
+    // initState에서 바로 불리므로 setState 없이 정합니다.
+    if (widget.share.me == null) {
+      _fields = const ShareFields();
+      _error = '로그인이 필요해요';
+      return;
+    }
     try {
       final settings = await widget.share.settings();
       if (mounted) setState(() => _fields = settings.fields);
@@ -68,10 +71,13 @@ class _ShareSheetState extends State<_ShareSheet> {
   Future<void> _send() async {
     final fields = _fields;
     if (fields == null || _sending) return;
-    setState(() => _sending = true);
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
     try {
       await widget.share.share(widget.record, fields: fields);
-      if (mounted) Navigator.pop(context, '친구 피드에 올렸어요');
+      if (mounted) Navigator.pop(context);
     } on FriendException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } finally {
@@ -84,7 +90,7 @@ class _ShareSheetState extends State<_ShareSheet> {
     setState(() => _sending = true);
     try {
       await widget.share.unshare(widget.record.id);
-      if (mounted) Navigator.pop(context, '공유를 취소했어요');
+      if (mounted) Navigator.pop(context);
     } on FriendException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } finally {

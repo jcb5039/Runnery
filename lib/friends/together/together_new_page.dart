@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../design_system/app_colors.dart';
+import '../../design_system/inline_notice.dart';
 import '../../design_system/app_radius.dart';
 import '../../design_system/app_spacing.dart';
 import '../../home/running/running_start_page.dart' show runningNumberStyle;
@@ -45,6 +46,9 @@ class _TogetherNewPageState extends State<TogetherNewPage> {
   int _km = 5;
   bool _sending = false;
 
+  /// 보내지 못한 이유. 맨 아래 보내기 버튼 바로 위에 빨간 글씨로 보여 줍니다.
+  String? _error;
+
   /// 오늘부터 7일.
   List<DateTime> get _days {
     final now = _store.now;
@@ -84,7 +88,10 @@ class _TogetherNewPageState extends State<TogetherNewPage> {
 
   Future<void> _send(List<PublicProfile> chosen) async {
     if (_sending) return;
-    setState(() => _sending = true);
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
     try {
       if (widget.quick) {
         final id = await _store.startNow(chosen);
@@ -101,11 +108,9 @@ class _TogetherNewPageState extends State<TogetherNewPage> {
         return;
       }
       await _store.create(chosen, _when, _km);
-      if (!mounted) return;
-      showFriendMessage(context, '약속을 보냈어요');
-      Navigator.pop(context);
+      if (mounted) Navigator.pop(context);
     } on FriendException catch (e) {
-      if (mounted) showFriendMessage(context, e.message);
+      if (mounted) setState(() => _error = e.message);
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -133,14 +138,25 @@ class _TogetherNewPageState extends State<TogetherNewPage> {
         appBar: friendAppBar(context, quick ? '지금 바로 같이 뛰기' : '함께 달리기 약속'),
         bottomNavigationBar: SafeArea(
           minimum: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-          child: FriendSheetButton(
-            label: _sending
-                ? '보내는 중이에요'
-                : quick
-                ? '같이 뛰자고 보내기'
-                : '약속 보내기',
-            filled: true,
-            onPressed: canSend ? () => _send(chosen) : null,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              InlineNotice(
+                _error,
+                textAlign: TextAlign.center,
+                padding: const EdgeInsets.only(bottom: 8),
+              ),
+              FriendSheetButton(
+                label: _sending
+                    ? '보내는 중이에요'
+                    : quick
+                    ? '같이 뛰자고 보내기'
+                    : '약속 보내기',
+                filled: true,
+                onPressed: canSend ? () => _send(chosen) : null,
+              ),
+            ],
           ),
         ),
         body: ListView(

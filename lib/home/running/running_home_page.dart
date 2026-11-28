@@ -1773,12 +1773,20 @@ class MapUserLocation {
 }
 
 /// 함께 달리는 친구: 흰 점과 이름 칩, 지나간 길(흰 선)로 그립니다. 주황은 내 경로에만 씁니다.
+/// 크루 팀원은 대기실에서 고른 색([color])으로 점과 지나간 길을 그립니다.
 class MapFriend {
-  const MapFriend(this.point, this.name, {this.route = const []});
+  const MapFriend(this.point, this.name, {this.route = const [], this.color});
   final LatLng point;
   final String name;
   final List<LatLng> route;
+
+  /// 점·지나간 길 색. 없으면 흰색입니다.
+  final Color? color;
 }
+
+/// 지도 스타일에 넣는 색 글자(#RRGGBB).
+String _hexColor(Color c) =>
+    '#${(c.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
 
 /// 축척 계산에 필요한 카메라 값.
 class MapViewport {
@@ -1969,7 +1977,8 @@ class _RunneryMapState extends State<RunneryMap> {
       widget.route.lastOrNull?.lastOrNull,
     ].join('/');
     final friendSignature = [
-      for (final f in widget.friends) '${f.name}${f.point}${f.route.length}',
+      for (final f in widget.friends)
+        '${f.name}${f.point}${f.route.length}${f.color?.toARGB32()}',
     ].join('/');
     final sentAt = _routeSentAt;
     final waiting =
@@ -2071,8 +2080,24 @@ class _RunneryMapState extends State<RunneryMap> {
       final label = MapLabel(f.point, MapLabelKind.friend, f.name);
       final id = 'chip-friend-${f.name.hashCode}';
       if (_images.add(id)) await map.addImage(id, await _chipImage(label, dpr));
+      // 팀원이 고른 색이 있으면 그 색 점을 만듭니다(검정 테두리는 같음).
+      var dot = 'marker-friend';
+      if (f.color case final color?) {
+        dot = 'marker-friend-${_hexColor(color)}';
+        if (_images.add(dot)) {
+          await map.addImage(
+            dot,
+            await _drawPng(const Size.square(26), dpr, (c) {
+              const o = Offset(13, 13);
+              c
+                ..drawCircle(o, 9, Paint()..color = Colors.black)
+                ..drawCircle(o, 7, Paint()..color = color);
+            }),
+          );
+        }
+      }
       features
-        ..add(_feature(_point(f.point), {'icon': 'marker-friend'}))
+        ..add(_feature(_point(f.point), {'icon': dot}))
         ..add(_feature(_point(f.point), {'icon': id, 'chip': true}));
     }
     await map.setGeoJsonSource(_friendSource, _features(features));
@@ -2081,10 +2106,18 @@ class _RunneryMapState extends State<RunneryMap> {
       _features([
         for (final f in widget.friends)
           if (f.route.length >= 2)
-            _feature({
-              'type': 'LineString',
-              'coordinates': [for (final p in f.route) _coord(p)],
-            }),
+            _feature(
+              {
+                'type': 'LineString',
+                'coordinates': [for (final p in f.route) _coord(p)],
+              },
+              {
+                'color': ?switch (f.color) {
+                  final c? => _hexColor(c),
+                  null => null,
+                },
+              },
+            ),
       ]),
     );
   }
@@ -2661,8 +2694,18 @@ String _runneryMapStyle(double routeWidth, [double routeOpacity = 1]) {
         'source': _RunneryMapState._friendRouteSource,
         'layout': {'line-cap': 'round', 'line-join': 'round'},
         'paint': {
-          'line-color': '#FFFFFF',
-          'line-opacity': 0.6,
+          // 팀원이 고른 색이 있으면 그 색, 없으면 흰색(친구 약속).
+          'line-color': [
+            'coalesce',
+            ['get', 'color'],
+            '#FFFFFF',
+          ],
+          'line-opacity': [
+            'case',
+            ['has', 'color'],
+            0.9,
+            0.6,
+          ],
           'line-width': routeWidth - 1,
         },
       },

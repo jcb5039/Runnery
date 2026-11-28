@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../design_system/app_colors.dart';
+import '../../design_system/inline_notice.dart';
 import '../../record/models/running_record.dart' show clockText;
 import '../data/crew_store.dart';
 import '../data/friend_store.dart';
@@ -30,6 +31,16 @@ class CrewRoomPage extends StatefulWidget {
   /// 한 번에 불러오는 메시지 수.
   static const pageSize = 50;
 
+  /// 지금 열려 있는 채팅방 화면(크루 번호 → 화면). 크루로 달린 뒤 결과 화면에서 '완료'를 누르면
+  /// 이 화면으로 돌아옵니다.
+  static final Map<String, Route<dynamic>> _openRoutes = {};
+
+  /// [crewId] 채팅방이 열려 있으면 그 화면. 없으면 null.
+  static Route<dynamic>? openRoute(String crewId) {
+    final route = _openRoutes[crewId];
+    return route != null && route.isActive ? route : null;
+  }
+
   @override
   State<CrewRoomPage> createState() => _CrewRoomPageState();
 }
@@ -52,6 +63,9 @@ class _CrewRoomPageState extends State<CrewRoomPage> {
   List<CrewMessage> _messages = const [];
   int _limit = CrewRoomPage.pageSize;
   bool _sending = false;
+
+  /// 안 되면 누른 곳 가까이에 빨간 글씨로 알립니다('send' 입력 칸 바로 위, 'run:번호' 그 모집 카드 아래).
+  final _notices = Notices();
 
   @override
   void initState() {
@@ -95,11 +109,25 @@ class _CrewRoomPageState extends State<CrewRoomPage> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _route = ModalRoute.of(context);
+    if (_route case final route?) CrewRoomPage._openRoutes[widget.id] = route;
+  }
+
+  /// 이 채팅방 화면(결과 화면의 '완료'가 돌아올 곳).
+  Route<dynamic>? _route;
+
+  @override
   void dispose() {
+    if (CrewRoomPage._openRoutes[widget.id] == _route) {
+      CrewRoomPage._openRoutes.remove(widget.id);
+    }
     _store.closedRoom(widget.id);
     _crewSub?.cancel();
     _messageSub?.cancel();
     _text.dispose();
+    _notices.dispose();
     super.dispose();
   }
 
@@ -107,11 +135,13 @@ class _CrewRoomPageState extends State<CrewRoomPage> {
     final text = _text.text.trim();
     if (text.isEmpty || _sending) return;
     setState(() => _sending = true);
+    _notices.clear('send');
     try {
       await _store.send(widget.id, text);
       _text.clear();
     } on FriendException catch (e) {
-      if (mounted) showFriendMessage(context, e.message);
+      // 쓴 글은 지우지 않고 남겨 다시 보낼 수 있게 합니다.
+      if (mounted) _notices.show('send', e.message);
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -127,16 +157,19 @@ class _CrewRoomPageState extends State<CrewRoomPage> {
     ),
   );
 
-  void _openLobby(String runId) => Navigator.of(context).push(
-    MaterialPageRoute<void>(
-      builder: (_) => CrewLobbyPage(
-        crewId: widget.id,
-        runId: runId,
-        friends: widget.friends,
-        store: widget.store,
-      ),
-    ),
-  );
+  /// [joined]면 막 참여한 것이라 대기실에 들어가자마자 색 고르는 화면이 뜹니다.
+  void _openLobby(String runId, {bool joined = false}) =>
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => CrewLobbyPage(
+            crewId: widget.id,
+            runId: runId,
+            friends: widget.friends,
+            store: widget.store,
+            pickColorOnOpen: joined,
+          ),
+        ),
+      );
 
   /// 크루를 나간 뒤 채팅방만 닫습니다. 나가자마자 서버 소식으로 서랍이 먼저 사라질 수 있어서,
   /// 몇 번 닫는 대신 이 화면을 콕 집어 닫습니다(아래 화면까지 닫혀 검은 화면이 되지 않게).
@@ -179,11 +212,12 @@ class _CrewRoomPageState extends State<CrewRoomPage> {
   }
 
   Future<void> _join(CrewRun run) async {
+    _notices.clear('run:${run.id}');
     try {
       await _store.joinRun(run);
-      if (mounted) _openLobby(run.id);
+      if (mounted) _openLobby(run.id, joined: true);
     } on FriendException catch (e) {
-      if (mounted) showFriendMessage(context, e.message);
+      if (mounted) _notices.show('run:${run.id}', e.message);
     }
   }
 
@@ -247,6 +281,11 @@ class _CrewRoomPageState extends State<CrewRoomPage> {
             : Column(
                 children: [
                   Expanded(child: _list()),
+                  NoticeSlot(
+                    notices: _notices,
+                    id: 'send',
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                  ),
                   _composer(),
                 ],
               ),
@@ -288,8 +327,12 @@ class _CrewRoomPageState extends State<CrewRoomPage> {
             store: _store,
             onJoin: _join,
             onOpen: (run) => _openLobby(run.id),
+            // 팀 기록 화면을 만들기 전까지는 채팅방 메뉴(서랍)의 '함께 달린 기록'을 엽니다.
+            onRecord: (_) => _scaffold.currentState?.openEndDrawer(),
           ),
         );
+        // 참여하지 못하면 그 카드 바로 아래에 이유가 보입니다.
+        items.add(NoticeSlot(notices: _notices, id: 'run:${m.runId}'));
         continue;
       }
       items.add(

@@ -24,10 +24,41 @@ void main() {
   test('refresh publishes my profile so others can find me', () async {
     await storeFor(haeun).refresh();
     await storeFor(kim).refresh();
-    final found = await storeFor(minji).search('하은');
-    expect(found.map((p) => p.name), ['김하은', '박하은']);
-    expect(await storeFor(minji).search('@kim'), [kim]);
+    expect(await storeFor(minji).search('haeun'), [haeun]);
+    expect(await storeFor(minji).search('@KIM'), [kim]);
     expect(await storeFor(minji).search('  '), isEmpty);
+  });
+
+  test('아이디 앞부분으로만 찾고, 이름으로는 찾지 않아요', () async {
+    const qwer = PublicProfile(uid: 'q1', name: '가', id: 'qwer');
+    const qwet = PublicProfile(uid: 'q2', name: '나', id: 'qwet');
+    server.profilesByUid
+      ..[qwer.uid] = qwer
+      ..[qwet.uid] = qwet;
+    final store = storeFor(minji);
+    expect(await store.search('qwe'), [qwer, qwet]);
+    expect(await store.search('qwer'), [qwer]);
+    // 아이디 중간 글자나 이름으로는 안 나와요.
+    expect(await store.search('wer'), isEmpty);
+    expect(await store.search('가'), isEmpty);
+  });
+
+  test('검색 결과는 아이디 순서로 5명까지만 보여요', () async {
+    for (var i = 1; i <= 8; i++) {
+      server.profilesByUid['r$i'] = PublicProfile(
+        uid: 'r$i',
+        name: '러너$i',
+        id: 'runner_$i',
+      );
+    }
+    final found = await storeFor(minji).search('runner');
+    expect(found.map((p) => p.id), [
+      'runner_1',
+      'runner_2',
+      'runner_3',
+      'runner_4',
+      'runner_5',
+    ]);
   });
 
   test('request, accept and remove keep both sides in sync', () async {

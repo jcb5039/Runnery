@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../account/account_store.dart';
 import '../../design_system/app_colors.dart';
+import '../../design_system/inline_notice.dart';
 import '../../home/main_tabs.dart';
 import '../auth_ui/auth_ui.dart';
 import '../login.dart';
@@ -25,6 +26,10 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
   late final AccountStore _store = widget.store ?? AccountStore.instance;
   Timer? _timer;
   int _cooldown = 0;
+
+  /// 누른 버튼 바로 아래에 알립니다('check' 인증했어요, 'resend' 메일 다시 보내기).
+  /// 메일을 다시 보낸 것은 실패가 아니라서 회색 글씨입니다.
+  final _notices = Notices();
   bool _busy = false;
 
   @override
@@ -44,14 +49,13 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
   @override
   void dispose() {
     _timer?.cancel();
+    _notices.dispose();
     super.dispose();
   }
 
-  void _message(String text) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
-
   Future<void> _check() async {
     setState(() => _busy = true);
+    _notices.clear('check');
     try {
       final verified = await _store.refreshVerification();
       if (!mounted) return;
@@ -60,12 +64,12 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
           MaterialPageRoute(builder: (_) => const MainTabs()),
         );
       } else {
-        _message('아직 인증되지 않았어요. 메일의 링크를 눌러주세요');
+        _notices.show('check', '아직 인증되지 않았어요. 메일의 링크를 눌러주세요');
       }
     } on AuthException catch (e) {
-      if (mounted) _message(e.message);
+      if (mounted) _notices.show('check', e.message);
     } catch (_) {
-      if (mounted) _message('확인하지 못했어요. 다시 시도해주세요');
+      if (mounted) _notices.show('check', '확인하지 못했어요. 다시 시도해주세요');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -73,15 +77,16 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
 
   Future<void> _resend() async {
     setState(() => _busy = true);
+    _notices.clear('resend');
     try {
       await _store.resendVerification();
       if (!mounted) return;
-      _message('인증 메일을 다시 보냈어요');
+      _notices.show('resend', '인증 메일을 다시 보냈어요', success: true);
       _startCooldown(_resendSeconds);
     } on AuthException catch (e) {
-      if (mounted) _message(e.message);
+      if (mounted) _notices.show('resend', e.message);
     } catch (_) {
-      if (mounted) _message('메일을 보내지 못했어요. 다시 시도해주세요');
+      if (mounted) _notices.show('resend', '메일을 보내지 못했어요. 다시 시도해주세요');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -191,11 +196,17 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
           label: _busy ? '확인 중…' : '인증했어요',
           onPressed: _busy ? null : _check,
         ),
+        NoticeSlot(notices: _notices, id: 'check', textAlign: TextAlign.center),
         const SizedBox(height: 12),
         AuthButton(
           label: _cooldown > 0 ? '메일 다시 보내기 ($_cooldown초)' : '메일 다시 보내기',
           outlined: true,
           onPressed: _busy || _cooldown > 0 ? null : _resend,
+        ),
+        NoticeSlot(
+          notices: _notices,
+          id: 'resend',
+          textAlign: TextAlign.center,
         ),
         const SizedBox(height: 8),
         TextButton(

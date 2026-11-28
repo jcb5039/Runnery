@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../design_system/app_colors.dart';
+import '../../design_system/inline_notice.dart';
 import '../../design_system/app_radius.dart';
 import '../../design_system/app_spacing.dart';
 import '../data/crew_store.dart';
@@ -46,6 +47,15 @@ class _FriendNotificationsPageState extends State<FriendNotificationsPage> {
   final Map<String, (Together, TogetherStatus)> _answeredInvites = {};
   final Set<String> _busy = {};
 
+  /// 실패하면 그 줄 바로 아래에 빨간 글씨로 알립니다(자리 이름은 [_act]의 key).
+  final _notices = Notices();
+
+  @override
+  void dispose() {
+    _notices.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -59,9 +69,10 @@ class _FriendNotificationsPageState extends State<FriendNotificationsPage> {
     if (_busy.contains(key)) return;
     setState(() => _busy.add(key));
     try {
+      _notices.clear(key);
       await task();
     } on FriendException catch (e) {
-      if (mounted) showFriendMessage(context, e.message);
+      if (mounted) _notices.show(key, e.message);
     } finally {
       if (mounted) setState(() => _busy.remove(key));
     }
@@ -141,12 +152,14 @@ class _FriendNotificationsPageState extends State<FriendNotificationsPage> {
           _friends.loading ? '불러오는 중이에요' : _friends.error ?? '받은 친구 요청이 없어요',
         )
       else ...[
-        for (final (i, person) in waiting.indexed)
+        for (final (i, person) in waiting.indexed) ...[
           FriendRow(
             person: person,
             divider: i > 0,
             trailing: _friendButtons(person),
           ),
+          NoticeSlot(notices: _notices, id: person.uid),
+        ],
         for (final (i, (person, accepted)) in answered.indexed)
           FriendRow(
             person: person,
@@ -234,20 +247,24 @@ class _FriendNotificationsPageState extends State<FriendNotificationsPage> {
               : _together.error ?? '받은 함께 달리기 초대가 없어요',
         )
       else ...[
-        for (final t in waiting)
+        for (final t in waiting) ...[
           TogetherRequestCard(
             together: t,
             store: _together,
             busy: _busy.contains(t.id),
             onAnswer: (status) => _answerInvite(t, status),
           ),
-        for (final (t, status) in answered)
+          NoticeSlot(notices: _notices, id: t.id),
+        ],
+        for (final (t, status) in answered) ...[
           TogetherAnsweredCard(
             together: t,
             store: _together,
             status: status,
             onUndo: () => _answerInvite(t, TogetherStatus.pending),
           ),
+          NoticeSlot(notices: _notices, id: t.id),
+        ],
       ],
     ];
   }
@@ -272,8 +289,10 @@ class _FriendNotificationsPageState extends State<FriendNotificationsPage> {
       if (waiting.isEmpty && answered.isEmpty)
         _note('받은 크루 초대가 없어요')
       else ...[
-        for (final (i, invite) in waiting.indexed)
+        for (final (i, invite) in waiting.indexed) ...[
           _crewRow(invite, divider: i > 0, trailing: _crewButtons(invite)),
+          NoticeSlot(notices: _notices, id: invite.id),
+        ],
         for (final (i, (invite, accepted)) in answered.indexed)
           _crewRow(
             invite,

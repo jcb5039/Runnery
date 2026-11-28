@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../../design_system/app_colors.dart';
 import '../../design_system/app_radius.dart';
+import '../../design_system/inline_notice.dart';
 import '../../home/running/running_start_page.dart' show runningNumberStyle;
 import '../../record/list/detail/record_detail_page.dart' show recordDelete;
 import '../../record/models/running_record.dart' show clockText;
@@ -14,7 +16,7 @@ import 'crew_new_page.dart' show CrewInvitePage;
 import 'crew_tab.dart' show CrewFaces;
 
 /// 17-11 크루 채팅방 서랍: 크루 이름·인원, 공지(크루장만 씀), 함께 달린 기록, 멤버(크루장은 내보내기),
-/// 멤버 초대, 나가기, 알림 켜고 끄기(종 아이콘).
+/// 초대 코드(복사, 크루장은 바꾸기), 멤버 초대, 나가기, 알림 켜고 끄기(종 아이콘).
 class CrewInfoDrawer extends StatefulWidget {
   const CrewInfoDrawer({
     super.key,
@@ -47,6 +49,22 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
   /// 팀 기록이 끝난 모집들. 불러오는 중이면 null.
   List<CrewRun>? _runs;
   bool _allMembers = false;
+
+  /// 안 되면 누른 곳 바로 아래(맨 아래 버튼이면 위)에 빨간 글씨로 알립니다.
+  /// 자리: 'code' 코드 칸, 'notice' 공지 칸, 'member:uid' 멤버 줄, 'bottom' 나가기·알림 버튼 줄.
+  final _notices = Notices();
+
+  /// 코드를 복사했으면 잠깐 복사 버튼이 체크 표시로 바뀝니다.
+  bool _copied = false;
+  Timer? _copiedTimer;
+
+  @override
+  void dispose() {
+    _notices.dispose();
+    _copiedTimer?.cancel();
+    super.dispose();
+  }
+
   bool _busy = false;
 
   @override
@@ -54,6 +72,39 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
     super.initState();
     unawaited(_loadMembers());
     unawaited(_loadRuns());
+    // 코드가 없는 예전 크루는 크루장이 서랍을 열 때 코드를 만듭니다.
+    final me = _store.me?.uid;
+    if (_crew.code == null && me != null && _crew.isOwner(me)) {
+      unawaited(_makeCode());
+    }
+  }
+
+  Future<void> _makeCode() async {
+    try {
+      await _store.issueCode(_crew);
+    } on FriendException {
+      // 서랍을 다시 열면 또 만듭니다.
+    }
+  }
+
+  Future<void> _copyCode(String code) async {
+    await Clipboard.setData(ClipboardData(text: code));
+    if (!mounted) return;
+    setState(() => _copied = true);
+    _copiedTimer?.cancel();
+    _copiedTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _copied = false);
+    });
+  }
+
+  Future<void> _changeCode() async {
+    final ok = await _confirm(
+      '초대 코드를 바꿀까요?',
+      '바꾸면 지금 코드로는 더 이상 들어올 수 없어요.',
+      '바꾸기',
+    );
+    if (ok != true || !mounted) return;
+    await _run('code', () => _store.issueCode(_crew));
   }
 
   Future<void> _loadRuns() async {
@@ -94,14 +145,15 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
     ];
   }
 
-  Future<void> _run(Future<void> Function() task, {String? done}) async {
+  /// 잘 되면 화면이 바뀌는 것으로 알 수 있어 따로 알리지 않고, 안 되면 [at] 자리에 이유를 보여 줍니다.
+  Future<void> _run(String at, Future<void> Function() task) async {
     if (_busy) return;
     setState(() => _busy = true);
+    _notices.clear(at);
     try {
       await task();
-      if (mounted && done != null) showFriendMessage(context, done);
     } on FriendException catch (e) {
-      if (mounted) showFriendMessage(context, e.message);
+      if (mounted) _notices.show(at, e.message);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -116,10 +168,7 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
       builder: (context) => _NoticeSheet(initial: _crew.notice?.text ?? ''),
     );
     if (text == null) return;
-    await _run(
-      () => _store.setNotice(_crew, text),
-      done: text.trim().isEmpty ? '공지를 지웠어요' : '공지를 올렸어요',
-    );
+    await _run('notice', () => _store.setNotice(_crew, text));
   }
 
   Future<void> _kick(String uid) async {
@@ -136,7 +185,7 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
       '내보내기',
     );
     if (!sure) return;
-    await _run(() => _store.kick(_crew, uid), done: '$name 님을 내보냈어요');
+    await _run('member:$uid', () => _store.kick(_crew, uid));
   }
 
   Future<void> _leave() async {
@@ -160,13 +209,14 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
     );
     if (!sure || _busy) return;
     setState(() => _busy = true);
+    _notices.clear('bottom');
     try {
       await _store.leave(_crew);
       widget.onLeft();
     } on FriendException catch (e) {
       if (mounted) {
         setState(() => _busy = false);
-        showFriendMessage(context, e.message);
+        _notices.show('bottom', e.message);
       }
     }
   }
@@ -294,7 +344,11 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
                       ],
                     ),
                     const SizedBox(height: 24),
+                    _codeCard(owner),
+                    NoticeSlot(notices: _notices, id: 'code'),
+                    const SizedBox(height: 12),
                     _noticeCard(owner),
+                    NoticeSlot(notices: _notices, id: 'notice'),
                     const SizedBox(height: 28),
                     const FriendSectionHeader(title: '함께 달린 기록'),
                     _CrewRecords(runs: _runs, me: me, now: _store.now),
@@ -347,7 +401,10 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
                         ),
                       ),
                     ),
-                    for (final uid in shown) _memberRow(uid, me, owner),
+                    for (final uid in shown) ...[
+                      _memberRow(uid, me, owner),
+                      NoticeSlot(notices: _notices, id: 'member:$uid'),
+                    ],
                     if (!_allMembers &&
                         ordered.length > CrewInfoDrawer.previewMembers)
                       TextButton(
@@ -359,6 +416,13 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
                       ),
                   ],
                 ),
+              ),
+              // 나가기·알림 버튼은 서랍 맨 아래라, 안 되면 그 바로 위에 보여 줍니다.
+              NoticeSlot(
+                notices: _notices,
+                id: 'bottom',
+                textAlign: TextAlign.center,
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
               ),
               Divider(height: 1, color: AppColors.divider),
               Row(
@@ -384,6 +448,7 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
                         onPressed: _busy
                             ? null
                             : () => _run(
+                                'bottom',
                                 () => _store.setMuted(_crew.id, muted: !muted),
                               ),
                         style: TextButton.styleFrom(
@@ -407,6 +472,84 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
       );
     },
   );
+
+  /// 초대 코드: 친구가 아니어도 이 코드로 들어올 수 있어요. 멤버는 복사하고, 크루장은 바꿀 수 있습니다.
+  Widget _codeCard(bool owner) {
+    final code = _crew.code;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: AppRadius.thumbnailBorder,
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.vpn_key_outlined,
+            size: 18,
+            color: AppColors.textSecondary,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '초대 코드',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                if (code != null)
+                  Text(
+                    code,
+                    semanticsLabel: '초대 코드 ${code.split('').join(' ')}',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 2,
+                    ),
+                  )
+                else
+                  Text(
+                    owner ? '코드를 만드는 중이에요' : '아직 코드가 없어요',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                const SizedBox(height: 4),
+                Text(
+                  '친구가 아니어도 이 코드로 들어올 수 있어요',
+                  style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+                ),
+              ],
+            ),
+          ),
+          if (code != null)
+            IconButton(
+              tooltip: _copied ? '복사했어요' : '코드 복사',
+              icon: Icon(
+                _copied ? Icons.check_rounded : Icons.copy_rounded,
+                size: 20,
+              ),
+              color: AppColors.textSecondary,
+              onPressed: () => _copyCode(code),
+            ),
+          if (owner)
+            IconButton(
+              tooltip: '코드 바꾸기',
+              icon: const Icon(Icons.refresh_rounded, size: 20),
+              color: AppColors.textSecondary,
+              onPressed: _busy ? null : _changeCode,
+            ),
+        ],
+      ),
+    );
+  }
 
   Widget _noticeCard(bool owner) {
     final notice = _crew.notice;

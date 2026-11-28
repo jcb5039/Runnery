@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../design_system/app_colors.dart';
 import '../../design_system/app_radius.dart';
+import '../../design_system/inline_notice.dart';
 import '../../home/running/running_start_page.dart' show runningNumberStyle;
 import '../../record/models/running_record.dart' show clockText;
 import '../data/friend_store.dart';
@@ -33,10 +34,19 @@ class _TogetherTabState extends State<TogetherTab> {
   final Map<String, (Together, TogetherStatus)> _answered = {};
   final Set<String> _busy = {};
 
+  /// 답하지 못하면 그 약속 카드 바로 아래에 빨간 글씨로 알립니다(약속 번호).
+  final _notices = Notices();
+
   @override
   void initState() {
     super.initState();
     unawaited(_store.refresh());
+  }
+
+  @override
+  void dispose() {
+    _notices.dispose();
+    super.dispose();
   }
 
   Future<void> _open(Widget page) async {
@@ -64,7 +74,7 @@ class _TogetherTabState extends State<TogetherTab> {
             : _answered[t.id] = (t, status);
       });
     } on FriendException catch (e) {
-      if (mounted) showFriendMessage(context, e.message);
+      if (mounted) _notices.show(t.id, e.message);
     } finally {
       if (mounted) setState(() => _busy.remove(t.id));
     }
@@ -92,20 +102,24 @@ class _TogetherTabState extends State<TogetherTab> {
               title: '받은 요청',
               meta: requests.isEmpty ? '확인 완료' : '${requests.length}개',
             ),
-            for (final t in requests)
+            for (final t in requests) ...[
               TogetherRequestCard(
                 together: t,
                 store: _store,
                 busy: _busy.contains(t.id),
                 onAnswer: (status) => _answer(t, status),
               ),
-            for (final (t, status) in answered)
+              NoticeSlot(notices: _notices, id: t.id),
+            ],
+            for (final (t, status) in answered) ...[
               TogetherAnsweredCard(
                 together: t,
                 store: _store,
                 status: status,
                 onUndo: () => _answer(t, TogetherStatus.pending),
               ),
+              NoticeSlot(notices: _notices, id: t.id),
+            ],
           ],
           const SizedBox(height: 30),
           FriendSectionHeader(

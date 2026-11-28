@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../design_system/app_colors.dart';
+import '../../design_system/inline_notice.dart';
 import '../../design_system/app_radius.dart';
 import '../../home/running/running_start_page.dart' show runningNumberStyle;
 import '../../record/data/route_thumbnails.dart';
@@ -452,9 +453,13 @@ class FeedSection extends StatelessWidget {
     this.onOpenFriend,
     this.onMore,
     this.error,
+    this.notices,
   });
 
   final List<FeedItem> items;
+
+  /// 응원·차단이 안 되면 그 카드 바로 아래에 빨간 글씨로 알립니다(자리 이름 'feed:카드 key').
+  final Notices? notices;
   final void Function(FeedItem, CheerType)? onCheer;
 
   /// 친구 이름을 눌렀을 때(친구 달력)와 '더보기'를 눌렀을 때(신고·차단). 내 피드에는 없습니다.
@@ -478,7 +483,7 @@ class FeedSection extends StatelessWidget {
           ),
         )
       else
-        for (final (i, item) in items.indexed)
+        for (final (i, item) in items.indexed) ...[
           FeedCard(
             key: ValueKey(item.key),
             item: item,
@@ -496,6 +501,13 @@ class FeedSection extends StatelessWidget {
               null => null,
             },
           ),
+          if (notices case final n?)
+            NoticeSlot(
+              notices: n,
+              id: 'feed:${item.key}',
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+            ),
+        ],
     ],
   );
 }

@@ -12,7 +12,7 @@ import '../widgets/friend_widgets.dart';
 import 'friend_notifications_page.dart';
 
 /// 앱을 켜 둔 동안 새 친구 요청이나 크루 초대가 오면 화면 위에서 띠를 내려 알려 줍니다(꺼진 폰을 깨우는 알림은 없음).
-/// 알림이 켜진 크루에 새 채팅이 오면, 그 채팅방을 보고 있지 않을 때 크루 이름과 내용을 띠로 보여 주고 누르면 채팅방이 열립니다
+/// 알림이 켜진 크루에 새 채팅이 오면, 그 채팅방을 보고 있지 않을 때 '보낸 사람: 내용'을 띠로 보여 주고 누르면 채팅방이 열립니다
 /// (달리는 중에는 띄우지 않음).
 /// 요청·초대 띠를 누르면 알림 화면이 열리고, 4초 뒤나 위로 밀면 사라집니다.
 /// 앱을 켤 때 이미 와 있던 요청·초대는 띠 없이 알림 종의 빨간 점으로만 알려 주고, 달리는 중에는 띠를 미뤘다가
@@ -167,7 +167,6 @@ class _FriendRequestListenerState extends State<FriendRequestListener> {
     _show(
       '${_crew.nameOf(last.uid)}: ${last.text}',
       _crew.person(last.uid)?.initial ?? '크',
-      title: crew.name,
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) =>
@@ -207,18 +206,12 @@ class _FriendRequestListenerState extends State<FriendRequestListener> {
   }
 
   /// [onTap]이 없으면 띠를 눌렀을 때 알림 화면을 엽니다.
-  void _show(
-    String message,
-    String initial, {
-    String? title,
-    VoidCallback? onTap,
-  }) {
+  void _show(String message, String initial, {VoidCallback? onTap}) {
     _remove();
     final overlay = Overlay.maybeOf(context);
     if (overlay == null) return;
     _banner = OverlayEntry(
       builder: (_) => _Banner(
-        title: title,
         message: message,
         initial: initial,
         onTap: () {
@@ -267,15 +260,12 @@ class _FriendRequestListenerState extends State<FriendRequestListener> {
 /// 화면 위의 띠: 보낸 사람 첫 글자, 안내, '보기'.
 class _Banner extends StatefulWidget {
   const _Banner({
-    this.title,
     required this.message,
     required this.initial,
     required this.onTap,
     required this.onDismiss,
   });
 
-  /// 굵은 첫 줄(크루 채팅이면 크루 이름). 없으면 [message]만 보입니다.
-  final String? title;
   final String message, initial;
   final VoidCallback onTap, onDismiss;
 
@@ -315,7 +305,7 @@ class _BannerState extends State<_Banner> with SingleTickerProviderStateMixin {
           child: Semantics(
             liveRegion: true,
             button: true,
-            label: [?widget.title, widget.message, '눌러서 보기'].join(', '),
+            label: '${widget.message}, 눌러서 보기',
             excludeSemantics: true,
             child: Material(
               color: AppColors.sheet,
@@ -334,41 +324,15 @@ class _BannerState extends State<_Banner> with SingleTickerProviderStateMixin {
                       FriendAvatar(initial: widget.initial, size: 36),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: widget.title == null
-                            ? Text(
-                                widget.message,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              )
-                            : Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    widget.title!,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    widget.message,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                        child: Text(
+                          widget.message,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ),
                       const SizedBox(width: 8),
                       Text(

@@ -26,8 +26,9 @@ abstract class FriendBackend {
   /// 내 공개 정보를 올립니다(이름·아이디가 바뀌면 덮어씁니다).
   Future<void> publishProfile(PublicProfile me);
 
-  /// 이름 일부나 아이디 앞부분으로 찾습니다. [query]는 소문자로 바꾼 검색어입니다.
-  Future<List<PublicProfile>> search(String query);
+  /// 아이디 앞부분으로 찾습니다(이름으로는 찾지 않음). [query]는 소문자로 바꾼 검색어이고,
+  /// 아이디 순서로 [limit]명까지 돌려줍니다.
+  Future<List<PublicProfile>> search(String query, {int limit = 10});
 
   /// 여러 사람의 공개 정보. 서버에 없는 사람은 빠집니다.
   Future<Map<String, PublicProfile>> profiles(List<String> uids);
@@ -216,14 +217,20 @@ class FirebaseFriendBackend implements FriendBackend {
   );
 
   @override
-  Future<List<PublicProfile>> search(String query) => _run(() async {
-    final snapshot = await _db
-        .collection('profiles')
-        .where('keywords', arrayContains: query)
-        .limit(20)
-        .get();
-    return [for (final doc in snapshot.docs) ?_toProfile(doc.id, doc.data())];
-  }, '찾지 못했어요. 다시 시도해주세요');
+  Future<List<PublicProfile>> search(String query, {int limit = 10}) => _run(
+    () async {
+      // 아이디가 query로 시작하는 사람: query 이상, query 뒤에 가장 큰 글자를 붙인 것 미만.
+      final snapshot = await _db
+          .collection('profiles')
+          .where('id', isGreaterThanOrEqualTo: query)
+          .where('id', isLessThan: '$query\uf8ff')
+          .orderBy('id')
+          .limit(limit)
+          .get();
+      return [for (final doc in snapshot.docs) ?_toProfile(doc.id, doc.data())];
+    },
+    '찾지 못했어요. 다시 시도해주세요',
+  );
 
   @override
   Future<Map<String, PublicProfile>> profiles(List<String> uids) => _run(

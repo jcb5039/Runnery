@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../account/account_store.dart';
 import '../design_system/app_colors.dart';
+import '../design_system/inline_notice.dart';
 import '../home/main_tabs.dart';
 import 'auth_ui/auth_ui.dart';
 import 'sign_up/sign_up_choice.dart';
@@ -39,8 +40,8 @@ class _LoginPageV2State extends State<LoginPageV2> {
   late final AccountStore _store = widget.store ?? AccountStore.instance;
   bool busy = false;
 
-  void message(String text) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  /// 가입하지 못한 이유. '회원가입' 버튼 바로 아래에 빨간 글씨로 보여 줍니다.
+  String? _error;
 
   void _next() => _openAfterLogin(context, _store);
 
@@ -64,15 +65,18 @@ class _LoginPageV2State extends State<LoginPageV2> {
     if (result is SocialSignedIn) return _next();
     if (result is! RegistrationData) return;
     final data = result;
-    setState(() => busy = true);
+    setState(() {
+      busy = true;
+      _error = null;
+    });
     try {
       await _store.register(data);
       if (!mounted) return;
       _next();
     } on AuthException catch (e) {
-      if (mounted) message(e.message);
+      if (mounted) setState(() => _error = e.message);
     } catch (_) {
-      if (mounted) message('가입하지 못했어요. 다시 시도해주세요');
+      if (mounted) setState(() => _error = '가입하지 못했어요. 다시 시도해주세요');
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -133,6 +137,7 @@ class _LoginPageV2State extends State<LoginPageV2> {
               ),
             ],
           ),
+          InlineNotice(_error, textAlign: TextAlign.center),
         ],
       ),
     ),
@@ -210,27 +215,31 @@ class _EmailLoginPageState extends State<EmailLoginPage> {
   final email = TextEditingController();
   final password = TextEditingController();
   bool busy = false;
+
+  /// 안 되면 누른 곳 바로 아래에 알립니다('login' 로그인 버튼, 'forgot' 비밀번호 찾기).
+  /// 재설정 메일을 보낸 것은 실패가 아니라서 회색 글씨입니다.
+  final _notices = Notices();
+
   @override
   void dispose() {
     email.dispose();
     password.dispose();
+    _notices.dispose();
     super.dispose();
   }
-
-  void message(String text) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
 
   Future<void> login() async {
     if (!form.currentState!.validate()) return;
     setState(() => busy = true);
+    _notices.clear('login');
     try {
       await _store.login(email.text.trim(), password.text);
       if (!mounted) return;
       _openAfterLogin(context, _store);
     } on AuthException catch (e) {
-      if (mounted) message(e.message);
+      if (mounted) _notices.show('login', e.message);
     } catch (_) {
-      if (mounted) message('로그인하지 못했어요. 다시 시도해주세요');
+      if (mounted) _notices.show('login', '로그인하지 못했어요. 다시 시도해주세요');
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -244,16 +253,23 @@ class _EmailLoginPageState extends State<EmailLoginPage> {
     );
     if (input == null || !mounted) return;
     if (!_emailPattern.hasMatch(input)) {
-      return message('올바른 이메일을 입력해주세요');
+      return _notices.show('forgot', '올바른 이메일을 입력해주세요');
     }
     setState(() => busy = true);
+    _notices.clear('forgot');
     try {
       await _store.sendPasswordReset(input);
-      if (mounted) message('가입된 이메일이라면 재설정 메일을 보냈어요. 메일함을 확인해주세요');
+      if (mounted) {
+        _notices.show(
+          'forgot',
+          '가입된 이메일이라면 재설정 메일을 보냈어요. 메일함을 확인해주세요',
+          success: true,
+        );
+      }
     } on AuthException catch (e) {
-      if (mounted) message(e.message);
+      if (mounted) _notices.show('forgot', e.message);
     } catch (_) {
-      if (mounted) message('메일을 보내지 못했어요. 다시 시도해주세요');
+      if (mounted) _notices.show('forgot', '메일을 보내지 못했어요. 다시 시도해주세요');
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -336,12 +352,25 @@ class _EmailLoginPageState extends State<EmailLoginPage> {
               ),
             ),
           ),
+          NoticeSlot(
+            notices: _notices,
+            id: 'forgot',
+            textAlign: TextAlign.end,
+            padding: EdgeInsets.zero,
+          ),
         ],
       ),
     ),
-    actions: AuthButton(
-      label: busy ? '처리 중…' : '로그인',
-      onPressed: busy ? null : login,
+    actions: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AuthButton(
+          label: busy ? '처리 중…' : '로그인',
+          onPressed: busy ? null : login,
+        ),
+        NoticeSlot(notices: _notices, id: 'login', textAlign: TextAlign.center),
+      ],
     ),
   );
 }

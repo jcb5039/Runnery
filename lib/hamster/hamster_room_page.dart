@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../account/account_store.dart';
+import '../design_system/app_colors.dart';
+import '../design_system/inline_notice.dart';
 import '../record/data/running_record_store.dart';
 import 'hamster_level.dart';
 
@@ -129,15 +131,14 @@ class _HamsterRoomPageState extends State<HamsterRoomPage>
       builder: (_) => _MateNameDialog(initial: current),
     );
     if (name == null || name == current || !mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
+    // 안 되면 이름 바로 아래에 빨간 글씨로 알립니다(잘 되면 이름이 바뀌어 보임).
+    _notices.clear('name');
     try {
       await _account.updateMateName(name);
     } on AuthException catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      if (mounted) _notices.show('name', e.message);
     } catch (_) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('이름을 저장하지 못했어요. 다시 시도해주세요')),
-      );
+      if (mounted) _notices.show('name', '이름을 저장하지 못했어요. 다시 시도해주세요');
     }
   }
 
@@ -146,8 +147,12 @@ class _HamsterRoomPageState extends State<HamsterRoomPage>
     _records.removeListener(_reload);
     _account.removeListener(_onAccountChanged);
     _clock.dispose();
+    _notices.dispose();
     super.dispose();
   }
+
+  /// 이름을 저장하지 못한 이유('name'). 그림 위에서도 읽히도록 바탕을 깔아 이름 바로 아래에 보여 줍니다.
+  final _notices = Notices();
 
   @override
   Widget build(BuildContext context) => ColoredBox(
@@ -236,6 +241,30 @@ class _HamsterRoomPageState extends State<HamsterRoomPage>
                       ),
                     ),
                   ),
+                ),
+              ),
+              Positioned(
+                left: dx,
+                right: dx,
+                top: dy + _nameRect.bottom * scale + 4,
+                child: ListenableBuilder(
+                  listenable: _notices,
+                  builder: (context, _) => _notices.of('name') == null
+                      ? const SizedBox.shrink()
+                      : Center(
+                          child: Container(
+                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+                            decoration: BoxDecoration(
+                              color: AppColors.sheet,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: NoticeSlot(
+                              notices: _notices,
+                              id: 'name',
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
                 ),
               ),
               if (_canRename) ...[

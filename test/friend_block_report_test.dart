@@ -60,7 +60,7 @@ void main() {
       expect(store.friends.map((f) => f.uid), [haeun.uid]);
       expect(store.feed.map((f) => f.friend.uid), [haeun.uid]);
       expect(store.blocked.map((p) => p.uid), [seojun.uid]);
-      expect(await store.search('서준'), isEmpty);
+      expect(await store.search('seojun'), isEmpty);
 
       // 차단당한 사람은 다시 친구 요청을 보낼 수 없어요.
       final other = FriendStore(backend: server, me: () => seojun);
@@ -166,32 +166,40 @@ void main() {
       expect(find.text('박하은 님을 신고해요'), findsNothing);
     });
 
-    testWidgets('차단하면 카드가 사라지고, 되돌리기를 누르면 차단하지 않아요', (tester) async {
+    Future<void> startBlock(WidgetTester tester) async {
+      await tester.tap(find.byTooltip('박하은 님 더보기 · 신고 · 차단'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('차단하기'));
+      await tester.pumpAndSettle();
+      expect(find.text('박하은 님을 차단할까요?'), findsOneWidget);
+      await tester.tap(find.text('박하은 님 차단하기'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('차단 확인 창에서 차단하면 카드가 사라지고 바로 차단돼요(하단 알림 없음)', (
+      tester,
+    ) async {
       await open(tester);
-      Future<void> startBlock() async {
-        await tester.tap(find.byTooltip('박하은 님 더보기 · 신고 · 차단'));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('차단하기'));
-        await tester.pumpAndSettle();
-        expect(find.text('박하은 님을 차단할까요?'), findsOneWidget);
-        await tester.tap(find.text('박하은 님 차단하기'));
-        await tester.pumpAndSettle();
-      }
-
-      await startBlock();
-      expect(find.text('박하은 님을 차단했어요'), findsOneWidget);
+      await startBlock(tester);
       expect(find.bySemanticsLabel(RegExp('^박하은 님의 러닝')), findsNothing);
-      await tester.tap(find.text('되돌리기'));
-      await tester.pumpAndSettle();
-      expect(find.bySemanticsLabel(RegExp('^박하은 님의 러닝')), findsOneWidget);
-      expect(server.blocks[minji.uid], isNull);
-
-      await startBlock();
-      await tester.pump(const Duration(seconds: 5));
-      await tester.pumpAndSettle();
+      expect(find.byType(SnackBar), findsNothing);
       expect(server.blocks[minji.uid], {haeun.uid});
       expect(server.friends[minji.uid], {seojun.uid});
-      expect(find.bySemanticsLabel(RegExp('^박하은 님의 러닝')), findsNothing);
+    });
+
+    testWidgets('차단하지 못하면 카드가 다시 보이고, 그 카드 아래에 빨간 글씨로 이유가 보여요', (
+      tester,
+    ) async {
+      await open(tester);
+      server.offline = true;
+      await startBlock(tester);
+      expect(find.bySemanticsLabel(RegExp('^박하은 님의 러닝')), findsOneWidget);
+      expect(find.text('인터넷 연결을 확인해주세요'), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
+      // 5초 뒤 사라져요.
+      await tester.pump(const Duration(seconds: 6));
+      await tester.pumpAndSettle();
+      expect(find.text('인터넷 연결을 확인해주세요'), findsNothing);
     });
   });
 }

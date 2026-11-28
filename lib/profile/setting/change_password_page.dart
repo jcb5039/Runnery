@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../account/account_store.dart';
 import '../../design_system/app_colors.dart';
+import '../../design_system/inline_notice.dart';
 import '../../login/auth_ui/auth_ui.dart';
 
 /// 설정 > 비밀번호 변경. 현재 비밀번호를 한 번 더 확인한 뒤 새 비밀번호로 바꿉니다.
@@ -22,6 +23,9 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
   final _confirm = TextEditingController();
   bool _saving = false;
 
+  /// 안 된 이유. 맨 아래 변경하기 버튼 바로 위에 빨간 글씨로 보여 줍니다.
+  String? _error;
+
   @override
   void dispose() {
     _current.dispose();
@@ -32,19 +36,18 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
 
   Future<void> _save() async {
     if (_saving || !_form.currentState!.validate()) return;
-    setState(() => _saving = true);
-    final messenger = ScaffoldMessenger.of(context);
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
     try {
       await _store.changePassword(_current.text, _next.text);
-      if (!mounted) return;
-      Navigator.pop(context);
-      messenger.showSnackBar(const SnackBar(content: Text('비밀번호를 바꿨어요')));
+      // 화면이 닫히는 것으로 바뀐 걸 알 수 있어 따로 알리지 않습니다.
+      if (mounted) Navigator.pop(context);
     } on AuthException catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      if (mounted) setState(() => _error = e.message);
     } catch (_) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('비밀번호를 바꾸지 못했어요. 다시 시도해주세요')),
-      );
+      if (mounted) setState(() => _error = '비밀번호를 바꾸지 못했어요. 다시 시도해주세요');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -69,22 +72,36 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
     ),
     bottomNavigationBar: SafeArea(
       minimum: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-      child: SizedBox(
-        height: 52,
-        child: FilledButton(
-          onPressed: _saving ? null : _save,
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.textPrimary,
-            foregroundColor: AppColors.onInverse,
-            disabledBackgroundColor: AppColors.surfacePressed,
-            disabledForegroundColor: AppColors.textTertiary,
-            shape: const StadiumBorder(),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InlineNotice(
+            _error,
+            textAlign: TextAlign.center,
+            padding: const EdgeInsets.only(bottom: 8),
           ),
-          child: Text(
-            _saving ? '변경 중…' : '변경하기',
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          SizedBox(
+            height: 52,
+            child: FilledButton(
+              onPressed: _saving ? null : _save,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.textPrimary,
+                foregroundColor: AppColors.onInverse,
+                disabledBackgroundColor: AppColors.surfacePressed,
+                disabledForegroundColor: AppColors.textTertiary,
+                shape: const StadiumBorder(),
+              ),
+              child: Text(
+                _saving ? '변경 중…' : '변경하기',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
           ),
-        ),
+        ],
       ),
     ),
     body: Center(

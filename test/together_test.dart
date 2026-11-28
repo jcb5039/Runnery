@@ -351,7 +351,9 @@ void main() {
       server.togetherById['t1']!.statusOf(haeun.uid),
       TogetherStatus.accepted,
     );
-    expect(find.text('김민지 님과의 약속을 수락했어요'), findsOneWidget);
+    // 수락하면 창이 닫혀요(따로 알림 없음).
+    expect(find.text('수락하기'), findsNothing);
+    expect(find.byType(SnackBar), findsNothing);
     expect(find.byType(TogetherLobbyPage), findsNothing);
 
     // '나중에'를 누른 약속은 앱을 켜 둔 동안 다시 띄우지 않습니다.

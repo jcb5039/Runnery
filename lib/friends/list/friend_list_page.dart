@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../design_system/app_colors.dart';
 import '../../design_system/app_spacing.dart';
+import '../../design_system/inline_notice.dart';
 import '../add/friend_add_page.dart';
 import '../data/friend_store.dart';
 import '../together/together_new_page.dart';
@@ -26,10 +27,19 @@ class FriendListPage extends StatefulWidget {
 class _FriendListPageState extends State<FriendListPage> {
   FriendStore get _store => widget.store ?? FriendStore.instance;
 
+  /// 실패하면 그 사람 줄 바로 아래에 빨간 글씨로 알립니다('friend:uid', 'blocked:uid').
+  final _notices = Notices();
+
   @override
   void initState() {
     super.initState();
     unawaited(_store.refresh());
+  }
+
+  @override
+  void dispose() {
+    _notices.dispose();
+    super.dispose();
   }
 
   void _openAdd() => Navigator.of(context).push(
@@ -63,18 +73,16 @@ class _FriendListPageState extends State<FriendListPage> {
     if (confirmed != true || !mounted) return;
     try {
       await _store.remove(person.uid);
-      if (mounted) showFriendMessage(context, '${person.name} 님을 친구에서 삭제했어요');
     } on FriendException catch (e) {
-      if (mounted) showFriendMessage(context, e.message);
+      if (mounted) _notices.show('friend:${person.uid}', e.message);
     }
   }
 
   Future<void> _unblock(PublicProfile person) async {
     try {
       await _store.unblock(person.uid);
-      if (mounted) showFriendMessage(context, '${person.name} 님 차단을 풀었어요');
     } on FriendException catch (e) {
-      if (mounted) showFriendMessage(context, e.message);
+      if (mounted) _notices.show('blocked:${person.uid}', e.message);
     }
   }
 
@@ -115,7 +123,7 @@ class _FriendListPageState extends State<FriendListPage> {
                 if (friends.isEmpty)
                   _empty()
                 else
-                  for (final (i, person) in friends.indexed)
+                  for (final (i, person) in friends.indexed) ...[
                     FriendRow(
                       person: person,
                       divider: i > 0,
@@ -125,13 +133,15 @@ class _FriendListPageState extends State<FriendListPage> {
                         onPressed: () => _manage(person),
                       ),
                     ),
+                    NoticeSlot(notices: _notices, id: 'friend:${person.uid}'),
+                  ],
                 if (_store.blocked.isNotEmpty) ...[
                   const SizedBox(height: 32),
                   FriendSectionHeader(
                     title: '차단한 사람 ${_store.blocked.length}명',
                   ),
                   const SizedBox(height: 6),
-                  for (final (i, person) in _store.blocked.indexed)
+                  for (final (i, person) in _store.blocked.indexed) ...[
                     FriendRow(
                       person: person,
                       divider: i > 0,
@@ -142,6 +152,8 @@ class _FriendListPageState extends State<FriendListPage> {
                         onPressed: () => _unblock(person),
                       ),
                     ),
+                    NoticeSlot(notices: _notices, id: 'blocked:${person.uid}'),
+                  ],
                   const SizedBox(height: 8),
                   Text(
                     '차단을 풀어도 친구로 돌아오지 않아요. 다시 친구가 되려면 친구 요청을 보내 주세요.',

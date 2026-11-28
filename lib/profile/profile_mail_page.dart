@@ -84,12 +84,6 @@ class _ProfileMailPageState extends State<ProfileMailPage> {
   }
 
   void _changePassword() {
-    if (_account.isSocial) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('소셜 계정으로 가입해서 비밀번호가 없어요')));
-      return;
-    }
     Navigator.of(context).push<void>(
       MaterialPageRoute(builder: (_) => ChangePasswordPage(store: _account)),
     );
@@ -254,6 +248,10 @@ class _ProfileMailPageState extends State<ProfileMailPage> {
                           settings: settings,
                           onEditProfile: _editProfile,
                           onChangePassword: _changePassword,
+                          // 소셜 계정은 비밀번호가 없어 '비밀번호 변경' 줄 아래에 안내만 보여 줍니다.
+                          passwordNote: _account.isSocial
+                              ? '소셜 계정으로 가입해서 비밀번호가 없어요'
+                              : null,
                           onLogout: widget.onLogout ?? _logout,
                           onDeleteAccount: _deleteAccount,
                         ),

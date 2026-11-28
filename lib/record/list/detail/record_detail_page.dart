@@ -8,6 +8,7 @@ import '../../../design_system/app_colors.dart';
 import 'package:maplibre_gl/maplibre_gl.dart' show LatLng;
 
 import '../../../design_system/app_text_styles.dart';
+import '../../../design_system/inline_notice.dart';
 import '../../data/route_thumbnails.dart';
 import '../../../home/running/running_home_page.dart'
     show
@@ -547,7 +548,19 @@ class RecordDetailPage extends StatefulWidget {
 class _RecordDetailPageState extends State<RecordDetailPage> {
   RunningRecord get record => widget.record!;
   late String memo = widget.record?.memo ?? '';
-  Future<void> _editMemo() async {
+
+  /// 안 되면 누른 곳 바로 아래에 빨간 글씨로 알립니다.
+  /// 자리: 'top' 오른쪽 위 메뉴(⋮)가 있는 제목 줄 아래, 'memo' 메모 칸 아래.
+  final _notices = Notices();
+
+  @override
+  void dispose() {
+    _notices.dispose();
+    super.dispose();
+  }
+
+  /// [at]은 누른 곳('top' 위쪽 메뉴, 'memo' 메모 칸)입니다.
+  Future<void> _editMemo({String at = 'memo'}) async {
     final controller = TextEditingController(text: memo);
     final result = await showDialog<String>(
       context: context,
@@ -585,13 +598,39 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
         setState(() => memo = result);
         widget.onMemoChanged?.call(result);
       } catch (_) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('메모 저장에 실패했습니다. 다시 시도해 주세요.')),
-        );
+        if (mounted) _notices.show(at, '메모를 저장하지 못했어요. 다시 시도해 주세요');
       }
     }
   }
+
+  /// 지도 위쪽 제목 줄: 뒤로, '기록 상세', 메뉴(메모 수정·기록 삭제).
+  Widget _titleRow() => Row(
+    children: [
+      _mapButton(Icons.chevron_left, () => Navigator.maybePop(context), '뒤로'),
+      Expanded(
+        child: Text(
+          '기록 상세',
+          textAlign: TextAlign.center,
+          style: recordText(14, weight: FontWeight.w700),
+        ),
+      ),
+      PopupMenuButton<String>(
+        tooltip: '기록 메뉴',
+        icon: const Icon(Icons.more_horiz),
+        color: AppColors.pick(const Color(0xFF202323), AppColors.background),
+        onSelected: (value) =>
+            value == 'delete' ? _delete() : _editMemo(at: 'top'),
+        itemBuilder: (_) => [
+          const PopupMenuItem(value: 'memo', child: Text('메모 수정')),
+          if (widget.onDelete != null)
+            PopupMenuItem(
+              value: 'delete',
+              child: Text('기록 삭제', style: TextStyle(color: recordDelete)),
+            ),
+        ],
+      ),
+    ],
+  );
 
   Future<void> _delete() async {
     if (!await confirmRecordDelete(context) || !mounted) return;
@@ -599,10 +638,7 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
       await widget.onDelete!();
       if (mounted) Navigator.of(context).pop();
     } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('기록 삭제에 실패했습니다. 다시 시도해 주세요.')),
-      );
+      if (mounted) _notices.show('top', '기록을 삭제하지 못했어요. 다시 시도해 주세요');
     }
   }
 
@@ -742,7 +778,10 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
                             const Color(0xB3000000),
                             const Color(0xB3FFFFFF),
                           ),
-                          AppColors.pick(Colors.transparent, const Color(0x00FFFFFF)),
+                          AppColors.pick(
+                            Colors.transparent,
+                            const Color(0x00FFFFFF),
+                          ),
                         ],
                       ),
                     ),
@@ -753,43 +792,17 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
                       alignment: Alignment.topCenter,
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
-                        child: Row(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            _mapButton(
-                              Icons.chevron_left,
-                              () => Navigator.maybePop(context),
-                              '뒤로',
-                            ),
-                            Expanded(
-                              child: Text(
-                                '기록 상세',
-                                textAlign: TextAlign.center,
-                                style: recordText(14, weight: FontWeight.w700),
-                              ),
-                            ),
-                            PopupMenuButton<String>(
-                              tooltip: '기록 메뉴',
-                              icon: const Icon(Icons.more_horiz),
-                              color: AppColors.pick(
-                                const Color(0xFF202323),
-                                AppColors.background,
-                              ),
-                              onSelected: (value) =>
-                                  value == 'delete' ? _delete() : _editMemo(),
-                              itemBuilder: (_) => [
-                                const PopupMenuItem(
-                                  value: 'memo',
-                                  child: Text('메모 수정'),
-                                ),
-                                if (widget.onDelete != null)
-                                  PopupMenuItem(
-                                    value: 'delete',
-                                    child: Text(
-                                      '기록 삭제',
-                                      style: TextStyle(color: recordDelete),
-                                    ),
-                                  ),
-                              ],
+                            _titleRow(),
+                            // 메뉴로 한 일이 안 되면 제목 줄 바로 아래(메뉴 쪽)에 보여 줍니다.
+                            NoticeSlot(
+                              notices: _notices,
+                              id: 'top',
+                              textAlign: TextAlign.end,
+                              padding: const EdgeInsets.fromLTRB(0, 4, 6, 0),
                             ),
                           ],
                         ),
@@ -1079,6 +1092,7 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
                           ),
                         ),
                       ),
+                      NoticeSlot(notices: _notices, id: 'memo'),
                       const SizedBox(height: 42),
                       Divider(color: recordLine),
                       const SizedBox(height: 10),

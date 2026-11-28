@@ -10,8 +10,12 @@ import '../../design_system/app_component_metrics.dart';
 import '../../design_system/app_motion.dart';
 import '../../design_system/app_radius.dart';
 import '../../design_system/app_spacing.dart';
-import '../../friends/crew/crew_run_pages.dart' show CrewTeamBanner;
+import '../../friends/crew/crew_room_page.dart' show CrewRoomPage;
+import '../../friends/crew/crew_run_pages.dart'
+    show CrewTeamBanner, crewRunColor;
 import '../../friends/data/crew_models.dart' show CrewRunLink;
+import '../../friends/data/crew_store.dart' show CrewStore;
+import '../../friends/data/together_live.dart';
 import '../../friends/friends_feature.dart';
 import '../../friends/share/share_record_sheet.dart';
 import '../../record/data/record_from_session.dart';
@@ -22,17 +26,91 @@ import 'running_start_page.dart';
 // 09 러닝 결과
 // ═════════════════════════════════════════════════════
 
-class RunningResultPage extends StatelessWidget {
+class RunningResultPage extends StatefulWidget {
   const RunningResultPage({super.key, required this.record, this.crewRun});
 
   final RunningRecord record;
 
-  /// 크루로 함께 달렸으면 그 모집. 팀 기록 상태와(팀장이면) '팀 끝내기'를 보여 줍니다.
+  /// 크루로 함께 달렸으면 그 모집. 팀 기록 상태와(팀장이면) '팀 끝내기'를 보여 주고,
+  /// 지도에 팀원 경로(아직 달리는 팀원은 실시간, 끝낸 팀원은 끝난 자리까지)를 고른 색으로 그립니다.
   final CrewRunLink? crewRun;
 
+  @override
+  State<RunningResultPage> createState() => _RunningResultPageState();
+}
+
+class _RunningResultPageState extends State<RunningResultPage> {
+  RunningRecord get record => widget.record;
+  CrewRunLink? get crewRun => widget.crewRun;
+
+  /// 크루 팀원의 실시간 상태(보기만 합니다. 내 것은 올리지도 지우지도 않음).
+  TogetherLive? _live;
+
+  /// 기록 카드를 아래로 내린 만큼(px). 0이면 다 올라와 있습니다.
+  double _sheetDown = 0;
+  bool _dragging = false;
+  final _sheetKey = GlobalKey();
+
+  /// 카드를 내려도 남겨 두는 높이(손잡이 부분).
+  static const _peek = 40.0;
+
+  @override
+  void initState() {
+    super.initState();
+    if (crewRun case final crew?) {
+      _live = TogetherLive.channel(
+        CrewStore.instance.liveChannel(crew.crewId, crew.runId),
+      )..start();
+    }
+  }
+
+  @override
+  void dispose() {
+    _live?.dispose();
+    super.dispose();
+  }
+
+  /// 카드를 끝까지 내렸을 때 움직인 거리.
+  double get _maxDown {
+    final box = _sheetKey.currentContext?.findRenderObject() as RenderBox?;
+    final height = box?.size.height ?? 0;
+    return math.max(0, height - _peek - MediaQuery.paddingOf(context).bottom);
+  }
+
+  bool get _sheetCollapsed => _sheetDown > 0 && _sheetDown >= _maxDown - 1;
+
+  void _toggleSheet() => setState(() {
+    _dragging = false;
+    _sheetDown = _sheetCollapsed ? 0 : _maxDown;
+  });
+
+  /// 지도에 그릴 팀원: 아직 달리는 팀원과 끝낸 팀원(끝난 자리까지), 고른 색으로.
+  List<MapFriend> get _friends => [
+    for (final f in _live?.friends ?? const <LiveFriend>[])
+      if (f.state != LiveFriendState.waiting)
+        if (f.run case final run?)
+          if (run.position ?? run.route.lastOrNull case (final lat, final lng)?)
+            MapFriend(
+              LatLng(lat, lng),
+              f.name,
+              route: [for (final (a, b) in run.route) LatLng(a, b)],
+              color: switch (f.color) {
+                final i? => crewRunColor(i),
+                null => null,
+              },
+            ),
+  ];
+
   /// 결과→홈: 러닝 흐름 이전 화면까지 모두 닫습니다.
-  void _done(BuildContext context) =>
-      Navigator.of(context).popUntil((route) => route.isFirst);
+  /// 크루로 달렸으면 대기실까지만 닫고 그 크루 채팅방으로 돌아갑니다(채팅방이 열려 있을 때).
+  void _done(BuildContext context) {
+    final room = switch (crewRun) {
+      final crew? => CrewRoomPage.openRoute(crew.crewId),
+      null => null,
+    };
+    Navigator.of(context)
+        .popUntil((route) => room != null ? route == room : route.isFirst);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -53,119 +131,156 @@ class RunningResultPage extends StatelessWidget {
           backgroundColor: AppColors.background,
           body: FutureBuilder(
             future: record.places,
-            builder: (context, snapshot) => _RecordMap(
-              record: record,
-              places: snapshot.data,
-              fitPadding: EdgeInsets.fromLTRB(
-                48,
-                media.padding.top + 150,
-                48,
-                sheetHeight + 40,
-              ),
-              overlayBuilder: (camera) => Stack(
-                children: [
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    child: SafeArea(
-                      bottom: false,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(
-                          AppSpacing.space4,
-                          AppSpacing.topControlSafeAreaGapMax,
-                          AppSpacing.space4,
-                          0,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                MapCircleButton(
-                                  icon: Icons.close,
-                                  tooltip: '닫기',
-                                  onPressed: () => _done(context),
-                                ),
-                                const Spacer(),
-                                _ShareButton(record: record),
-                              ],
-                            ),
-                            const SizedBox(height: AppSpacing.space5),
-                            Padding(
-                              padding: const EdgeInsets.only(left: 8),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+            builder: (context, snapshot) => ListenableBuilder(
+              listenable: _live ?? const _NoChanges(),
+              builder: (context, _) => _RecordMap(
+                record: record,
+                places: snapshot.data,
+                friends: _friends,
+                fitPadding: EdgeInsets.fromLTRB(
+                  48,
+                  media.padding.top + 150,
+                  48,
+                  sheetHeight + 40,
+                ),
+                overlayBuilder: (camera) => Stack(
+                  children: [
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: SafeArea(
+                        bottom: false,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            AppSpacing.space4,
+                            AppSpacing.topControlSafeAreaGapMax,
+                            AppSpacing.space4,
+                            0,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
                                 children: [
-                                  Text(
-                                    '오늘의 러닝',
-                                    style: TextStyle(
-                                      fontSize: 28,
-                                      fontWeight: FontWeight.w800,
-                                      color: AppColors.textPrimary,
-                                    ),
+                                  MapCircleButton(
+                                    icon: Icons.close,
+                                    tooltip: '닫기',
+                                    onPressed: () => _done(context),
                                   ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    '${RunningFormat.monthDay(record.startedAt)} · '
-                                    '${RunningFormat.timeRange(record.startedAt, record.endedAt)}',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                  if (crewRun case final crew?) ...[
-                                    const SizedBox(height: 12),
-                                    CrewTeamBanner(link: crew),
-                                  ],
+                                  const Spacer(),
+                                  _ShareButton(record: record),
                                 ],
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(
-                            AppSpacing.mapScaleLeft,
-                            0,
-                            AppSpacing.space4,
-                            AppSpacing.mapControlAboveCard,
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              MapScaleBar(camera: camera),
-                              const Spacer(),
-                              _BigMapButton(
-                                record: record,
-                                places: snapshot.data,
+                              const SizedBox(height: AppSpacing.space5),
+                              Padding(
+                                padding: const EdgeInsets.only(left: 8),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '오늘의 러닝',
+                                      style: TextStyle(
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppColors.textPrimary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      '${RunningFormat.monthDay(record.startedAt)} · '
+                                      '${RunningFormat.timeRange(record.startedAt, record.endedAt)}',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                    if (crewRun case final crew?) ...[
+                                      const SizedBox(height: 12),
+                                      CrewTeamBanner(link: crew),
+                                    ],
+                                  ],
+                                ),
                               ),
                             ],
                           ),
                         ),
-                        _ResultSheet(
-                          record: record,
-                          onDetail: () => Navigator.of(context).push(
-                            runningPushRoute(
-                              RunningRouteDetailPage(record: record),
-                              AppMotion.detailPush,
-                            ),
-                          ),
-                          onDone: () => _done(context),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                ],
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      // 기록 카드는 손가락으로 아래로 내려 지도(팀원 경로)를 볼 수 있고, 다시 올릴 수 있습니다.
+                      child: GestureDetector(
+                        onVerticalDragStart: (_) =>
+                            setState(() => _dragging = true),
+                        onVerticalDragUpdate: (d) => setState(() {
+                          _sheetDown = (_sheetDown + d.delta.dy).clamp(
+                            0,
+                            _maxDown,
+                          );
+                        }),
+                        onVerticalDragEnd: (d) => setState(() {
+                          _dragging = false;
+                          final v = d.primaryVelocity ?? 0;
+                          final down =
+                              v > 300 ||
+                              (v > -300 && _sheetDown > _maxDown / 2);
+                          _sheetDown = down ? _maxDown : 0;
+                        }),
+                        child: AnimatedContainer(
+                          duration: _dragging
+                              ? Duration.zero
+                              : const Duration(milliseconds: 250),
+                          curve: Curves.easeOutCubic,
+                          transform: Matrix4.translationValues(
+                            0,
+                            _sheetDown,
+                            0,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  AppSpacing.mapScaleLeft,
+                                  0,
+                                  AppSpacing.space4,
+                                  AppSpacing.mapControlAboveCard,
+                                ),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    MapScaleBar(camera: camera),
+                                    const Spacer(),
+                                    _BigMapButton(
+                                      record: record,
+                                      places: snapshot.data,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              _ResultSheet(
+                                key: _sheetKey,
+                                record: record,
+                                collapsed: _sheetCollapsed,
+                                onToggle: _toggleSheet,
+                                onDetail: () => Navigator.of(context).push(
+                                  runningPushRoute(
+                                    RunningRouteDetailPage(record: record),
+                                    AppMotion.detailPush,
+                                  ),
+                                ),
+                                onDone: () => _done(context),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -177,14 +292,21 @@ class RunningResultPage extends StatelessWidget {
 
 class _ResultSheet extends StatelessWidget {
   const _ResultSheet({
+    super.key,
     required this.record,
     required this.onDetail,
     required this.onDone,
+    required this.onToggle,
+    this.collapsed = false,
   });
 
   final RunningRecord record;
   final VoidCallback onDetail;
   final VoidCallback onDone;
+
+  /// 손잡이를 누르면 카드를 내리거나 올립니다.
+  final VoidCallback onToggle;
+  final bool collapsed;
 
   @override
   Widget build(BuildContext context) {
@@ -205,8 +327,21 @@ class _ResultSheet extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Center(child: SheetHandle()),
-          const SizedBox(height: AppSpacing.space4),
+          // 손잡이: 눌러도 내리거나 올릴 수 있습니다(손가락으로 끌어도 됨).
+          Semantics(
+            button: true,
+            label: collapsed ? '기록 카드 올리기' : '기록 카드 내리기',
+            excludeSemantics: true,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onToggle,
+              child: const SizedBox(
+                height: 24,
+                child: Center(child: SheetHandle()),
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.space2),
           Text('총 거리', style: _labelStyle),
           const SizedBox(height: 6),
           Row(
@@ -929,10 +1064,14 @@ class _RecordMap extends StatefulWidget {
     required this.fitPadding,
     this.overlayBuilder,
     this.interactive = true,
+    this.friends = const [],
   });
 
   final RunningRecord record;
   final RunningPlaces? places;
+
+  /// 함께 달린 크루 팀원의 지나간 길과 위치(고른 색).
+  final List<MapFriend> friends;
   final EdgeInsets fitPadding;
   final Widget Function(ValueListenable<MapViewport?> camera)? overlayBuilder;
   final bool interactive;
@@ -996,6 +1135,7 @@ class _RecordMapState extends State<_RecordMap> {
       ],
       fitPoints: coords,
       fitPadding: widget.fitPadding,
+      friends: widget.friends,
     );
     final overlay = widget.overlayBuilder?.call(_controller);
     return overlay == null ? map : Stack(children: [map, overlay]);
@@ -1497,4 +1637,15 @@ class _SpeedChartPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_SpeedChartPainter old) => old.record != record;
+}
+
+/// 바뀌지 않는 [Listenable](크루로 달리지 않아 지켜볼 팀원이 없을 때).
+class _NoChanges implements Listenable {
+  const _NoChanges();
+
+  @override
+  void addListener(VoidCallback listener) {}
+
+  @override
+  void removeListener(VoidCallback listener) {}
 }

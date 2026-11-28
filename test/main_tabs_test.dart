@@ -205,7 +205,8 @@ void main() {
       expect(_dot, findsNothing);
 
       await say(tester, id, '오늘 8시에 만나요');
-      expect(find.text('주말 LSD'), findsOneWidget);
+      // 크루 이름 없이 '보낸 사람: 내용'만 보여요.
+      expect(find.text('주말 LSD'), findsNothing);
       expect(find.text('김민지: 오늘 8시에 만나요'), findsOneWidget);
       expect(_dot, findsOneWidget);
 

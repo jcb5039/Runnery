@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../account/account_store.dart';
 import '../../design_system/app_colors.dart';
+import '../../design_system/inline_notice.dart';
 
 /// 15-1~15-5 프로필 수정. 바뀐 내용은 저장을 눌러야 계정(AccountStore)에 반영됩니다.
 class ProfileEditPage extends StatefulWidget {
@@ -77,6 +78,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
       c.dispose();
     }
     _ruler.dispose();
+    _notices.dispose();
     super.dispose();
   }
 
@@ -166,7 +168,8 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
       });
     } on PlatformException {
       if (!mounted) return;
-      _message(
+      _notices.show(
+        'photo',
         action == _PhotoAction.camera
             ? '카메라를 열 수 없어요. 설정에서 카메라 접근을 허용해 주세요.'
             : '사진을 불러올 수 없어요. 설정에서 사진 접근을 허용해 주세요.',
@@ -174,8 +177,8 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     }
   }
 
-  void _message(String text) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  /// 안 되면 누른 곳 가까이에 빨간 글씨로 알립니다('photo' 사진 아래, 'save' 맨 아래 저장 버튼 바로 위).
+  final _notices = Notices();
 
   /// 저장에 성공하면 true.
   Future<bool> _save() async {
@@ -193,10 +196,10 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
       );
       return true;
     } on AuthException catch (e) {
-      if (mounted) _message(e.message);
+      if (mounted) _notices.show('save', e.message);
       return false;
     } catch (_) {
-      if (mounted) _message('저장하지 못했어요. 다시 시도해 주세요.');
+      if (mounted) _notices.show('save', '저장하지 못했어요. 다시 시도해 주세요');
       return false;
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -355,25 +358,37 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
         ),
         bottomNavigationBar: SafeArea(
           minimum: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-          child: SizedBox(
-            height: 52,
-            child: FilledButton(
-              onPressed: canSave ? _confirmLeave : null,
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.textPrimary,
-                foregroundColor: AppColors.onInverse,
-                disabledBackgroundColor: AppColors.surfacePressed,
-                disabledForegroundColor: AppColors.textTertiary,
-                shape: const StadiumBorder(),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              NoticeSlot(
+                notices: _notices,
+                id: 'save',
+                textAlign: TextAlign.center,
+                padding: const EdgeInsets.only(bottom: 8),
               ),
-              child: Text(
-                _saving ? '저장 중…' : '저장',
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
+              SizedBox(
+                height: 52,
+                child: FilledButton(
+                  onPressed: canSave ? _confirmLeave : null,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.textPrimary,
+                    foregroundColor: AppColors.onInverse,
+                    disabledBackgroundColor: AppColors.surfacePressed,
+                    disabledForegroundColor: AppColors.textTertiary,
+                    shape: const StadiumBorder(),
+                  ),
+                  child: Text(
+                    _saving ? '저장 중…' : '저장',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
               ),
-            ),
+            ],
           ),
         ),
         body: Center(
@@ -419,6 +434,11 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                       ),
                     ),
                   ),
+                ),
+                NoticeSlot(
+                  notices: _notices,
+                  id: 'photo',
+                  textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
                 Center(

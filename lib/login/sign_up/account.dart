@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../account/account_store.dart';
+import '../../design_system/inline_notice.dart';
 import '../auth_ui/auth_ui.dart';
 import 'running_info.dart';
 
@@ -36,6 +37,9 @@ class _AccountPageState extends State<AccountPage> {
   /// 서버에 물어봤더니 이미 쓰고 있다고 한 아이디.
   String? _takenId;
   bool _checking = false;
+
+  /// 아이디를 확인하지 못한 이유. 다음 버튼 바로 아래에 빨간 글씨로 보여 줍니다.
+  String? _error;
   @override
   void dispose() {
     id.dispose();
@@ -44,13 +48,13 @@ class _AccountPageState extends State<AccountPage> {
     super.dispose();
   }
 
-  void _message(String text) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
-
   Future<void> next() async {
     if (_checking || !form.currentState!.validate()) return;
     final value = id.text.trim();
-    setState(() => _checking = true);
+    setState(() {
+      _checking = true;
+      _error = null;
+    });
     try {
       if (!await _store.isIdAvailable(value)) {
         _takenId = value;
@@ -58,10 +62,10 @@ class _AccountPageState extends State<AccountPage> {
         return;
       }
     } on AuthException catch (e) {
-      if (mounted) _message(e.message);
+      if (mounted) setState(() => _error = e.message);
       return;
     } catch (_) {
-      if (mounted) _message('아이디를 확인하지 못했어요. 다시 시도해주세요');
+      if (mounted) setState(() => _error = '아이디를 확인하지 못했어요. 다시 시도해주세요');
       return;
     } finally {
       if (mounted) setState(() => _checking = false);
@@ -143,10 +147,17 @@ class _AccountPageState extends State<AccountPage> {
         ],
       ),
     ),
-    actions: AuthButton(
-      label: _checking ? '확인 중…' : '다음',
-      arrow: !_checking,
-      onPressed: _checking ? null : next,
+    actions: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AuthButton(
+          label: _checking ? '확인 중…' : '다음',
+          arrow: !_checking,
+          onPressed: _checking ? null : next,
+        ),
+        InlineNotice(_error, textAlign: TextAlign.center),
+      ],
     ),
   );
 }

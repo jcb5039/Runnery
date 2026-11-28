@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../design_system/app_colors.dart';
+import '../../design_system/inline_notice.dart';
 import '../../design_system/app_spacing.dart';
 import '../../home/running/running_start_page.dart' show runningNumberStyle;
 import '../../record/data/running_record_store.dart';
@@ -41,6 +42,12 @@ class _TogetherDonePageState extends State<TogetherDonePage> {
 
   bool _sharing = false;
 
+  /// 올렸으면 버튼이 '친구 피드에 올렸어요'로 바뀝니다(따로 알리지 않음).
+  bool _posted = false;
+
+  /// 올리지 못한 이유. 올리기 버튼 바로 아래에 빨간 글씨로 보여 줍니다.
+  String? _error;
+
   @override
   void initState() {
     super.initState();
@@ -50,16 +57,19 @@ class _TogetherDonePageState extends State<TogetherDonePage> {
   /// 내 기록을 친구 피드에 올립니다. 폰에 있는 기록을 찾아 씁니다.
   Future<void> _post(TogetherResult mine) async {
     if (_sharing) return;
-    setState(() => _sharing = true);
+    setState(() {
+      _sharing = true;
+      _error = null;
+    });
     try {
       final record = await RunningRecordStore.instance.find(mine.recordId);
       if (record == null) {
         throw const FriendException('이 폰에서 기록을 찾지 못했어요');
       }
       await _share.share(record);
-      if (mounted) showFriendMessage(context, '친구 피드에 올렸어요');
+      if (mounted) setState(() => _posted = true);
     } on FriendException catch (e) {
-      if (mounted) showFriendMessage(context, e.message);
+      if (mounted) setState(() => _error = e.message);
     } finally {
       if (mounted) setState(() => _sharing = false);
     }
@@ -206,10 +216,15 @@ class _TogetherDonePageState extends State<TogetherDonePage> {
           const SizedBox(height: 28),
           if (mine != null) ...[
             FriendSheetButton(
-              label: _sharing ? '올리는 중이에요' : '친구 피드에 올리기',
+              label: _sharing
+                  ? '올리는 중이에요'
+                  : _posted
+                  ? '친구 피드에 올렸어요'
+                  : '친구 피드에 올리기',
               filled: true,
-              onPressed: () => _post(mine),
+              onPressed: _posted ? null : () => _post(mine),
             ),
+            InlineNotice(_error, textAlign: TextAlign.center),
             const SizedBox(height: 10),
           ],
           FriendSheetButton(label: '다시 약속 잡기', onPressed: () => _again(t)),

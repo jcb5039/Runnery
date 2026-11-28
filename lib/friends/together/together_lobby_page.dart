@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../design_system/app_colors.dart';
+import '../../design_system/inline_notice.dart';
 import '../../design_system/app_component_metrics.dart';
 import '../../design_system/app_radius.dart';
 import '../../design_system/app_spacing.dart';
@@ -58,6 +59,15 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
   bool? _locationOk;
   String? _error;
 
+  /// 시작·취소가 안 되면 누른 버튼 바로 위·아래에 빨간 글씨로 알립니다('start', 'cancel').
+  final _notices = Notices();
+
+  /// 내가 약속을 취소하거나 빠지는 중이면 true. 그때는 '약속이 취소됐어요' 창을 띄우지 않습니다.
+  bool _selfLeft = false;
+
+  /// '약속이 취소됐어요' 창을 이미 띄웠으면 true.
+  bool _cancelShown = false;
+
   @override
   void initState() {
     super.initState();
@@ -77,6 +87,7 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
   void dispose() {
     _sub?.cancel();
     _beat?.cancel();
+    _notices.dispose();
     if (!_launched && _locationOk == true) _leave();
     super.dispose();
   }
@@ -111,8 +122,7 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
   void _onUpdate(Together? t) {
     if (!mounted) return;
     if (t == null) {
-      showFriendMessage(context, '약속이 취소됐어요');
-      Navigator.pop(context);
+      if (!_selfLeft) unawaited(_showCancelled());
       return;
     }
     final before = _together?.startedAt;
@@ -144,10 +154,11 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
   Future<void> _start() async {
     if (_starting) return;
     setState(() => _starting = true);
+    _notices.clear('start');
     try {
       await _store.start(widget.id);
     } on FriendException catch (e) {
-      if (mounted) showFriendMessage(context, e.message);
+      if (mounted) _notices.show('start', e.message);
     } finally {
       if (mounted) setState(() => _starting = false);
     }
@@ -199,6 +210,38 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
     }
   }
 
+  /// 상대가 약속을 취소했을 때: 가운데 창으로 알리고, 확인을 누르면 대기실을 닫습니다.
+  Future<void> _showCancelled() async {
+    if (_cancelShown) return;
+    _cancelShown = true;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          backgroundColor: AppColors.pick(
+            const Color(0xFF171818),
+            AppColors.background,
+          ),
+          title: const Text('약속이 취소됐어요'),
+          content: const Text('함께 달리기 약속이 없어져서 대기실을 닫을게요.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('확인'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    final route = ModalRoute.of(context);
+    if (route != null && route.isActive) {
+      Navigator.of(context).removeRoute(route);
+    }
+  }
+
   Future<void> _cancel(Together t, bool host) async {
     final ok = await showModalBottomSheet<bool>(
       context: context,
@@ -244,13 +287,16 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
       ),
     );
     if (ok != true || !mounted) return;
+    _selfLeft = true;
+    _notices.clear('cancel');
     try {
       host
           ? await _store.cancel(t)
           : await _store.answer(t, TogetherStatus.declined);
       if (mounted) Navigator.pop(context);
     } on FriendException catch (e) {
-      if (mounted) showFriendMessage(context, e.message);
+      _selfLeft = false;
+      if (mounted) _notices.show('cancel', e.message);
     }
   }
 
@@ -405,6 +451,11 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
                       color: AppColors.textSecondary,
                     ),
                   ),
+                  NoticeSlot(
+                    notices: _notices,
+                    id: 'start',
+                    textAlign: TextAlign.center,
+                  ),
                   const SizedBox(height: 10),
                   _StartButton(
                     label: _starting ? '시작하는 중이에요' : '함께 시작',
@@ -420,6 +471,12 @@ class _TogetherLobbyPageState extends State<TogetherLobbyPage> {
                     foregroundColor: AppColors.textTertiary,
                   ),
                   child: Text(host ? '약속 취소' : '약속에서 빠지기'),
+                ),
+                NoticeSlot(
+                  notices: _notices,
+                  id: 'cancel',
+                  textAlign: TextAlign.center,
+                  padding: EdgeInsets.zero,
                 ),
               ],
             ),

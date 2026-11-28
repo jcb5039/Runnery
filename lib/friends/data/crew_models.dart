@@ -13,6 +13,7 @@ class Crew {
     this.createdAt,
     this.notice,
     this.lastMessage,
+    this.code,
   });
   final String id, name;
 
@@ -26,6 +27,23 @@ class Crew {
 
   /// 목록에 보여 줄 마지막 메시지. 아직 없으면 null.
   final CrewLastMessage? lastMessage;
+
+  /// 초대 코드(영어 대문자·숫자 6자리). 친구가 아니어도 이 코드로 들어올 수 있습니다. 예전 크루는 없을 수 있습니다.
+  final String? code;
+
+  /// 코드에 쓰는 글자(헷갈리는 0·O·1·I·L은 뺌). 서버 함수(functions/crew_code.js)와 같습니다.
+  static const codeAlphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  static const codeLength = 6;
+
+  /// 입력한 코드를 대문자로 바꾸고 띄어쓰기를 지웁니다. 코드 모양이 아니면 null.
+  static String? normalizeCode(String text) {
+    final code = text.replaceAll(RegExp(r'\s'), '').toUpperCase();
+    if (code.length != codeLength) return null;
+    for (final c in code.split('')) {
+      if (!codeAlphabet.contains(c)) return null;
+    }
+    return code;
+  }
 
   /// 크루 최대 인원.
   static const maxMembers = 200;
@@ -161,6 +179,24 @@ class CrewTeamEntry {
 
   /// 팀이 끝나기 전에 스스로 끝냈는지.
   final bool finished;
+}
+
+/// 팀 기록에 남은 한 사람의 지나간 길. 팀 달리기가 끝나면 서버가 실시간 상태에서 옮겨 저장합니다
+/// (출발·도착 200m는 잘라 냄). 크루 멤버 누구나 '기록 보기'에서 봅니다.
+@immutable
+class CrewRunRoute {
+  const CrewRunRoute({
+    required this.uid,
+    required this.color,
+    this.points = const [],
+  });
+  final String uid;
+
+  /// 대기실에서 고른 이름표 색 번호.
+  final int color;
+
+  /// 지나간 길(위도, 경도).
+  final List<(double, double)> points;
 }
 
 /// 크루 함께 달리기 모집(대기실). 바꾸는 건 모두 서버 함수가 하고, 앱은 읽기만 합니다.

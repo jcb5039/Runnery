@@ -15,6 +15,9 @@ import 'friend_models.dart' show LiveRun, PublicProfile, TogetherResult;
 /// - `crews/{번호}/messages/{번호}`: 채팅 메시지(글자, 들어옴·나감·내보냄 안내). 멤버만 읽고 씁니다.
 /// - `crews/{번호}/runs/{번호}`: 함께 달리기 모집(대기실). 멤버만 읽고, 바꾸는 건 서버 함수 `crewRun`만 합니다.
 /// - `crewInvites/{크루 번호}_{받는 uid}`: 크루 초대. 보낸 사람과 받는 사람만 봅니다.
+/// - `crews/{번호}.code`, `crewCodes/{코드}`: 초대 코드. 만들기·바꾸기·코드로 들어가기는 서버 함수 `crewCode`만 합니다.
+/// - `crews/{번호}/runs/{모집}/routes/{uid}`: 팀 기록에 남긴 각자의 지나간 길(서버 함수만 씀, 멤버만 읽음).
+/// - `crews/{번호}/banned/{uid}`: 크루장이 내보낸 사람(코드로 못 들어옴). 다시 초대받아 수락하면 지웁니다.
 abstract class CrewBackend {
   /// 여러 사람의 공개 정보. 서버에 없는 사람은 빠집니다.
   Future<Map<String, PublicProfile>> profiles(List<String> uids);
@@ -29,7 +32,12 @@ abstract class CrewBackend {
   Future<String> createCrew(String owner, String name);
 
   /// 최근 메시지 [limit]개를 계속 지켜봅니다. 오래된 것부터입니다.
-  Stream<List<CrewMessage>> watchMessages(String id, {int limit = 50});
+  /// [since]가 있으면 그 시각(내가 들어온 시각) 뒤의 메시지만 옵니다.
+  Stream<List<CrewMessage>> watchMessages(
+    String id, {
+    int limit = 50,
+    DateTime? since,
+  });
 
   /// 글자 메시지를 보내고, 목록에 보일 마지막 메시지도 바꿉니다.
   Future<void> sendMessage(String id, String uid, String text);
@@ -68,6 +76,13 @@ abstract class CrewBackend {
   /// 초대를 거절합니다(초대를 지웁니다).
   Future<void> declineInvite(CrewInvite invite);
 
+  /// 크루장이 초대 코드를 새로 만듭니다(예전 코드는 막힙니다). 새 코드를 돌려줍니다.
+  Future<String> issueCode(String crewId);
+
+  /// 초대 코드로 크루에 들어갑니다. 들어간(이미 멤버였던) 크루 번호를 돌려줍니다.
+  /// 규칙에 맞지 않으면 그 이유를 담은 [FriendException]을 던집니다.
+  Future<String> joinByCode(String code);
+
   /// 모집 하나를 계속 지켜봅니다. 없으면 null.
   Stream<CrewRun?> watchRun(String crewId, String runId);
 
@@ -101,6 +116,9 @@ abstract class CrewBackend {
 
   /// 팀 기록이 끝난 모집들(최근 것부터). 서랍의 '함께 달린 기록'.
   Future<List<CrewRun>> endedRuns(String crewId, {int limit = 30});
+
+  /// 팀 기록에 남은 각자의 지나간 길(uid → 길). 팀이 끝나기 전이면 비어 있습니다.
+  Future<Map<String, CrewRunRoute>> runRoutes(String crewId, String runId);
 }
 
 /// Firestore를 쓰는 실제 구현.
@@ -161,6 +179,7 @@ class FirebaseCrewBackend implements CrewBackend {
               at: _time(notice['at']) ?? DateTime.now(),
             )
           : null,
+      code: d['code'] is String ? d['code'] as String : null,
       lastMessage: last is Map && last['text'] is String
           ? CrewLastMessage(
               uid: '${last['uid']}',
@@ -269,8 +288,17 @@ class FirebaseCrewBackend implements CrewBackend {
   }, '크루를 만들지 못했어요');
 
   @override
-  Stream<List<CrewMessage>> watchMessages(String id, {int limit = 50}) =>
-      _messages(id)
+  Stream<List<CrewMessage>> watchMessages(
+    String id, {
+    int limit = 50,
+    DateTime? since,
+  }) =>
+      (since == null
+              ? _messages(id)
+              : _messages(id).where(
+                  'createdAt',
+                  isGreaterThanOrEqualTo: Timestamp.fromDate(since),
+                ))
           .orderBy('createdAt', descending: true)
           .limit(limit)
           .snapshots(includeMetadataChanges: false)
@@ -356,6 +384,11 @@ class FirebaseCrewBackend implements CrewBackend {
                 'members': FieldValue.arrayRemove([target]),
               })
               ..delete(_members(id).doc(target))
+              // 코드로 다시 들어오지 못하게 적어 둡니다.
+              ..set(_crews.doc(id).collection('banned').doc(target), {
+                'by': owner,
+                'at': FieldValue.serverTimestamp(),
+              })
               ..set(_messages(id).doc(), {
                 'uid': owner,
                 'kind': CrewMessageKind.kick.name,
@@ -437,6 +470,10 @@ class FirebaseCrewBackend implements CrewBackend {
                 'kind': CrewMessageKind.join.name,
                 'createdAt': FieldValue.serverTimestamp(),
               })
+              // 예전에 내보내졌어도 다시 초대받아 들어오면 코드 막힘을 풉니다.
+              ..delete(
+                _crews.doc(invite.crewId).collection('banned').doc(invite.to),
+              )
               ..delete(_invite(invite.crewId, invite.to)))
             .commit(),
     '크루에 들어가지 못했어요. 다시 시도해주세요',
@@ -447,6 +484,29 @@ class FirebaseCrewBackend implements CrewBackend {
     () => _invite(invite.crewId, invite.to).delete(),
     '거절하지 못했어요. 다시 시도해주세요',
   );
+
+  @override
+  Future<String> issueCode(String crewId) async =>
+      '${(await _code({'action': 'issue', 'crewId': crewId}))['code'] ?? ''}';
+
+  @override
+  Future<String> joinByCode(String code) async =>
+      '${(await _code({'action': 'join', 'code': code}))['crewId'] ?? ''}';
+
+  Future<Map<String, dynamic>> _code(Map<String, Object> data) async {
+    try {
+      final response =
+          await FirebaseFunctions.instanceFor(region: 'asia-northeast3')
+              .httpsCallable('crewCode')
+              .call<Map<String, dynamic>>(data)
+              .timeout(_timeout);
+      return response.data;
+    } on FirebaseFunctionsException catch (e) {
+      throw FriendException(e.message ?? '잠시 후 다시 시도해주세요');
+    } catch (e) {
+      throw _error(e, '잠시 후 다시 시도해주세요');
+    }
+  }
 
   static CrewRun? _toRun(String crewId, String id, Map<String, dynamic>? d) {
     final host = d?['host'], title = d?['title'];
@@ -543,6 +603,34 @@ class FirebaseCrewBackend implements CrewBackend {
     () => _runLive(crewId, runId).doc(uid).delete(),
     '함께 달린 위치 정보를 지우지 못했어요',
   );
+
+  @override
+  Future<Map<String, CrewRunRoute>> runRoutes(String crewId, String runId) =>
+      _run(() async {
+        final s = await _crews
+            .doc(crewId)
+            .collection('runs')
+            .doc(runId)
+            .collection('routes')
+            .get();
+        return {
+          for (final doc in s.docs)
+            doc.id: () {
+              final flat = [
+                for (final v in doc.data()['points'] as List? ?? const [])
+                  if (v is num) v.toDouble(),
+              ];
+              return CrewRunRoute(
+                uid: doc.id,
+                color: (doc.data()['color'] as num?)?.toInt() ?? 0,
+                points: [
+                  for (var i = 0; i + 1 < flat.length; i += 2)
+                    (flat[i], flat[i + 1]),
+                ],
+              );
+            }(),
+        };
+      }, '함께 달린 길을 불러오지 못했어요');
 
   @override
   Future<List<CrewRun>> endedRuns(String crewId, {int limit = 30}) =>

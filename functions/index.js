@@ -1,5 +1,5 @@
 // 러너리 서버 함수. Firebase가 직접 지원하지 않는 카카오·네이버 로그인을 Firebase 계정으로 바꿔 주고,
-// 회원 탈퇴 때 서버 데이터를 지웁니다. 크루 함께 달리기 모집(대기실)의 규칙도 여기서 지킵니다.
+// 회원 탈퇴 때 서버 데이터를 지웁니다. 크루 함께 달리기 모집(대기실)과 크루 초대 코드의 규칙도 여기서 지킵니다.
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
@@ -11,6 +11,9 @@ const { ProofError, checkProof, deleteUserData } = require('./delete_account');
 const { KakaoTokenError, verifyKakaoToken } = require('./kakao');
 const { NaverLoginError, naverIdFromCode, stateFor, validState } = require('./naver');
 const { RunError, decide, decideTick } = require('./crew_run');
+const { CodeError, makeCode, normalizeCode, decideJoin, decideIssue } = require('./crew_code');
+const { routeDoc, decideCleanup } = require('./crew_route');
+const { randomInt } = require('node:crypto');
 
 initializeApp();
 
@@ -198,8 +201,11 @@ exports.crewRun = onCall({ region: REGION, maxInstances: 20 }, async (request) =
     ? crewRef.collection('runs').doc()
     : crewRef.collection('runs').doc(typeof data.runId === 'string' && data.runId ? data.runId : '_');
   const lockRef = (who) => db.collection('crewRunners').doc(who);
+  // 이번에 팀 달리기가 끝났으면 그 모집(끝난 뒤 각자의 길을 팀 기록에 옮깁니다).
+  let endedRun = null;
   try {
     await db.runTransaction(async (t) => {
+      endedRun = null;
       const crewSnap = await t.get(crewRef);
       const runSnap = action === 'create' ? null : await t.get(runRef);
       const lockSnap = await t.get(lockRef(uid));
@@ -243,6 +249,7 @@ exports.crewRun = onCall({ region: REGION, maxInstances: 20 }, async (request) =
         if (snap.exists && snap.get('runId') === runRef.id) clears.push(who);
       }
       writeRun(t, db, crewId, runRef, result, clears);
+      if (result.run && result.run.status === 'ended' && (!run || run.status !== 'ended')) endedRun = result.run;
       for (const who of result.lockSet || []) {
         t.set(lockRef(who), { crewId, runId: runRef.id });
       }
@@ -268,8 +275,120 @@ exports.crewRun = onCall({ region: REGION, maxInstances: 20 }, async (request) =
     logger.error('크루 모집 실패', action, crewId, uid, e);
     throw new HttpsError('internal', '잠시 후 다시 시도해주세요');
   }
+  if (endedRun) await saveTeamRoutes(db, crewId, runRef, endedRun);
   return { ok: true, runId: runRef.id };
 });
+
+/**
+ * 크루 초대 코드: 코드 만들기·바꾸기(issue, 크루장만)와 코드로 들어가기(join). 판단은 crew_code.js를 봅니다.
+ * 코드로 크루를 찾는 crewCodes 문서는 앱이 읽지 못해서, 코드를 모르면 크루를 찾을 수 없습니다.
+ * 친구가 아니어도 코드만 있으면 들어올 수 있고, 크루장이 내보낸 사람(banned)은 코드로 못 들어옵니다.
+ */
+exports.crewCode = onCall({ region: REGION, maxInstances: 20 }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', '로그인이 필요해요');
+  const uid = request.auth.uid;
+  const data = request.data || {};
+  const action = String(data.action || '');
+  const db = getFirestore();
+  try {
+    if (action === 'issue') {
+      const crewId = typeof data.crewId === 'string' ? data.crewId : '';
+      if (!crewId) throw new CodeError('크루를 찾을 수 없어요');
+      const crewRef = db.collection('crews').doc(crewId);
+      // 드물게 이미 쓰는 코드가 나오면 다시 뽑습니다.
+      for (let i = 0; i < 5; i++) {
+        const code = makeCode(() => randomInt(1e9) / 1e9);
+        const done = await db.runTransaction(async (t) => {
+          const crewSnap = await t.get(crewRef);
+          const codeRef = db.collection('crewCodes').doc(code);
+          const codeSnap = await t.get(codeRef);
+          const crew = crewSnap.exists ? crewSnap.data() : null;
+          decideIssue({ crew, uid });
+          if (codeSnap.exists) return false;
+          // 예전 코드는 지워서 더는 들어올 수 없게 합니다.
+          if (crew.code) t.delete(db.collection('crewCodes').doc(crew.code));
+          t.set(codeRef, { crewId, createdAt: FieldValue.serverTimestamp() });
+          t.update(crewRef, { code });
+          return true;
+        });
+        if (done) return { ok: true, code };
+      }
+      throw new Error('코드를 만들지 못함');
+    }
+    if (action === 'join') {
+      const code = normalizeCode(data.code);
+      if (!code) throw new CodeError('코드 6자리를 확인해 주세요');
+      const codeSnap = await db.collection('crewCodes').doc(code).get();
+      const crewId = codeSnap.exists ? String(codeSnap.get('crewId') || '') : '';
+      if (!crewId) throw new CodeError('코드를 다시 확인해 주세요');
+      const crewRef = db.collection('crews').doc(crewId);
+      await db.runTransaction(async (t) => {
+        const crewSnap = await t.get(crewRef);
+        const crew = crewSnap.exists ? crewSnap.data() : null;
+        const owner = crew && crew.owner;
+        const [bannedSnap, mine, theirs] = await Promise.all([
+          t.get(crewRef.collection('banned').doc(uid)),
+          owner ? t.get(db.collection('users').doc(uid).collection('blocks').doc(owner)) : null,
+          owner ? t.get(db.collection('users').doc(owner).collection('blocks').doc(uid)) : null,
+        ]);
+        const result = decideJoin({
+          crew,
+          code,
+          uid,
+          banned: bannedSnap.exists,
+          blocked: Boolean((mine && mine.exists) || (theirs && theirs.exists)),
+        });
+        if (result === 'member') return;
+        t.update(crewRef, { members: FieldValue.arrayUnion(uid) });
+        t.set(crewRef.collection('members').doc(uid), {
+          joinedAt: FieldValue.serverTimestamp(),
+          lastReadAt: FieldValue.serverTimestamp(),
+          muted: false,
+        });
+        t.set(crewRef.collection('messages').doc(), {
+          uid,
+          kind: 'join',
+          createdAt: FieldValue.serverTimestamp(),
+        });
+        // 받아 둔 초대가 있으면 함께 지웁니다.
+        t.delete(db.collection('crewInvites').doc(`${crewId}_${uid}`));
+      });
+      return { ok: true, crewId };
+    }
+    throw new CodeError('잠시 후 다시 시도해주세요');
+  } catch (e) {
+    if (e instanceof CodeError) throw new HttpsError('failed-precondition', e.message);
+    logger.error('크루 코드 실패', action, uid, e);
+    throw new HttpsError('internal', '잠시 후 다시 시도해주세요');
+  }
+});
+
+/**
+ * 팀 달리기가 끝나면 각자의 지나간 길을 실시간 상태(live)에서 팀 기록(routes/{uid})으로 옮깁니다.
+ * 출발·도착 200m는 잘라 내고(crew_route.js), 크루 멤버만 읽습니다(보안 규칙). 실시간 상태는 1시간 뒤
+ * crewRunTick이 지우도록 crewLiveCleanup에 적어 둡니다. 실패해도 팀 기록 자체에는 영향이 없습니다.
+ */
+async function saveTeamRoutes(db, crewId, runRef, run) {
+  try {
+    const batch = db.batch();
+    for (const uid of run.members || []) {
+      const live = await runRef.collection('live').doc(uid).get();
+      if (!live.exists) continue;
+      batch.set(runRef.collection('routes').doc(uid), {
+        ...routeDoc(live.data(), (run.colors || {})[uid]),
+        savedAt: FieldValue.serverTimestamp(),
+      });
+    }
+    batch.set(db.collection('crewLiveCleanup').doc(`${crewId}_${runRef.id}`), {
+      crewId,
+      runId: runRef.id,
+      endedAt: Timestamp.fromMillis(run.endedAt || Date.now()),
+    });
+    await batch.commit();
+  } catch (e) {
+    logger.error('팀 기록 길 저장 실패', crewId, runRef.id, e);
+  }
+}
 
 /** 모집 참여자들의 지금 실시간 상태(거리·시간). 트랜잭션 안에서 읽습니다. */
 async function readLive(t, runRef, run) {
@@ -307,11 +426,14 @@ exports.crewRunTick = onSchedule({ region: REGION, schedule: 'every 5 minutes', 
       continue;
     }
     const runRef = db.collection('crews').doc(crewId).collection('runs').doc(runId);
+    let endedRun = null;
     try {
       await db.runTransaction(async (t) => {
+        endedRun = null;
         const run = runFromDoc((await t.get(runRef)).data());
         const live = await readLive(t, runRef, run);
         const result = decideTick(run, live, Date.now());
+        if (result.run && result.run.status === 'ended' && (!run || run.status !== 'ended')) endedRun = result.run;
         const clears = [];
         for (const who of result.lockClear || []) {
           const snap = await t.get(db.collection('crewRunners').doc(who));
@@ -322,5 +444,45 @@ exports.crewRunTick = onSchedule({ region: REGION, schedule: 'every 5 minutes', 
     } catch (e) {
       logger.error('크루 모집 살피기 실패', crewId, runId, e);
     }
+    if (endedRun) await saveTeamRoutes(db, crewId, runRef, endedRun);
   }
+  await cleanupLive(db);
 });
+
+/**
+ * 팀이 끝나고 1시간이 지난 모집의 실시간 상태(위치·지나간 길)를 지웁니다. 길은 이미 팀 기록에 옮겨 두었습니다.
+ * 팀이 끝난 뒤에도 계속 달리는 사람(최근 10분 안에 올림)은 기다렸다가 다음에 지웁니다.
+ */
+async function cleanupLive(db) {
+  const now = Date.now();
+  const due = await db
+    .collection('crewLiveCleanup')
+    .where('endedAt', '<=', Timestamp.fromMillis(now - 60 * 60 * 1000))
+    .limit(100)
+    .get();
+  for (const doc of due.docs) {
+    const { crewId, runId, endedAt } = doc.data();
+    try {
+      if (!crewId || !runId) {
+        await doc.ref.delete();
+        continue;
+      }
+      const liveRef = db.collection('crews').doc(crewId).collection('runs').doc(runId).collection('live');
+      const lives = await liveRef.get();
+      const result = decideCleanup(
+        endedAt && typeof endedAt.toMillis === 'function' ? endedAt.toMillis() : null,
+        lives.docs.map((d) => {
+          const at = d.get('updatedAt');
+          return { uid: d.id, updatedAt: at && typeof at.toMillis === 'function' ? at.toMillis() : null };
+        }),
+        now,
+      );
+      const batch = db.batch();
+      for (const uid of result.remove) batch.delete(liveRef.doc(uid));
+      if (result.done) batch.delete(doc.ref);
+      await batch.commit();
+    } catch (e) {
+      logger.error('실시간 상태 정리 실패', crewId, runId, e);
+    }
+  }
+}
