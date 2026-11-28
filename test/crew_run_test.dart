@@ -108,7 +108,8 @@ void main() {
         throwsA(isA<FriendException>()),
       );
       await as(minji, () => a.leaveRun(crews.runs[key()]!));
-      expect(crews.runs[key()]!.status, CrewRunStatus.closed);
+      // 닫힌 모집은 서버에서 지워져요.
+      expect(crews.runs[key()], isNull);
       expect(crews.runnerLocks, isEmpty);
       // 닫히면 둘 다 새 모집을 열 수 있어요.
       await as(haeun, () => b.openRun(crewId, '새 모집'));
@@ -228,23 +229,25 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('최대 10명까지 함께 달릴 수 있어요'), findsOneWidget);
       expect(find.text('제목을 입력해 주세요'), findsOneWidget);
-      await tester.enterText(find.byType(TextField), '물빛광장 5 km 같이 뛰어요');
+      // 제목 창은 채팅방 위로 올라와요(뒤의 채팅 입력 칸 말고 창의 입력 칸).
+      await tester.enterText(find.byType(TextField).last, '물빛광장 5 km 같이 뛰어요');
       await tester.pump();
       await tester.tap(find.widgetWithText(FilledButton, '만들기'));
       await tester.pumpAndSettle();
 
       // 팀을 만들자마자 색 고르는 화면이 떠요(팀장은 '확인').
       expect(find.text('내 색상'), findsOneWidget);
-      await tester.tap(find.bySemanticsLabel('색 4'));
+      await tester.tap(find.bySemanticsLabel('모래'));
       await tester.pump();
       await tester.tap(find.widgetWithText(FilledButton, '확인'));
       await tester.pumpAndSettle();
-      expect(crews.runs.values.single.colorOf(minji.uid), 3);
+      expect(crews.runs.values.single.colorOf(minji.uid), 4);
 
-      expect(find.text('대기실'), findsOneWidget);
+      expect(find.byType(CrewLobbyPage), findsOneWidget);
       expect(find.text('물빛광장 5 km 같이 뛰어요'), findsOneWidget);
       expect(find.text('내가 열었어요 · 1/10명'), findsOneWidget);
-      expect(find.text('팀장'), findsOneWidget);
+      // 내 이름표에는 시안처럼 '나 · 팀장'이 붙어요.
+      expect(find.text('나 · 팀장'), findsOneWidget);
       // 혼자면 시작할 수 없어요.
       expect(
         tester
@@ -259,9 +262,10 @@ void main() {
       expect(find.text('대기실을 나갈까요?'), findsOneWidget);
       await tester.tap(find.widgetWithText(FilledButton, '나가기'));
       await tester.pumpAndSettle();
-      expect(crews.runs.values.single.status, CrewRunStatus.closed);
-      // 채팅방의 카드가 '모집이 닫혔어요'로 바뀌어요.
-      expect(find.text('모집이 닫혔어요'), findsOneWidget);
+      // 닫힌 모집은 서버에서 지워지고, 채팅방의 카드도 사라져요.
+      expect(crews.runs, isEmpty);
+      expect(find.text('물빛광장 5 km 같이 뛰어요'), findsNothing);
+      expect(find.text('모집이 닫혔어요'), findsNothing);
     });
 
     testWidgets('이미 들어가 있던 대기실을 다시 열 때는 색 고르는 화면이 뜨지 않아요', (tester) async {
@@ -281,7 +285,7 @@ void main() {
       );
       await tester.tap(find.widgetWithText(FilledButton, '대기실로 가기'));
       await tester.pumpAndSettle();
-      expect(find.text('대기실'), findsOneWidget);
+      expect(find.byType(CrewLobbyPage), findsOneWidget);
       expect(find.text('내 색상'), findsNothing);
     });
 
@@ -303,7 +307,7 @@ void main() {
       expect(find.text('내 색상'), findsOneWidget);
       Navigator.of(tester.element(find.text('내 색상'))).pop();
       await tester.pumpAndSettle();
-      expect(find.text('대기실'), findsOneWidget);
+      expect(find.byType(CrewLobbyPage), findsOneWidget);
       expect(find.text('내 색상'), findsNothing);
       expect(crews.runs.values.single.ready, isEmpty);
     });
@@ -324,7 +328,7 @@ void main() {
       );
       await tester.tap(find.widgetWithText(FilledButton, '참여'));
       await tester.pumpAndSettle();
-      expect(find.text('대기실'), findsOneWidget);
+      expect(find.byType(CrewLobbyPage), findsOneWidget);
       expect(find.text('내 색상'), findsNothing);
       expect(find.textContaining('위치 권한을 켜야'), findsOneWidget);
     });
@@ -353,8 +357,8 @@ void main() {
       // 참여하자마자 색 고르는 화면이 떠요(팀원은 '준비 완료').
       expect(find.text('내 색상'), findsOneWidget);
       // 팀장이 고른 색은 고를 수 없어요.
-      expect(find.bySemanticsLabel('색 1, 김민지 님이 고름'), findsOneWidget);
-      await tester.tap(find.bySemanticsLabel('색 6'));
+      expect(find.bySemanticsLabel('주황 · 김민지 님이 골랐어요'), findsOneWidget);
+      await tester.tap(find.bySemanticsLabel('갈색'));
       await tester.pump();
       // 색 고르기 창의 '준비 완료'(대기실 아래쪽 버튼과 이름이 같아요).
       await tester.tap(find.widgetWithText(FilledButton, '준비 완료').last);
@@ -369,7 +373,7 @@ void main() {
       await tester.tap(find.byTooltip('준비 취소를 누른 뒤 나갈 수 있어요'));
       await tester.pumpAndSettle();
       expect(find.text('준비 취소를 누른 뒤 나갈 수 있어요'), findsWidgets);
-      expect(find.text('대기실'), findsOneWidget);
+      expect(find.byType(CrewLobbyPage), findsOneWidget);
       // 안내 띠가 닫힐 때까지 기다립니다(아래쪽 버튼을 가려서).
       await tester.pump(const Duration(seconds: 5));
       await tester.pumpAndSettle();
@@ -378,7 +382,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('대기실 나가기'));
       await tester.pumpAndSettle();
-      expect(find.text('대기실'), findsNothing);
+      expect(find.byType(CrewLobbyPage), findsNothing);
       expect(crews.runs['$crewId/$runId']!.members, [minji.uid]);
     });
 
@@ -414,7 +418,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('러닝 진행 중'), findsNothing);
       expect(find.widgetWithText(FilledButton, '대기실로 가기'), findsNothing);
-      await tester.tap(find.widgetWithText(FilledButton, '기록 보기'));
+      await tester.tap(find.widgetWithText(OutlinedButton, '기록 보기'));
       await tester.pumpAndSettle();
       // 팀 기록 화면을 만들기 전까지는 채팅방 메뉴의 '함께 달린 기록'이 열려요.
       expect(find.text('함께 달린 기록'), findsOneWidget);
@@ -440,7 +444,7 @@ void main() {
           store: store,
         ),
       );
-      expect(find.text('대기실'), findsOneWidget);
+      expect(find.byType(CrewLobbyPage), findsOneWidget);
 
       await tester.runAsync(() async {
         crews.actor = minji.uid;

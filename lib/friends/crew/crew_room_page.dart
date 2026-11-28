@@ -147,15 +147,26 @@ class _CrewRoomPageState extends State<CrewRoomPage> {
     }
   }
 
-  Future<void> _openRunTitle() => Navigator.of(context).push(
-    MaterialPageRoute<void>(
-      builder: (_) => CrewRunTitlePage(
-        crewId: widget.id,
-        friends: widget.friends,
-        store: widget.store,
+  /// 17-9 제목 정하기 창을 띄우고, 만들면 바로 대기실을 엽니다(만들자마자 색 고르기).
+  Future<void> _openRunTitle() async {
+    final id = await showCrewRunTitleSheet(
+      context,
+      crewId: widget.id,
+      store: widget.store,
+    );
+    if (id == null || !mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => CrewLobbyPage(
+          crewId: widget.id,
+          runId: id,
+          friends: widget.friends,
+          store: widget.store,
+          pickColorOnOpen: true,
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   /// [joined]면 막 참여한 것이라 대기실에 들어가자마자 색 고르는 화면이 뜹니다.
   void _openLobby(String runId, {bool joined = false}) =>
@@ -234,36 +245,52 @@ class _CrewRoomPageState extends State<CrewRoomPage> {
     return Scaffold(
       key: _scaffold,
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        surfaceTintColor: Colors.transparent,
-        leading: IconButton(
-          tooltip: '크루 목록으로',
-          icon: const Icon(Icons.arrow_back_ios_new, size: 18),
-          onPressed: () => Navigator.pop(context),
-        ),
-        centerTitle: true,
-        title: Text.rich(
-          TextSpan(
-            text: crew?.name ?? '크루',
-            children: [
-              if (crew != null)
-                TextSpan(
-                  text: '  ${crew.members.length}',
-                  style: TextStyle(color: AppColors.textTertiary),
+      // 17-8: 크루 이름(16 굵게)과 인원(13, 회색), 아래 구분선.
+      appBar: friendAppBar(
+        context,
+        crew?.name ?? '크루',
+        backTooltip: '크루 목록으로',
+        titleWidget: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Flexible(
+              child: Text(
+                crew?.name ?? '크루',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.24,
+                  height: 1,
                 ),
+              ),
+            ),
+            if (crew != null) ...[
+              const SizedBox(width: 6),
+              Text(
+                '${crew.members.length}',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  height: 1,
+                  color: AppColors.textTertiary,
+                ),
+              ),
             ],
-          ),
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ],
         ),
         actions: [
           if (crew != null && !_gone)
-            IconButton(
+            FriendIconButton(
+              icon: FriendIconKind.menu,
               tooltip: '채팅방 메뉴',
-              icon: const Icon(Icons.menu),
               onPressed: () => _scaffold.currentState?.openEndDrawer(),
-            ),
-          const SizedBox(width: 4),
+            )
+          else
+            const SizedBox(width: 44),
         ],
       ),
       endDrawer: crew == null || _gone
@@ -317,63 +344,81 @@ class _CrewRoomPageState extends State<CrewRoomPage> {
         lastDay = day;
       }
       if (m.kind == CrewMessageKind.run && m.runId != null) {
+        // 17-10: 연 사람의 말풍선 자리에 카드가 붙습니다. 참여하지 못하면 카드 바로 아래에 이유가 보입니다.
         items.add(
-          CrewRunCard(
+          Column(
             key: ValueKey(m.id),
-            crewId: widget.id,
-            runId: m.runId!,
-            title: m.text,
-            at: at,
-            store: _store,
-            onJoin: _join,
-            onOpen: (run) => _openLobby(run.id),
-            // 팀 기록 화면을 만들기 전까지는 채팅방 메뉴(서랍)의 '함께 달린 기록'을 엽니다.
-            onRecord: (_) => _scaffold.currentState?.openEndDrawer(),
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _Sender(
+                mine: m.uid == me,
+                name: _store.nameOf(m.uid),
+                initial: _store.person(m.uid)?.initial ?? '·',
+                at: at,
+                child: CrewRunCard(
+                  crewId: widget.id,
+                  runId: m.runId!,
+                  title: m.text,
+                  at: at,
+                  store: _store,
+                  onJoin: _join,
+                  onOpen: (run) => _openLobby(run.id),
+                  // 팀 기록 화면을 만들기 전까지는 채팅방 메뉴(서랍)의 '함께 달린 기록'을 엽니다.
+                  onRecord: (_) => _scaffold.currentState?.openEndDrawer(),
+                  mine: m.uid == me,
+                ),
+              ),
+              NoticeSlot(notices: _notices, id: 'run:${m.runId}'),
+            ],
           ),
         );
-        // 참여하지 못하면 그 카드 바로 아래에 이유가 보입니다.
-        items.add(NoticeSlot(notices: _notices, id: 'run:${m.runId}'));
         continue;
       }
       items.add(
         m.kind == CrewMessageKind.text
-            ? _Bubble(
-                message: m,
+            ? _Sender(
                 mine: m.uid == me,
                 name: _store.nameOf(m.uid),
                 initial: _store.person(m.uid)?.initial ?? '·',
-                hidden: blocked.contains(m.uid),
                 at: at,
+                child: _BubbleText(
+                  text: blocked.contains(m.uid) ? '차단한 사용자의 메시지예요' : m.text,
+                  mine: m.uid == me,
+                  hidden: blocked.contains(m.uid),
+                ),
               )
             : _Notice(text: _noticeText(m)),
       );
     }
-    return ListView(
-      // 새 메시지가 아래에 오도록 거꾸로 쌓고, 처음에는 맨 아래를 보여 줍니다.
-      reverse: true,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      children: [
-        ...items.reversed,
-        if (_messages.length >= _limit)
-          Center(
-            child: TextButton(
-              onPressed: _loadOlder,
-              child: Text(
-                '이전 메시지 보기',
-                style: TextStyle(color: AppColors.textSecondary),
-              ),
-            ),
-          ),
-        if (_messages.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 40),
+    final children = [
+      if (_messages.length >= _limit)
+        Center(
+          child: TextButton(
+            onPressed: _loadOlder,
             child: Text(
-              '첫 메시지를 보내 보세요',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textTertiary),
+              '이전 메시지 보기',
+              style: TextStyle(color: AppColors.textSecondary),
             ),
           ),
-      ],
+        ),
+      ...items,
+      if (_messages.isEmpty)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 40),
+          child: Text(
+            '첫 메시지를 보내 보세요',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppColors.textTertiary),
+          ),
+        ),
+    ];
+    // 새 메시지가 아래에 오도록 거꾸로 쌓고, 처음에는 맨 아래를 보여 줍니다. 줄 사이는 시안대로 14.
+    return ListView.separated(
+      reverse: true,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      itemCount: children.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 14),
+      itemBuilder: (_, i) => children[children.length - 1 - i],
     );
   }
 
@@ -384,18 +429,60 @@ class _CrewRoomPageState extends State<CrewRoomPage> {
     CrewMessageKind.text || CrewMessageKind.run => m.text,
   };
 
+  /// 17-8 아래 입력 줄: 주황 '함께 시작', 테두리 입력 칸(높이 44), 둥근 보내기 버튼.
   Widget _composer() => Container(
-    padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
     decoration: BoxDecoration(
+      color: AppColors.background,
       border: Border(top: BorderSide(color: AppColors.divider)),
     ),
     child: Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        IconButton(
-          tooltip: '함께 시작',
-          icon: Icon(Icons.directions_run, color: AppColors.primaryText),
-          onPressed: _openRunTitle,
+        Semantics(
+          button: true,
+          label: '함께 시작',
+          excludeSemantics: true,
+          child: Tooltip(
+            message: '함께 시작',
+            child: Material(
+              color: AppColors.primary,
+              shape: const StadiumBorder(),
+              child: InkWell(
+                customBorder: const StadiumBorder(),
+                onTap: _openRunTitle,
+                child: const SizedBox(
+                  height: 44,
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 14),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        FriendIcon(
+                          FriendIconKind.play,
+                          size: 16,
+                          color: Color(0xFF0B0B0B),
+                        ),
+                        SizedBox(width: 6),
+                        Text(
+                          '함께 시작',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.14,
+                            height: 1,
+                            color: Color(0xFF0B0B0B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
+        const SizedBox(width: 8),
         Expanded(
           child: Semantics(
             label: '메시지 입력',
@@ -413,42 +500,58 @@ class _CrewRoomPageState extends State<CrewRoomPage> {
               textInputAction: TextInputAction.newline,
               onChanged: (_) => setState(() {}),
               cursorColor: AppColors.textPrimary,
-              style: const TextStyle(fontSize: 15),
+              style: const TextStyle(fontSize: 15, letterSpacing: -0.15),
               decoration: InputDecoration(
-                hintText: '메시지를 입력하세요',
+                hintText: '메시지 입력',
                 hintStyle: TextStyle(color: AppColors.textTertiary),
                 isDense: true,
+                constraints: const BoxConstraints(minHeight: 44),
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 16,
                   vertical: 12,
                 ),
-                filled: true,
-                fillColor: AppColors.surface,
-                border: OutlineInputBorder(
+                enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(22),
-                  borderSide: BorderSide.none,
+                  borderSide: BorderSide(color: AppColors.borderDefault),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(22),
+                  borderSide: BorderSide(color: AppColors.textPrimary),
                 ),
               ),
             ),
           ),
         ),
-        const SizedBox(width: 4),
-        IconButton(
-          tooltip: '보내기',
-          icon: Icon(
-            Icons.arrow_upward,
-            color: _text.text.trim().isEmpty
-                ? AppColors.textTertiary
-                : AppColors.textPrimary,
+        const SizedBox(width: 8),
+        Tooltip(
+          message: '보내기',
+          child: Material(
+            color: AppColors.card,
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: _text.text.trim().isEmpty || _sending ? null : _send,
+              child: SizedBox.square(
+                dimension: 44,
+                child: Center(
+                  child: FriendIcon(
+                    FriendIconKind.send,
+                    size: 20,
+                    color: _text.text.trim().isEmpty
+                        ? AppColors.textTertiary
+                        : AppColors.textPrimary,
+                  ),
+                ),
+              ),
+            ),
           ),
-          onPressed: _text.text.trim().isEmpty || _sending ? null : _send,
         ),
       ],
     ),
   );
 }
 
-/// 날짜 줄: '10월 24일 토요일'.
+/// 날짜 줄: '10월 24일 토요일'(둥근 회색 칩).
 class _DayLine extends StatelessWidget {
   const _DayLine({required this.day});
 
@@ -457,14 +560,21 @@ class _DayLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      child: Center(
+    return Center(
+      child: Container(
+        height: 26,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.circular(999),
+        ),
         child: Text(
           '${day.month}월 ${day.day}일 ${weekdays[day.weekday - 1]}요일',
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w500,
+            height: 1,
             color: AppColors.textTertiary,
           ),
         ),
@@ -480,100 +590,141 @@ class _Notice extends StatelessWidget {
   final String text;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 8),
-    child: Center(
-      child: Text(
-        text,
-        style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+  Widget build(BuildContext context) => Center(
+    child: Text(
+      text,
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w500,
+        height: 1.4,
+        letterSpacing: -0.06,
+        color: AppColors.textTertiary,
       ),
     ),
   );
 }
 
-/// 말풍선. 내 메시지는 오른쪽 흰 풍선, 다른 사람은 왼쪽에 얼굴·이름과 함께.
-class _Bubble extends StatelessWidget {
-  const _Bubble({
-    required this.message,
+/// 17-8 한 사람의 말: 다른 사람은 왼쪽에 얼굴(36)·이름과 함께, 내 것은 오른쪽에. 시각은 풍선 옆 아래에 붙습니다.
+/// 글자 풍선과 함께 달리기 카드가 같이 씁니다.
+class _Sender extends StatelessWidget {
+  const _Sender({
     required this.mine,
     required this.name,
     required this.initial,
-    required this.hidden,
     required this.at,
+    required this.child,
   });
 
-  final CrewMessage message;
-  final bool mine, hidden;
+  final bool mine;
   final String name, initial;
   final DateTime at;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
     final time = Text(
       clockText(at),
-      style: TextStyle(fontSize: 10, color: AppColors.textTertiary),
-    );
-    final bubble = Flexible(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: mine ? AppColors.textPrimary : AppColors.surface,
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Text(
-          hidden ? '차단한 사용자의 메시지예요' : message.text,
-          style: TextStyle(
-            fontSize: 15,
-            height: 1.4,
-            fontStyle: hidden ? FontStyle.italic : null,
-            color: hidden
-                ? AppColors.textTertiary
-                : mine
-                ? AppColors.background
-                : AppColors.textPrimary,
-          ),
-        ),
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w500,
+        height: 1,
+        color: AppColors.textTertiary,
       ),
     );
     if (mine) {
-      return Padding(
-        padding: const EdgeInsets.only(top: 6, left: 56),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [time, const SizedBox(width: 6), bubble],
-        ),
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          time,
+          const SizedBox(width: 6),
+          Flexible(child: child),
+        ],
       );
     }
-    return Padding(
-      padding: const EdgeInsets.only(top: 10, right: 56),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          FriendAvatar(initial: initial, size: 34),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textSecondary,
-                  ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        FriendAvatar(initial: initial, size: 36),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                name,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  height: 1,
+                  color: AppColors.textSecondary,
                 ),
-                const SizedBox(height: 4),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [bubble, const SizedBox(width: 6), time],
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Flexible(child: child),
+                  const SizedBox(width: 6),
+                  time,
+                ],
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
+}
+
+/// 글자 풍선: 최대 폭 236, 안쪽 여백 10×13. 다른 사람은 회색(왼쪽 위만 4), 나는 흰색(오른쪽 위만 4).
+class _BubbleText extends StatelessWidget {
+  const _BubbleText({
+    required this.text,
+    required this.mine,
+    required this.hidden,
+  });
+
+  final String text;
+  final bool mine, hidden;
+
+  @override
+  Widget build(BuildContext context) => ConstrainedBox(
+    constraints: const BoxConstraints(maxWidth: 236),
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+      decoration: BoxDecoration(
+        color: mine ? AppColors.textPrimary : AppColors.card,
+        borderRadius: mine
+            ? const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(4),
+                bottomLeft: Radius.circular(16),
+                bottomRight: Radius.circular(16),
+              )
+            : const BorderRadius.only(
+                topLeft: Radius.circular(4),
+                topRight: Radius.circular(16),
+                bottomLeft: Radius.circular(16),
+                bottomRight: Radius.circular(16),
+              ),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 15,
+          height: 1.4,
+          letterSpacing: -0.15,
+          fontStyle: hidden ? FontStyle.italic : null,
+          color: hidden
+              ? AppColors.textTertiary
+              : mine
+              ? AppColors.background
+              : AppColors.textPrimary,
+        ),
+      ),
+    ),
+  );
 }

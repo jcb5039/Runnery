@@ -1,10 +1,10 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../../design_system/app_colors.dart';
-import '../../design_system/app_radius.dart';
 import '../../design_system/inline_notice.dart';
 import '../../home/running/running_start_page.dart' show runningNumberStyle;
 import '../../record/list/detail/record_detail_page.dart' show recordDelete;
@@ -13,7 +13,7 @@ import '../data/crew_store.dart';
 import '../data/friend_store.dart';
 import '../widgets/friend_widgets.dart';
 import 'crew_new_page.dart' show CrewInvitePage;
-import 'crew_tab.dart' show CrewFaces;
+import 'crew_tab.dart' show CrewTile;
 
 /// 17-11 크루 채팅방 서랍: 크루 이름·인원, 공지(크루장만 씀), 함께 달린 기록, 멤버(크루장은 내보내기),
 /// 초대 코드(복사, 크루장은 바꾸기), 멤버 초대, 나가기, 알림 켜고 끄기(종 아이콘).
@@ -304,38 +304,47 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
           ? ordered
           : ordered.take(CrewInfoDrawer.previewMembers).toList();
       final muted = _store.muted(_crew.id);
+      final notice = _crew.notice;
+      // 17-11 서랍: 폭 310, 위쪽 크루 얼굴·이름, 공지·초대 코드·함께 달린 기록·멤버, 아래 나가기·알림.
       return Drawer(
         backgroundColor: AppColors.background,
-        width: 320,
+        width: 310,
         shape: const RoundedRectangleBorder(),
         child: SafeArea(
+          bottom: false,
           child: Column(
             children: [
               Expanded(
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
                   children: [
                     Row(
                       children: [
-                        CrewFaces(crew: _crew, store: _store, size: 52),
-                        const SizedBox(width: 14),
+                        CrewTile(crew: _crew, store: _store),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
                                 _crew.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   fontSize: 18,
-                                  fontWeight: FontWeight.w800,
+                                  fontWeight: FontWeight.w700,
+                                  height: 1.2,
+                                  letterSpacing: -0.36,
                                 ),
                               ),
-                              const SizedBox(height: 6),
+                              const SizedBox(height: 7),
                               Text(
                                 '멤버 ${_crew.members.length}명',
                                 style: TextStyle(
                                   fontSize: 13,
-                                  color: AppColors.textSecondary,
+                                  fontWeight: FontWeight.w500,
+                                  height: 1,
+                                  color: AppColors.textTertiary,
                                 ),
                               ),
                             ],
@@ -343,25 +352,31 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 24),
-                    _codeCard(owner),
-                    NoticeSlot(notices: _notices, id: 'code'),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 22),
+                    FriendSectionHeader(
+                      title: '공지',
+                      meta: notice == null
+                          ? null
+                          : '${_store.nameOf(notice.by)} · ${notice.at.month}월 ${notice.at.day}일',
+                    ),
+                    const SizedBox(height: 10),
                     _noticeCard(owner),
                     NoticeSlot(notices: _notices, id: 'notice'),
-                    const SizedBox(height: 28),
-                    const FriendSectionHeader(title: '함께 달린 기록'),
+                    const SizedBox(height: 22),
+                    const FriendSectionHeader(title: '초대 코드'),
+                    const SizedBox(height: 10),
+                    _codeCard(owner),
+                    NoticeSlot(notices: _notices, id: 'code'),
+                    const SizedBox(height: 22),
+                    FriendSectionHeader(
+                      title: '함께 달린 기록',
+                      meta: '${_store.now.month}월',
+                    ),
                     _CrewRecords(runs: _runs, me: me, now: _store.now),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: FriendSectionHeader(
-                            title: '멤버',
-                            meta: '${_crew.members.length}명',
-                          ),
-                        ),
-                      ],
+                    const SizedBox(height: 22),
+                    FriendSectionHeader(
+                      title: '멤버',
+                      meta: '${_crew.members.length}명',
                     ),
                     const SizedBox(height: 6),
                     InkWell(
@@ -375,19 +390,20 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
                         ),
                       ),
                       child: SizedBox(
-                        height: 52,
+                        height: 46,
                         child: Row(
                           children: [
-                            Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: AppColors.borderControl,
+                            CustomPaint(
+                              painter: _DashedCircle(AppColors.borderControl),
+                              child: const SizedBox.square(
+                                dimension: 36,
+                                child: Center(
+                                  child: FriendIcon(
+                                    FriendIconKind.plus,
+                                    size: 18,
+                                  ),
                                 ),
                               ),
-                              child: const Icon(Icons.add, size: 20),
                             ),
                             const SizedBox(width: 12),
                             const Text(
@@ -395,6 +411,8 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
                               style: TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w600,
+                                height: 1,
+                                letterSpacing: -0.225,
                               ),
                             ),
                           ],
@@ -407,11 +425,30 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
                     ],
                     if (!_allMembers &&
                         ordered.length > CrewInfoDrawer.previewMembers)
-                      TextButton(
-                        onPressed: () => setState(() => _allMembers = true),
-                        child: Text(
-                          '멤버 ${ordered.length - CrewInfoDrawer.previewMembers}명 더 보기',
-                          style: TextStyle(color: AppColors.textSecondary),
+                      InkWell(
+                        onTap: () => setState(() => _allMembers = true),
+                        child: SizedBox(
+                          height: 44,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '멤버 ${ordered.length - CrewInfoDrawer.previewMembers}명 더 보기',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  height: 1,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              FriendIcon(
+                                FriendIconKind.chevronRight,
+                                size: 16,
+                                color: AppColors.textSecondary,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                   ],
@@ -424,47 +461,74 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
                 textAlign: TextAlign.center,
                 padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
               ),
-              Divider(height: 1, color: AppColors.divider),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextButton.icon(
-                      onPressed: _busy ? null : _leave,
-                      icon: const Icon(Icons.logout, size: 18),
-                      label: const Text('나가기'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppColors.textSecondary,
-                        minimumSize: const Size.fromHeight(56),
-                      ),
-                    ),
-                  ),
-                  // 글자 없이 지금 상태만 보여 줍니다: 종이면 켜짐, 작대기 그어진 종이면 꺼짐.
-                  Expanded(
-                    child: Semantics(
-                      button: true,
-                      label: muted ? '크루 알림 꺼짐, 눌러서 켜기' : '크루 알림 켜짐, 눌러서 끄기',
-                      excludeSemantics: true,
-                      child: TextButton(
-                        onPressed: _busy
-                            ? null
-                            : () => _run(
-                                'bottom',
-                                () => _store.setMuted(_crew.id, muted: !muted),
+              Container(
+                decoration: BoxDecoration(
+                  border: Border(top: BorderSide(color: AppColors.divider)),
+                ),
+                child: SafeArea(
+                  top: false,
+                  minimum: const EdgeInsets.only(bottom: 12),
+                  child: SizedBox(
+                    height: 56,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          TextButton.icon(
+                            onPressed: _busy ? null : _leave,
+                            icon: const FriendIcon(
+                              FriendIconKind.leave,
+                              size: 20,
+                            ),
+                            label: const Text('나가기'),
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppColors.textPrimary,
+                              minimumSize: const Size(0, 44),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
                               ),
-                        style: TextButton.styleFrom(
-                          foregroundColor: AppColors.textSecondary,
-                          minimumSize: const Size.fromHeight(56),
-                        ),
-                        child: Icon(
-                          muted
-                              ? Icons.notifications_off_outlined
-                              : Icons.notifications_none,
-                          size: 22,
-                        ),
+                              textStyle: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: -0.14,
+                              ),
+                            ),
+                          ),
+                          // 글자 없이 지금 상태만 보여 줍니다: 종이면 켜짐, 작대기 그어진 종이면 꺼짐.
+                          Semantics(
+                            button: true,
+                            label: muted
+                                ? '크루 알림 꺼짐, 눌러서 켜기'
+                                : '크루 알림 켜짐, 눌러서 끄기',
+                            excludeSemantics: true,
+                            child: IconButton(
+                              onPressed: _busy
+                                  ? null
+                                  : () => _run(
+                                      'bottom',
+                                      () => _store.setMuted(
+                                        _crew.id,
+                                        muted: !muted,
+                                      ),
+                                    ),
+                              constraints: const BoxConstraints.tightFor(
+                                width: 44,
+                                height: 44,
+                              ),
+                              icon: FriendIcon(
+                                muted
+                                    ? FriendIconKind.bellOff
+                                    : FriendIconKind.bell,
+                                size: 20,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                ],
+                ),
               ),
             ],
           ),
@@ -473,58 +537,52 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
     },
   );
 
+  /// 시안의 회색 카드(안쪽 여백 12×14, 모서리 14).
+  static BoxDecoration get _cardBox => BoxDecoration(
+    color: AppColors.card,
+    borderRadius: BorderRadius.circular(14),
+  );
+
   /// 초대 코드: 친구가 아니어도 이 코드로 들어올 수 있어요. 멤버는 복사하고, 크루장은 바꿀 수 있습니다.
+  /// 시안에 없는 칸이라 공지 카드와 같은 모양으로 만듭니다.
   Widget _codeCard(bool owner) {
     final code = _crew.code;
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: AppRadius.thumbnailBorder,
-      ),
+      padding: const EdgeInsets.fromLTRB(14, 8, 4, 8),
+      decoration: _cardBox,
       child: Row(
         children: [
-          Icon(
-            Icons.vpn_key_outlined,
-            size: 18,
-            color: AppColors.textSecondary,
-          ),
-          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '초대 코드',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textTertiary,
-                  ),
-                ),
-                const SizedBox(height: 4),
                 if (code != null)
                   Text(
                     code,
                     semanticsLabel: '초대 코드 ${code.split('').join(' ')}',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 2,
-                    ),
+                    style: runningNumberStyle(
+                      24,
+                      weight: FontWeight.w700,
+                    ).copyWith(letterSpacing: 2),
                   )
                 else
                   Text(
                     owner ? '코드를 만드는 중이에요' : '아직 코드가 없어요',
                     style: TextStyle(
                       fontSize: 14,
+                      fontWeight: FontWeight.w500,
                       color: AppColors.textTertiary,
                     ),
                   ),
                 const SizedBox(height: 4),
                 Text(
                   '친구가 아니어도 이 코드로 들어올 수 있어요',
-                  style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    height: 1.4,
+                    color: AppColors.textTertiary,
+                  ),
                 ),
               ],
             ),
@@ -534,7 +592,7 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
               tooltip: _copied ? '복사했어요' : '코드 복사',
               icon: Icon(
                 _copied ? Icons.check_rounded : Icons.copy_rounded,
-                size: 20,
+                size: 18,
               ),
               color: AppColors.textSecondary,
               onPressed: () => _copyCode(code),
@@ -542,7 +600,7 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
           if (owner)
             IconButton(
               tooltip: '코드 바꾸기',
-              icon: const Icon(Icons.refresh_rounded, size: 20),
+              icon: const Icon(Icons.refresh_rounded, size: 18),
               color: AppColors.textSecondary,
               onPressed: _busy ? null : _changeCode,
             ),
@@ -551,88 +609,104 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
     );
   }
 
+  /// 공지 카드: 확성기 아이콘과 공지 글. 크루장은 눌러서 쓰거나 고칩니다.
   Widget _noticeCard(bool owner) {
     final notice = _crew.notice;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: AppRadius.thumbnailBorder,
-      ),
+    final card = Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: _cardBox,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Icon(
-              Icons.campaign_outlined,
-              size: 18,
-              color: AppColors.textSecondary,
-            ),
+          FriendIcon(
+            FriendIconKind.notice,
+            size: 18,
+            color: AppColors.textPrimary,
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  notice == null
-                      ? '공지'
-                      : '공지 · ${_store.nameOf(notice.by)} · ${notice.at.month}월 ${notice.at.day}일',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textTertiary,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  notice?.text ??
-                      (owner ? '크루원에게 알릴 내용을 적어 보세요' : '아직 공지가 없어요'),
-                  style: TextStyle(
-                    fontSize: 14,
-                    height: 1.45,
-                    color: notice == null
-                        ? AppColors.textTertiary
-                        : AppColors.textPrimary,
-                  ),
-                ),
-              ],
+            child: Text(
+              notice?.text ??
+                  (owner ? '눌러서 크루원에게 알릴 내용을 적어 보세요' : '아직 공지가 없어요'),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                height: 1.45,
+                letterSpacing: -0.14,
+                color: notice == null
+                    ? AppColors.textTertiary
+                    : AppColors.textPrimary,
+              ),
             ),
           ),
-          if (owner)
-            IconButton(
-              tooltip: notice == null ? '공지 쓰기' : '공지 고치기',
-              icon: Icon(
-                Icons.edit_outlined,
-                size: 18,
-                color: AppColors.textSecondary,
-              ),
-              onPressed: _busy ? null : _editNotice,
-            ),
         ],
+      ),
+    );
+    if (!owner) return card;
+    return Semantics(
+      button: true,
+      label: notice == null ? '공지 쓰기' : '공지 고치기',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: _busy ? null : _editNotice,
+        child: card,
       ),
     );
   }
 
+  /// 멤버 한 줄(높이 46): 얼굴 36, 이름, '나'·'크루장' 칩. 크루장은 다른 멤버를 내보낼 수 있습니다.
   Widget _memberRow(String uid, String me, bool owner) {
     final person = _store.person(uid);
     final isOwner = _crew.isOwner(uid);
+    Widget chip(String label, {required bool filled}) => Container(
+      height: 20,
+      padding: const EdgeInsets.symmetric(horizontal: 7),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: filled ? AppColors.card : null,
+        border: filled ? null : Border.all(color: AppColors.borderDefault),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          height: 1,
+          letterSpacing: -0.055,
+          color: filled ? AppColors.textSecondary : AppColors.textPrimary,
+        ),
+      ),
+    );
     return SizedBox(
-      height: 56,
+      height: 46,
       child: Row(
         children: [
-          FriendAvatar(initial: person?.initial ?? '·'),
+          FriendAvatar(initial: person?.initial ?? '·', size: 36),
           const SizedBox(width: 12),
-          Expanded(
+          Flexible(
             child: Text(
-              uid == me ? '나' : (person?.name ?? '멤버'),
+              person?.name ?? '멤버',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                height: 1,
+                letterSpacing: -0.225,
+              ),
             ),
           ),
-          if (isOwner) const FriendChip(label: '크루장'),
+          if (uid == me) ...[
+            const SizedBox(width: 12),
+            chip('나', filled: true),
+          ],
+          if (isOwner) ...[
+            const SizedBox(width: 12),
+            chip('크루장', filled: false),
+          ],
+          const Spacer(),
           if (owner && !isOwner)
             IconButton(
               tooltip: '${person?.name ?? '멤버'} 님 내보내기',
@@ -643,6 +717,37 @@ class _CrewInfoDrawerState extends State<CrewInfoDrawer> {
       ),
     );
   }
+}
+
+/// 점선 동그라미(멤버 초대 칸).
+class _DashedCircle extends CustomPainter {
+  _DashedCircle(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    final r = size.shortestSide / 2 - 0.5;
+    final center = size.center(Offset.zero);
+    const dashes = 18;
+    for (var i = 0; i < dashes; i++) {
+      final start = i * 2 * math.pi / dashes;
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: r),
+        start,
+        math.pi / dashes,
+        false,
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedCircle old) => old.color != color;
 }
 
 /// 공지 쓰기: 200자까지. 비우고 저장하면 공지를 지웁니다.
@@ -749,22 +854,29 @@ class _CrewRecords extends StatelessWidget {
       (sum, r) => sum + (r.team[me]?.distanceKm ?? 0),
     );
     const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
+    final recent = list.take(5).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         Row(
           children: [
-            Expanded(
-              child: _stat('${now.month}월 크루 함께 달리기', '${month.length}', '번'),
-            ),
+            Expanded(child: _stat('크루 함께 달리기', '${month.length}', '번')),
+            const SizedBox(width: 8),
             Expanded(child: _stat('내가 함께 뛴 거리', myKm.toStringAsFixed(2), 'km')),
           ],
         ),
-        const SizedBox(height: 8),
-        for (final r in list.take(5))
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
+        const SizedBox(height: 4),
+        for (final (i, r) in recent.indexed)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              border: Border(
+                top: BorderSide(
+                  color: i == 0 ? Colors.transparent : AppColors.divider,
+                ),
+              ),
+            ),
             child: Row(
               children: [
                 Expanded(
@@ -774,29 +886,35 @@ class _CrewRecords extends StatelessWidget {
                       Text(
                         '${at(r).month}월 ${at(r).day}일 (${weekdays[at(r).weekday - 1]})',
                         style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          height: 1,
+                          letterSpacing: -0.13,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 6),
                       Text(
-                        '${r.title} · ${r.members.length}명 · ${clockText(at(r))}',
+                        '${r.members.length}명 · ${clockText(at(r))}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          height: 1,
                           color: AppColors.textTertiary,
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                Text(
+                const SizedBox(width: 10),
+                _number(
                   r.team[me] == null
                       ? '–'
-                      : '${r.team[me]!.distanceKm.toStringAsFixed(2)} km',
-                  style: runningNumberStyle(16, weight: FontWeight.w600),
+                      : r.team[me]!.distanceKm.toStringAsFixed(2),
+                  'km',
+                  size: 18,
+                  unitSize: 11,
                 ),
               ],
             ),
@@ -805,28 +923,65 @@ class _CrewRecords extends StatelessWidget {
     );
   }
 
-  Widget _stat(String label, String value, String unit) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
+  /// 숫자(Archivo 좁은 글꼴)와 단위.
+  Widget _number(
+    String value,
+    String unit, {
+    required double size,
+    required double unitSize,
+  }) => Row(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.baseline,
+    textBaseline: TextBaseline.alphabetic,
     children: [
       Text(
-        label,
-        style: TextStyle(fontSize: 11, color: AppColors.textTertiary),
+        value,
+        style: runningNumberStyle(
+          size,
+          weight: FontWeight.w600,
+        ).copyWith(height: 0.8, letterSpacing: -0.01 * size),
       ),
-      const SizedBox(height: 4),
-      Text.rich(
-        TextSpan(
-          children: [
-            TextSpan(
-              text: value,
-              style: runningNumberStyle(24, weight: FontWeight.w700),
-            ),
-            TextSpan(
-              text: ' $unit',
-              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-            ),
-          ],
+      const SizedBox(width: 3),
+      Text(
+        unit,
+        style: TextStyle(
+          fontSize: unitSize,
+          fontWeight: FontWeight.w600,
+          height: 1,
+          color: AppColors.textSecondary,
         ),
       ),
     ],
+  );
+
+  /// 회색 카드 안의 통계(제목 12, 숫자 26).
+  Widget _stat(String label, String value, String unit) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    decoration: BoxDecoration(
+      color: AppColors.card,
+      borderRadius: BorderRadius.circular(14),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            height: 1,
+            letterSpacing: -0.06,
+            color: AppColors.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 10),
+        // 숫자가 길어 칸을 넘치면 그만큼만 줄입니다.
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: _number(value, unit, size: 26, unitSize: 13),
+        ),
+      ],
+    ),
   );
 }

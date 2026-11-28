@@ -6,6 +6,7 @@ import 'package:runnery_new/friends/data/crew_store.dart';
 import 'package:runnery_new/friends/data/friend_store.dart';
 import 'package:runnery_new/friends/data/together_store.dart';
 import 'package:runnery_new/friends/friends_page.dart';
+import 'package:runnery_new/friends/widgets/friend_widgets.dart';
 
 import 'support/fake_crew_backend.dart';
 import 'support/fake_friend_backend.dart';
@@ -538,12 +539,22 @@ void main() {
       await tester.tap(find.byTooltip('채팅방 메뉴'));
       await tester.pumpAndSettle();
       expect(find.text('알림 끄기'), findsNothing);
-      expect(find.byIcon(Icons.notifications_none), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is FriendIcon && w.kind == FriendIconKind.bell,
+        ),
+        findsOneWidget,
+      );
 
       await tester.tap(find.bySemanticsLabel('크루 알림 켜짐, 눌러서 끄기'));
       await tester.pumpAndSettle();
       expect(crewStore.muted(id), isTrue);
-      expect(find.byIcon(Icons.notifications_off_outlined), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is FriendIcon && w.kind == FriendIconKind.bellOff,
+        ),
+        findsOneWidget,
+      );
       expect(find.bySemanticsLabel('크루 알림 꺼짐, 눌러서 켜기'), findsOneWidget);
     });
 
@@ -650,7 +661,7 @@ void main() {
       expect(find.text('멤버 1명'), findsOneWidget);
       expect(find.text('크루장'), findsOneWidget);
 
-      await tester.tap(find.byTooltip('공지 쓰기'));
+      await tester.tap(find.text('눌러서 크루원에게 알릴 내용을 적어 보세요'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).last, '매주 토요일 7시에 모여요');
       await tester.tap(find.text('저장'));

@@ -203,9 +203,12 @@ exports.crewRun = onCall({ region: REGION, maxInstances: 20 }, async (request) =
   const lockRef = (who) => db.collection('crewRunners').doc(who);
   // 이번에 팀 달리기가 끝났으면 그 모집(끝난 뒤 각자의 길을 팀 기록에 옮깁니다).
   let endedRun = null;
+  // 이번에 모집이 닫혔으면 true(채팅방의 모집 카드를 지웁니다).
+  let closed = false;
   try {
     await db.runTransaction(async (t) => {
       endedRun = null;
+      closed = false;
       const crewSnap = await t.get(crewRef);
       const runSnap = action === 'create' ? null : await t.get(runRef);
       const lockSnap = await t.get(lockRef(uid));
@@ -250,6 +253,7 @@ exports.crewRun = onCall({ region: REGION, maxInstances: 20 }, async (request) =
       }
       writeRun(t, db, crewId, runRef, result, clears);
       if (result.run && result.run.status === 'ended' && (!run || run.status !== 'ended')) endedRun = result.run;
+      if (result.run && result.run.status === 'closed') closed = true;
       for (const who of result.lockSet || []) {
         t.set(lockRef(who), { crewId, runId: runRef.id });
       }
@@ -276,6 +280,7 @@ exports.crewRun = onCall({ region: REGION, maxInstances: 20 }, async (request) =
     throw new HttpsError('internal', '잠시 후 다시 시도해주세요');
   }
   if (endedRun) await saveTeamRoutes(db, crewId, runRef, endedRun);
+  if (closed) await deleteRunCards(db, crewRef, runRef.id);
   return { ok: true, runId: runRef.id };
 });
 
@@ -363,6 +368,36 @@ exports.crewCode = onCall({ region: REGION, maxInstances: 20 }, async (request) 
   }
 });
 
+/** 채팅방에 남은 그 모집의 카드(kind: 'run' 메시지)를 지웁니다. 실패해도 모집 문서는 이미 지워졌습니다. */
+async function deleteRunCards(db, crewRef, runId) {
+  try {
+    const cards = await crewRef.collection('messages').where('runId', '==', runId).get();
+    const batch = db.batch();
+    for (const doc of cards.docs) batch.delete(doc.ref);
+    await batch.commit();
+  } catch (e) {
+    logger.error('모집 카드 지우기 실패', crewRef.id, runId, e);
+  }
+}
+
+/**
+ * 예전에 닫혀 남아 있던 모집과 그 카드를 한 번만 지웁니다(닫힌 모집을 지우기 전 데이터).
+ * 다 지우면 maintenance/closedRunsCleanup에 표시해 다음부터는 살피지 않습니다.
+ */
+async function cleanupOldClosedRuns(db) {
+  const mark = db.collection('maintenance').doc('closedRunsCleanup');
+  if ((await mark.get()).exists) return;
+  const crews = await db.collection('crews').select().get();
+  for (const crew of crews.docs) {
+    const closedRuns = await crew.ref.collection('runs').where('status', '==', 'closed').get();
+    for (const run of closedRuns.docs) {
+      await deleteRunCards(db, crew.ref, run.id);
+      await run.ref.delete();
+    }
+  }
+  await mark.set({ doneAt: FieldValue.serverTimestamp() });
+}
+
 /**
  * 팀 달리기가 끝나면 각자의 지나간 길을 실시간 상태(live)에서 팀 기록(routes/{uid})으로 옮깁니다.
  * 출발·도착 200m는 잘라 내고(crew_route.js), 크루 멤버만 읽습니다(보안 규칙). 실시간 상태는 1시간 뒤
@@ -405,7 +440,9 @@ async function readLive(t, runRef, run) {
  * (crewActiveRuns: 5분마다 종료 투표를 살피는 데 씁니다).
  */
 function writeRun(t, db, crewId, runRef, result, clears) {
-  if (result.run) t.set(runRef, runToDoc(result.run));
+  // 닫힌 모집(팀장이 대기실을 나감)은 남기지 않고 지웁니다. 채팅방의 카드는 트랜잭션 뒤에 지웁니다.
+  if (result.run && result.run.status === 'closed') t.delete(runRef);
+  else if (result.run) t.set(runRef, runToDoc(result.run));
   for (const who of clears) t.delete(db.collection('crewRunners').doc(who));
   const active = db.collection('crewActiveRuns').doc(`${crewId}_${runRef.id}`);
   if (result.activeSet) t.set(active, { crewId, runId: runRef.id });
@@ -447,6 +484,11 @@ exports.crewRunTick = onSchedule({ region: REGION, schedule: 'every 5 minutes', 
     if (endedRun) await saveTeamRoutes(db, crewId, runRef, endedRun);
   }
   await cleanupLive(db);
+  try {
+    await cleanupOldClosedRuns(db);
+  } catch (e) {
+    logger.error('예전 닫힌 모집 지우기 실패', e);
+  }
 });
 
 /**

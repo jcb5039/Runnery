@@ -593,7 +593,9 @@ class FakeCrewBackend implements CrewBackend {
           throw const FriendException('준비 취소를 누른 뒤 나갈 수 있어요');
         }
         if (uid == run.host) {
-          runs[key] = _copyRun(run, status: CrewRunStatus.closed);
+          // 서버처럼 닫힌 모집은 지우고, 채팅방의 그 카드도 지웁니다.
+          runs.remove(key);
+          messagesById[crewId]?.removeWhere((m) => m.runId == run.id);
           for (final m in run.members) {
             if (runnerLocks[m] == key) runnerLocks.remove(m);
           }

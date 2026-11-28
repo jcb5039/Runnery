@@ -291,7 +291,9 @@ void main() {
         await settle();
       });
       await tester.pump();
-      expect(find.text('함께 출발해요'), findsOneWidget);
+      // 대기실 고리 안에서 3·2·1을 함께 세요(17-12-3). 세는 동안에는 버튼이 사라져요.
+      expect(find.text('3'), findsOneWidget);
+      expect(find.text('준비 완료'), findsNothing);
       await tester.pump(const Duration(seconds: 4));
       await tester.pumpAndSettle();
       expect(launched?.runId, id);
